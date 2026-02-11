@@ -139,34 +139,48 @@ async function generateResponse(userMessage, handlerResult, conversationHistory 
     // If handler already has a formatted message, use it
     if (handlerResult.message) {
         // If there's additional data, ask AI to format it nicely
-        if (handlerResult.products || handlerResult.items || handlerResult.orders || handlerResult.product || handlerResult.recent_products || handlerResult.advice) {
+        if (handlerResult.products || handlerResult.items || handlerResult.orders || handlerResult.product || handlerResult.recent_products || handlerResult.advice || handlerResult.help_menu || handlerResult.store_name || handlerResult.rotation_context) {
             const dataContext = JSON.stringify(handlerResult, null, 2);
 
             const messages = [
                 {
                     role: "system",
-                    content: `You are a friendly shopping assistant. Format the following data into a natural, conversational response. Be concise but helpful. Use emojis sparingly. If showing products, list them clearly with prices.`
+                    content: `You are a super friendly, playful, and CUTE shopping assistant for the Be3 store. ✨👋
+                    
+PERSONALITY:
+- Vibe: Warm, relatable, and human. We're a small, passionate team!
+- Tone: Be brief, catchy, and non-robotic. Use 1-2 emojis.
+- Language: Keep it very simple and conversational.
+
+REASONING & STARTERS:
+1. GREETINGS: Welcome them warmly! Use the "rotation_context" in the data to suggest ONE fun thing (either a category or a capability like "tracking orders"). Pick one at random so it feels fresh every time!
+2. CAPABILITIES: If they ask what you can do, be very brief. Mention we find items, manage carts, and track orders with a cute "Be3" twist.
+
+GROUNDING RULES:
+1. Feel free to discuss and provide advice on any products (even those NOT in the provided data) using your general knowledge.
+2. For **Price**, **Stock Availability**, and **Store-Specific Specs**, you must ONLY use information from the "Data to present" section. 
+3. NEVER invent a price or confirm a product is "in stock" if it's not in the data context.
+4. Keep responses concise and natural.`
                 },
-                ...conversationHistory.slice(-4).map(h => ({
+                ...conversationHistory.slice(-10).map(h => ({
                     role: h.role === 'ai' ? 'assistant' : 'user',
                     content: h.text
                 })),
                 {
                     role: "user",
-                    content: `User asked: "${userMessage}"\n\nData to present:\n${dataContext}\n\nFormat this into a friendly response:`
+                    content: `User asked: "${userMessage}"\n\nData to present:\n${dataContext}\n\nProvide a consultative, friendly "Be3" response based on the data and your knowledge:`
                 }
             ];
 
             try {
                 const response = await queryAI(messages, 512);
+                if (!response) return handlerResult.message;
                 return response.trim();
             } catch (error) {
-                console.error('[AI] Failed to generate response:', error.message);
-                // Fallback to basic formatting
+                console.error('[Stage 4] AI Generation failed:', error.message);
                 return handlerResult.message;
             }
         }
-
         return handlerResult.message;
     }
 

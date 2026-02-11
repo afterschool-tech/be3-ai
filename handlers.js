@@ -399,6 +399,12 @@ async function handleCompareProducts(params, sessionId, state = null) {
         return { error: "I couldn't find enough products to compare. Please check the product names." };
     }
 
+    // Persist compared products to state for follow-up context (e.g. advice, add-to-cart)
+    if (state) {
+        await stateManager.updateLastSearch(sessionId, `Comparison: ${products.map(p => p.name).join(' vs ')}`, {}, products, products.length);
+        await stateManager.updateReferenceMap(sessionId, products);
+    }
+
     return {
         message: `Comparing ${products.length} products:`,
         products: products.map(p => ({
@@ -840,11 +846,51 @@ async function handleGetAdvice(params, sessionId, state = null) {
 }
 
 /**
- * Handle help request
+ * Handle initial greetings
  */
-async function handleHelp(params, sessionId) {
+async function handleGreeting(params, sessionId, state = null) {
+    // Get store categories
+    const categories = state?.store_context?.categories || [];
+    const randomCats = [...categories].sort(() => 0.5 - Math.random()).slice(0, 3).map(c => c.label);
+
+    // Dynamic rotation pool of things we can do
+    const thingsWeDo = [
+        "finding the best tech and home items",
+        "managing your shopping cart with ease",
+        "tracking your orders so you stay updated",
+        "comparing products to find your perfect match",
+        "sourcing awesome deals just for you",
+        "giving you friendly shopping advice"
+    ];
+    const randomThings = thingsWeDo.sort(() => 0.5 - Math.random()).slice(0, 3);
+
     return {
-        message: getHelpMessage()
+        message: "Hello! Welcome to Be3!",
+        store_name: "Be3",
+        rotation_context: {
+            suggested_categories: randomCats,
+            what_we_can_do: randomThings
+        }
+    };
+}
+
+/**
+ * Override standard help with context
+ */
+async function handleHelp(params, sessionId, state = null) {
+    const categories = state?.store_context?.categories || [];
+
+    return {
+        message: "I'm your Be3 assistant. I can help find products, manage your cart, and track orders.",
+        capabilities: [
+            "Search for products",
+            "Compare specs",
+            "Calculate discounts",
+            "Track shipments",
+            "Personalized shopping advice"
+        ],
+        available_categories: categories.slice(0, 10),
+        help_menu: true
     };
 }
 
@@ -875,6 +921,7 @@ const INTENT_HANDLERS = {
     [INTENTS.TRACK_ORDER]: handleTrackOrder,
     [INTENTS.CANCEL_ORDER]: handleCancelOrder,
     [INTENTS.HELP]: handleHelp,
+    [INTENTS.GREETING]: handleGreeting,
     [INTENTS.GET_ADVICE]: handleGetAdvice,
     [INTENTS.FALLBACK_UNKNOWN]: handleFallbackUnknown
 };

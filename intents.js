@@ -18,6 +18,7 @@ const INTENTS = {
     TRACK_ORDER: 'track_order',
     CANCEL_ORDER: 'cancel_order',
     HELP: 'help',
+    GREETING: 'greeting',
     GET_ADVICE: 'get_advice',
     FALLBACK_UNKNOWN: 'fallback_unknown'
 };
@@ -170,13 +171,29 @@ const INTENT_DESCRIPTIONS = {
         parameters: ['order_number', 'order_id']
     },
     [INTENTS.HELP]: {
-        description: "User is asking for general assistance or wants to know what the bot can do",
+        description: "User is explicitly asking about your capabilities, seeking assistance, or asking 'What can you do?' and 'Can you help?'.",
         examples: [
             "Help",
             "What can you do?",
             "How does this work?",
             "I need assistance",
-            "Can you help me?"
+            "Can you help me?",
+            "What services do you offer?",
+            "Tell me about your features"
+        ],
+        parameters: []
+    },
+    [INTENTS.GREETING]: {
+        description: "User is saying hello or hi to start a conversation with NO specific request or question yet. Just initial pleasantries.",
+        examples: [
+            "Hi",
+            "Hello",
+            "Hey there",
+            "Good morning",
+            "Good afternoon",
+            "Hii",
+            "Yo",
+            "Greetings"
         ],
         parameters: []
     },
@@ -252,8 +269,8 @@ RULES:
 - If a user says "Show me X", even if they said "Now show me X", it's a search_products intent.
 - If no parameters are found, use empty object: "params": {}
 - Confidence should be between 0 and 1
-- If the message is unclear or doesn't match any intent, use "fallback_unknown"
-- For product references like "this", "that", "the first one", extract the product name if it was mentioned in the conversation history.
+- CONFIRMATION & TRANSITIONS: If the user says "yes", "ok", "sure", or "do that" to a suggestion made in the LAST AI message (e.g., "Should I show you laptops?"), classify the intent based on that suggestion (e.g., search_products, category="laptops").
+- CONTEXT STICKINESS: Do NOT carry over parameters (like category or product names) from previous turns if the user's current message is a generic confirmation or a shift in focus. 
 - For comparisons (compare_products), ALWAYS put the names in the "product_names" ARRAY. Do not use "product1", "product2".
 - CATEGORY EXTRACTION: If the user mentions a category from the DYNAMIC STORE CONTEXT (e.g. "desktops", "smartphones"), put it in the "category" param. If they mention a product that implies a category (e.g. "Macbook"), keep the query as "Macbook" but also set "category" if you can infer it from the list.
 - ACTIONABLE INTENTS: If the user says "Find me affordable desktops", set intent="search_products", category="desktops", query="affordable desktops".
