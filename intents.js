@@ -27,13 +27,16 @@ const INTENTS = {
  */
 const INTENT_DESCRIPTIONS = {
     [INTENTS.SEARCH_PRODUCTS]: {
-        description: "User wants to browse or search for products, possibly filtered by category, price range, brand, or specific attributes",
+        description: "User wants to browse or search for products, possibly filtered by category, price range, brand, or specific attributes. Extract price as numbers without currency symbols.",
         examples: [
             "Show me laptops",
             "I'm looking for phones under $500",
             "Do you have Samsung products?",
             "What electronics do you sell?",
-            "Show me all products in the tech category"
+            "Show me all products in the tech category",
+            "Find me a cheap watch",
+            "Are there any cameras between 200 and 600?",
+            "Show me smartphones under 1000"
         ],
         parameters: ['query', 'category', 'price_min', 'price_max', 'vendor']
     },
@@ -79,13 +82,16 @@ const INTENT_DESCRIPTIONS = {
         parameters: ['product_name', 'product_id', 'cart_item_id']
     },
     [INTENTS.VIEW_CART]: {
-        description: "User wants to see what's currently in their shopping cart",
+        description: "User wants to see what's currently in their shopping cart, or check the contents of their basket",
         examples: [
             "What's in my cart?",
             "Show me my basket",
             "What have I added?",
             "View cart",
-            "What am I buying?"
+            "What am I buying?",
+            "Check my cart",
+            "What's in the cart?",
+            "Show items in cart"
         ],
         parameters: []
     },
@@ -220,11 +226,14 @@ INSTRUCTIONS:
 RULES:
 - Always return valid JSON
 - Use lowercase for intent names (e.g., "search_products" not "SEARCH_PRODUCTS")
-- Extract as many relevant parameters as possible
+- Extract as many relevant parameters as possible. 
+- For pricing: "under $X" or "less than $X" means price_max = X. "over $X" or "more than $X" means price_min = X.
+- IGNORE conversational fillers like "Now", "Actually", "Also", "By the way" when determining intent. Focus on the core request.
+- If a user says "Show me X", even if they said "Now show me X", it's a search_products intent.
 - If no parameters are found, use empty object: "params": {}
 - Confidence should be between 0 and 1
 - If the message is unclear or doesn't match any intent, use "fallback_unknown"
-- For product references like "this", "that", "the first one", extract the product name if it was mentioned in the conversation history
+- For product references like "this", "that", "the first one", extract the product name if it was mentioned in the conversation history.
 
 EXAMPLES:
 

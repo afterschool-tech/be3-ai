@@ -1,0 +1,83 @@
+﻿
+­ƒº¬ Edge Case Test Suite
+Session ID: test_edge_1770772902851
+
+================================================================================
+TEST 1: Context Switching (Laptops -> Phones)
+================================================================================
+[DEBUG] Intent: search_products (0.95)
+User: "Show me laptops"
+[DEBUG] Intent: fallback_unknown (0)
+User: "Now show me phones under $500"
+[DEBUG] Intent: view_product (0.9)
+User: "Tell me more about the first one"
+AI: "Here are the details for Slim Convertible Laptop:
+
+**Slim Convertible Laptop** - $99.99
+
+Experience ..."
+Ô£ô Should be a phone: NO
+
+================================================================================
+TEST 2: Brand Reference Ambiguity
+================================================================================
+[DEBUG] Intent: add_to_cart (0.9)
+User: "Add the Tecno to my cart"
+AI: "Great news! I've added the Tecno Cameon 40 Premier to your cart for $300.00. 
+
+That's 1 x Tecno Cameon 40 Premier in your shopping cart. Your total has been updated accordingly.
+
+Is there anything else you'd like to add to your cart today? ­ƒøÆ"
+Ô£ô Cart item count: 1
+
+================================================================================
+TEST 3: Non-existent Reference Fallback
+================================================================================
+[DEBUG] Intent: view_product (0.9)
+User: "Show me details for the Invisible Supercar"
+AI: "I'm sorry, but Please specify which product you want to view."
+Ô£ô Handled gracefully: YES
+
+================================================================================
+TEST 4: Mid-Conversation State Loss (Simulated)
+================================================================================
+Clearing state via debug endpoint...
+[DEBUG] Intent: help (0.7)
+User: "What was the first thing we talked about?"
+AI: "I'm your Be3 shopping assistant! Here's what I can help you with:
+
+­ƒöì **Search & Browse**
+- Search for products: "Show me laptops"
+- Filter by price: "Phones under $500"
+- Browse categories: "What's in the electronics section?"
+
+­ƒøÆ **Shopping Cart**
+- Add items: "Add this to my cart"
+- View cart: "What's in my cart?"
+- Update quantities: "Change to 3 items"
+- Remove items: "Remove the laptop from cart"
+
+­ƒôª **Orders**
+- View orders: "Show my order history"
+- Track orders: "Where is my order?"
+- Cancel orders: "Cancel order #12345"
+
+­ƒÆ│ **Checkout**
+- Start checkout: "I want to checkout"
+- Set delivery: "I need express shipping"
+
+Just ask me anything and I'll help you shop!"
+
+================================================================================
+TEST 5: Aggressive Price Range Extraction
+================================================================================
+[DEBUG] Intent: search_products (0.95)
+User: "Show me something between 10 and 30 dollars"
+Ô£ô Last search query: ""
+Ô£ô Max price preference: 30
+
+================================================================================
+TEST SUMMARY
+================================================================================
+Cleaning up...
+Done.

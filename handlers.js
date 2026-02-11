@@ -5,6 +5,7 @@
 
 const axios = require('axios');
 const { INTENTS, getHelpMessage } = require('./intents');
+const stateManager = require('./stateManager');
 
 // Backend API configuration
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
@@ -45,8 +46,56 @@ async function callBackendAPI(endpoint, options = {}) {
 /**
  * Search for products
  */
-async function handleSearchProducts(params, sessionId) {
-    const { query = '', category, price_min, price_max, vendor, limit = 10 } = params;
+async function handleSearchProducts(params, sessionId, state = null) {
+    let { query = '', category, price_min, price_max, vendor, limit = 10 } = params;
+
+    // Helper to clean price strings (strip $ etc)
+    const cleanPrice = (val) => {
+        if (typeof val === 'number') return val;
+        if (!val) return null;
+        const cleaned = val.toString().replace(/[^0-9.]/g, '');
+        return cleaned ? parseFloat(cleaned) : null;
+    };
+
+    // Clean params
+    let pMin = cleanPrice(price_min);
+    let pMax = cleanPrice(price_max);
+
+    // Fallback: Try to extract price from query if missing in params
+    if (query) {
+        // Between pattern: "between 10 and 30"
+        const betweenMatch = query.match(/between\s*\$?(\d+(?:\.\d+)?)\s*and\s*\$?(\d+(?:\.\d+)?)/i);
+        if (betweenMatch) {
+            if (pMin === null) pMin = parseFloat(betweenMatch[1]);
+            if (pMax === null) pMax = parseFloat(betweenMatch[2]);
+        }
+
+        // Under pattern
+        const underMatch = query.match(/(?:under|below|less than)\s*\$?(\d+(?:\.\d+)?)/i);
+        if (underMatch && pMax === null) pMax = parseFloat(underMatch[1]);
+
+        // Over pattern
+        const overMatch = query.match(/(?:over|above|more than)\s*\$?(\d+(?:\.\d+)?)/i);
+        if (overMatch && pMin === null) pMin = parseFloat(overMatch[1]);
+
+        // General $ match
+        const priceMatch = query.match(/\$\s*(\d+(?:\.\d+)?)/);
+        if (priceMatch && pMax === null) pMax = parseFloat(priceMatch[1]);
+    }
+
+    // Determine search string. 
+    // If we have a query, use it. 
+    // If we DON'T have a query BUT we have new filters (price/category), treat query as empty string.
+    // ONLY fallback to last search query if EVERYTHING is missing.
+    let searchString = query;
+    if (!searchString && !pMin && !pMax && !category && !vendor) {
+        searchString = state?.product_context?.last_search?.query || '';
+    } else if (!searchString) {
+        searchString = ''; // New search with filters, don't inherit "laptops"
+    }
+
+    // Use state preferences if available
+    const finalPriceMax = pMax || cleanPrice(state?.preferences?.price_range?.max);
 
     const searchParams = new URLSearchParams({
         q: query,
@@ -58,19 +107,44 @@ async function handleSearchProducts(params, sessionId) {
     if (category) searchParams.append('category', category);
     if (vendor) searchParams.append('vendor', vendor);
 
-    const result = await callBackendAPI(`/search?${searchParams.toString()}`);
+    let result = await callBackendAPI(`/search?${searchParams.toString()}`);
 
     if (!result.success) {
-        return { error: result.error };
+        // Fallback to storefront search if initial search fails
+        const fallbackSearchParams = new URLSearchParams({
+            q: searchString,
+            category: category || '',
+            price_min: pMin || '',
+            price_max: finalPriceMax || '',
+            vendor: vendor || '',
+            limit
+        });
+
+        result = await callBackendAPI(`/search/storefront?${fallbackSearchParams.toString()}`);
+
+        if (!result.success) {
+            return { error: result.error };
+        }
     }
 
-    const products = result.data.results || [];
+    const products = result.data.results || result.data.data || result.data || [];
 
     if (products.length === 0) {
         return {
             message: "I couldn't find any products matching your search. Try different keywords or filters.",
             products: []
         };
+    }
+
+    // Update state with search results and reference map
+    if (state) {
+        await stateManager.updateLastSearch(sessionId, searchString, { price_min: pMin, price_max: finalPriceMax, category, vendor }, products, products.length);
+        await stateManager.updateReferenceMap(sessionId, products);
+
+        // Learn from search behavior (use pMax specifically from this search)
+        if (pMax !== null) {
+            await stateManager.learnFromBehavior(sessionId, 'search', { price_max: pMax, category });
+        }
     }
 
     return {
@@ -89,8 +163,27 @@ async function handleSearchProducts(params, sessionId) {
 /**
  * View product details
  */
-async function handleViewProduct(params, sessionId) {
-    const { product_id, product_handle, product_name } = params;
+async function handleViewProduct(params, sessionId, state = null) {
+    let { product_id, product_handle, product_name } = params;
+
+    // Try to resolve reference from state
+    if (!product_id && !product_handle && product_name && state) {
+        const resolvedId = await stateManager.resolveReference(sessionId, product_name);
+        if (resolvedId) {
+            product_id = resolvedId;
+        }
+    }
+
+    // If we only have a product_name and no resolved ID, it's likely a name the AI resolved
+    // We should try to find the product ID via search first
+    if (!product_id && !product_handle && product_name && !product_name.includes(' ')) {
+        // Simple word, maybe it's a slug? 
+    } else if (!product_id && !product_handle && product_name) {
+        const searchResult = await handleSearchProducts({ query: product_name, limit: 1 }, sessionId, state);
+        if (searchResult.products && searchResult.products.length > 0) {
+            product_id = searchResult.products[0].id;
+        }
+    }
 
     // Use handle or ID, prefer handle
     const identifier = product_handle || product_id || product_name;
@@ -106,6 +199,17 @@ async function handleViewProduct(params, sessionId) {
     }
 
     const product = result.data.product;
+
+    // Update state
+    if (state) {
+        await stateManager.setCurrentlyViewing(sessionId, product.id);
+        await stateManager.addToRecentlyViewed(sessionId, product.id, product.name);
+
+        // Learn brand preference
+        if (product.vendor) {
+            await stateManager.learnFromBehavior(sessionId, 'view_product', { brand: product.vendor });
+        }
+    }
 
     return {
         message: `Here are the details for ${product.name}:`,
@@ -163,8 +267,22 @@ async function handleCompareProducts(params, sessionId) {
 /**
  * Add product to cart
  */
-async function handleAddToCart(params, sessionId) {
-    const { product_id, product_name, quantity = 1 } = params;
+async function handleAddToCart(params, sessionId, state = null) {
+    let { product_id, product_name, quantity = 1 } = params;
+
+    // Try to resolve reference from state ("add this", "add the first one")
+    if (!product_id && product_name && state) {
+        const resolvedId = await stateManager.resolveReference(sessionId, product_name);
+        if (resolvedId) {
+            product_id = resolvedId;
+            product_name = null; // Clear name since we have ID
+        }
+    }
+
+    // If still no ID but we have "this" reference, use currently viewing
+    if (!product_id && !product_name && state?.product_context?.currently_viewing) {
+        product_id = state.product_context.currently_viewing;
+    }
 
     // If only product name is provided, search for it first
     let productId = product_id;
@@ -203,6 +321,16 @@ async function handleAddToCart(params, sessionId) {
 
     if (!result.success) {
         return { error: result.error };
+    }
+
+    // Update cart state
+    if (state) {
+        const cartData = result.data.cart || {};
+        await stateManager.updateCart(sessionId, {
+            id: cartData.id,
+            item_count: cartData.item_count || (state.cart.item_count + 1),
+            total: cartData.total || (state.cart.total + (product.price * quantity))
+        });
     }
 
     return {
@@ -547,18 +675,18 @@ const INTENT_HANDLERS = {
 /**
  * Execute intent handler
  */
-async function executeIntent(intent, params, sessionId) {
+async function executeIntent(intent, params, sessionId, state = null) {
     const handler = INTENT_HANDLERS[intent];
 
     if (!handler) {
         console.error(`[Handler] No handler found for intent: ${intent}`);
-        return handleFallbackUnknown(params, sessionId);
+        return handleFallbackUnknown(params, sessionId, state);
     }
 
     console.log(`[Handler] Executing ${intent} with params:`, params);
 
     try {
-        const result = await handler(params, sessionId);
+        const result = await handler(params, sessionId, state);
         return result;
     } catch (error) {
         console.error(`[Handler Error] ${intent}:`, error);

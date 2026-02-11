@@ -3,6 +3,8 @@ const express = require('express');
 const { OpenAI } = require("openai");
 const { getIntentClassificationPrompt } = require('./intents');
 const { executeIntent } = require('./handlers');
+const stateManager = require('./stateManager');
+const redisClient = require('./redis');
 const cors = require('cors');
 
 const app = express();
@@ -21,21 +23,34 @@ const client = new OpenAI({
 /**
  * Call Hugging Face Inference API via OpenAI SDK
  */
-async function queryAI(messages, maxTokens = 512) {
-    try {
-        console.log(`[AI] Sending request to Qwen...`);
+async function queryAI(messages, maxTokens = 512, retries = 2) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            console.log(`[AI] Sending request to Qwen (Attempt ${i + 1})...`);
 
-        const completion = await client.chat.completions.create({
-            model: MODEL_ID,
-            messages: messages,
-            max_tokens: maxTokens,
-            temperature: 0.7,
-        });
+            const completion = await client.chat.completions.create({
+                model: MODEL_ID,
+                messages: messages,
+                max_tokens: maxTokens,
+                temperature: 0.7,
+            });
 
-        return completion.choices[0].message.content || "";
-    } catch (err) {
-        console.error("AI API Error:", err.message);
-        throw new Error("Failed to communicate with AI model.");
+            return completion.choices[0].message.content || "";
+        } catch (err) {
+            const isRateLimit = err.message.toLowerCase().includes('rate limit') ||
+                err.message.toLowerCase().includes('429') ||
+                err.message.toLowerCase().includes('subscribe to pro');
+
+            if (i < retries && (isRateLimit || err.message.includes('timeout') || err.message.includes('socket'))) {
+                const waitTime = Math.pow(2, i) * 1000;
+                console.warn(`[AI] Error: ${err.message}. Retrying in ${waitTime}ms...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+            }
+
+            console.error("AI API Error:", err.message);
+            throw new Error(`Failed to communicate with AI model: ${err.message}`);
+        }
     }
 }
 
@@ -45,10 +60,10 @@ async function queryAI(messages, maxTokens = 512) {
 async function classifyIntent(userMessage, conversationHistory = []) {
     const classificationPrompt = getIntentClassificationPrompt();
 
-    // Build messages for classification
+    // Build messages for classification (only last 3 for context to avoid distractions)
     const messages = [
         { role: "system", content: classificationPrompt },
-        ...conversationHistory.map(h => ({
+        ...conversationHistory.slice(-3).map(h => ({
             role: h.role === 'ai' ? 'assistant' : 'user',
             content: h.text
         })),
@@ -72,22 +87,25 @@ async function classifyIntent(userMessage, conversationHistory = []) {
             if (match) jsonStr = match[1];
         }
 
-        // Find JSON object in the response
+        // Find JSON object in the response (handle nested or multiple blocks)
         const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             jsonStr = jsonMatch[0];
         }
+
+        // Clean any potential trailing characters or comments AI might have added
+        jsonStr = jsonStr.substring(jsonStr.indexOf('{'), jsonStr.lastIndexOf('}') + 1);
 
         const classification = JSON.parse(jsonStr);
 
         return {
             intent: classification.intent || 'fallback_unknown',
             params: classification.params || {},
-            confidence: classification.confidence || 0.5
+            confidence: classification.confidence !== undefined ? classification.confidence : 0.5
         };
     } catch (error) {
         console.error('[AI] Failed to parse classification:', error.message);
-        console.error('[AI] Raw response:', response);
+        console.error('[AI] Response received:', response);
 
         // Fallback to unknown intent
         return {
@@ -146,32 +164,53 @@ async function generateResponse(userMessage, handlerResult, conversationHistory 
 }
 
 /**
- * Main chat endpoint - Two-stage intent processing
+ * Main chat endpoint - State-aware two-stage intent processing
  */
 app.post('/chat', async (req, res) => {
     const { message, session_id, history = [] } = req.body;
     console.log(`\n[Chat] Received from ${session_id}: "${message}"`);
 
     try {
-        // STAGE 1: Classify Intent
+        // STAGE 0: Load/Initialize State
+        console.log('[Stage 0] Loading state...');
+        const state = await stateManager.getState(session_id);
+        console.log(`[Stage 0] State loaded. Messages: ${state.session.message_count}, Active flow: ${state.active_flow?.type || 'none'}`);
+
+        // Add user message to history
+        await stateManager.addMessage(session_id, 'user', message);
+
+        // STAGE 1: Classify Intent (with state context)
         console.log('[Stage 1] Classifying intent...');
-        const classification = await classifyIntent(message, history);
+        const classification = await classifyIntent(message, state.conversation_history);
         console.log(`[Stage 1] Intent: ${classification.intent} (confidence: ${classification.confidence})`);
         console.log(`[Stage 1] Params:`, classification.params);
 
-        // STAGE 2: Execute Intent Handler
+        // Update current intent
+        await stateManager.setCurrentIntent(session_id, classification.intent);
+
+        // STAGE 2: Execute Intent Handler (with state)
         console.log('[Stage 2] Executing handler...');
         const handlerResult = await executeIntent(
             classification.intent,
             classification.params,
-            session_id
+            session_id,
+            state  // Pass state to handler
         );
         console.log(`[Stage 2] Handler result:`, handlerResult);
 
-        // STAGE 3: Generate Natural Response
+        // Reload state after handler execution (handlers may have updated it)
+        const updatedState = await stateManager.getState(session_id);
+
+        // STAGE 3: Generate Natural Response (with updated state context)
         console.log('[Stage 3] Generating response...');
-        const reply = await generateResponse(message, handlerResult, history);
+        const reply = await generateResponse(message, handlerResult, updatedState.conversation_history);
         console.log(`[Stage 3] Final reply: "${reply}"\n`);
+
+        // Save AI response to history
+        await stateManager.addMessage(session_id, 'ai', reply, classification.intent);
+
+        // Extend session TTL
+        await stateManager.extendTTL(session_id);
 
         res.json({
             success: true,
@@ -202,8 +241,54 @@ app.get('/health', (req, res) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`\n🤖 Be3 AI Service (Qwen + Intent System) running on port ${PORT}`);
-    console.log(`📡 Backend API: ${process.env.BACKEND_API_URL || 'http://localhost:3000'}`);
-    console.log(`🏢 Tenant ID: ${process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713'}\n`);
+/**
+ * Debug endpoint to check state (for testing)
+ */
+app.get('/debug/state/:session_id', async (req, res) => {
+    try {
+        const { session_id } = req.params;
+        const state = await stateManager.getState(session_id);
+        res.json({ success: true, state });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Debug endpoint to clear state (for testing)
+ */
+app.delete('/debug/state/:session_id', async (req, res) => {
+    try {
+        const { session_id } = req.params;
+        await stateManager.clearState(session_id);
+        res.json({ success: true, message: 'State cleared' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
+// Initialize Redis on startup
+redisClient.initRedis().then(() => {
+    app.listen(PORT, () => {
+        console.log(`\n🤖 Be3 AI Service (Qwen + State Management) running on port ${PORT}`);
+        console.log(`📡 Backend API: ${process.env.BACKEND_API_URL || 'http://localhost:3000'}`);
+        console.log(`🏢 Tenant ID: ${process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713'}`);
+        console.log(`💾 Redis: ${redisClient.isRedisConnected() ? 'Connected' : 'Fallback mode (in-memory)'}\n`);
+    });
+}).catch(err => {
+    console.error('Failed to initialize Redis:', err);
+    console.log('Starting in fallback mode (in-memory state only)\n');
+
+    app.listen(PORT, () => {
+        console.log(`\n🤖 Be3 AI Service (Qwen + State Management) running on port ${PORT}`);
+        console.log(`⚠️  Running in FALLBACK mode (no Redis)\n`);
+    });
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('\n\nShutting down gracefully...');
+    await redisClient.closeRedis();
+    process.exit(0);
 });
