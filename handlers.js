@@ -5,7 +5,55 @@
 
 const axios = require('axios');
 const { INTENTS, getHelpMessage } = require('./intents');
+const { CATEGORIES, VENDORS } = require('./storeContext');
+const { CLAUSES } = require('./clauses');
 const stateManager = require('./stateManager');
+
+/**
+ * Constructs a semantic slug for the resolve-slug endpoint
+ * Pattern: prefix + category_slug + suffix
+ */
+function constructSemanticSlug(categorySlug, clauses = []) {
+    if (!categorySlug || clauses.length === 0) return null;
+
+    // Use the first clause as the primary semantic modifier
+    const clauseId = clauses[0];
+    const clause = CLAUSES[clauseId];
+
+    if (!clause) return null;
+
+    const prefix = (clause.display.prefix || '').toLowerCase().replace(/\s+/g, '-');
+    const suffix = (clause.display.suffix || '').toLowerCase().replace(/\s+/g, '-');
+
+    return `${prefix}${categorySlug}${suffix}`;
+}
+
+/**
+ * Normalizes a category label or slug to its canonical slug
+ */
+function normalizeCategory(cat) {
+    if (!cat) return null;
+    const catLower = cat.trim().toLowerCase();
+
+    // 1. Direct key match
+    if (CATEGORIES[catLower]) return CATEGORIES[catLower].slug;
+
+    // 2. Direct slug match
+    const bySlug = Object.values(CATEGORIES).find(c => c.slug.toLowerCase() === catLower);
+    if (bySlug) return bySlug.slug;
+
+    // 3. Exact label match
+    const byLabel = Object.values(CATEGORIES).find(c => c.label.toLowerCase() === catLower);
+    if (byLabel) return byLabel.slug;
+
+    // 4. Fuzzy match (Starts with or contains)
+    const fuzzy = Object.values(CATEGORIES).find(c =>
+        c.label.toLowerCase().includes(catLower) ||
+        catLower.includes(c.label.toLowerCase())
+    );
+
+    return fuzzy ? fuzzy.slug : cat;
+}
 
 // Backend API configuration
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
@@ -43,10 +91,8 @@ async function callBackendAPI(endpoint, options = {}) {
     }
 }
 
-/**
- * Search for products
- */
 async function handleSearchProducts(params, sessionId, state = null) {
+
     let { query = '', category, price_min, price_max, vendor, limit = 10 } = params;
 
     // Helper to clean price strings (strip $ etc)
@@ -97,37 +143,89 @@ async function handleSearchProducts(params, sessionId, state = null) {
     // Use state preferences if available
     const finalPriceMax = pMax || cleanPrice(state?.preferences?.price_range?.max);
 
-    const searchParams = new URLSearchParams({
-        q: query,
-        per_page: limit
-    });
+    // Use semantic clauses if present in microstate
+    console.log(`[Handlers] Checking microstate for sessionId: ${sessionId}. State type: ${state?.microstate?.type}`);
+    const semanticClauses = state?.microstate?.type === 'clause_resolution' ? (state.microstate.data.clauses || []) : [];
+    const normalizedCategory = normalizeCategory(category);
 
-    if (price_min) searchParams.append('price_min', price_min);
-    if (price_max) searchParams.append('price_max', price_max);
-    if (category) searchParams.append('category', category);
-    if (vendor) searchParams.append('vendor', vendor);
+    console.log(`[Handlers] Semantic clauses: ${JSON.stringify(semanticClauses)}, Category: ${normalizedCategory}`);
 
-    let result = await callBackendAPI(`/search?${searchParams.toString()}`);
+    let result = null;
+    let resolvedSeo = null;
 
-    if (!result.success) {
-        // Fallback to storefront search if initial search fails
-        const fallbackSearchParams = new URLSearchParams({
-            q: searchString,
-            category: category || '',
-            price_min: pMin || '',
-            price_max: finalPriceMax || '',
-            vendor: vendor || '',
-            limit
-        });
+    // STAGE 0: Try Semantic Slug Resolution (Native Backend Logic)
+    if (normalizedCategory && semanticClauses.length > 0) {
+        const semanticSlug = constructSemanticSlug(normalizedCategory, semanticClauses);
+        if (semanticSlug) {
+            console.log(`[Handlers] Attempting semantic slug resolution for: "${semanticSlug}"`);
+            const slugResult = await callBackendAPI(`/search/resolve-slug/${semanticSlug}`);
 
-        result = await callBackendAPI(`/search/storefront?${fallbackSearchParams.toString()}`);
+            if (slugResult.success && slugResult.data.filter) {
+                console.log(`[Handlers] Semantic slug SUCCESS! Using filter: ${slugResult.data.filter}`);
 
-        if (!result.success) {
-            return { error: result.error };
+                // Store SEO data from resolution for the final response
+                resolvedSeo = slugResult.data.seo || {
+                    title: slugResult.data.title,
+                    description: slugResult.data.meta_description
+                };
+                console.log(`[Handlers] Resolved SEO context: ${resolvedSeo.title}`);
+
+                // Step 2: Fetch products using the resolved filter string
+                result = await callBackendAPI(`/search?${slugResult.data.filter}&per_page=${limit}`);
+                if (result.success) {
+                    console.log(`[Handlers] Products successfully fetched via semantic filter.`);
+                }
+            } else {
+                console.warn(`[Handlers] Semantic slug "${semanticSlug}" not found or has no filters. Falling back.`);
+            }
         }
     }
 
-    const products = result.data.results || result.data.data || result.data || [];
+    // STAGE 1: Standard Search (if slug resolution wasn't attempted or failed)
+    if (!result || !result.success) {
+        const searchParams = new URLSearchParams({
+            q: query || '',
+            per_page: limit
+        });
+
+        if (price_min) searchParams.append('price_min', price_min);
+        if (price_max) searchParams.append('price_max', price_max);
+
+        if (normalizedCategory) {
+            searchParams.append('category', normalizedCategory);
+            console.log(`[Handlers] Applied category filter: ${normalizedCategory} (from ${category})`);
+        }
+
+        if (vendor) searchParams.append('vendor', vendor);
+
+        // Apply semantic clauses for canonical filtering
+        if (semanticClauses.length > 0) {
+            console.log(`[Handlers] Applying semantic clauses: ${semanticClauses.join(', ')}`);
+            semanticClauses.forEach(c => searchParams.append('clauses', c));
+        }
+
+        result = await callBackendAPI(`/search?${searchParams.toString()}`);
+
+        if (!result.success) {
+            // Fallback to storefront search if initial search fails
+            const fallbackSearchParams = new URLSearchParams({
+                q: searchString,
+                category: category || '',
+                price_min: pMin || '',
+                price_max: finalPriceMax || '',
+                vendor: vendor || '',
+                limit
+            });
+
+            result = await callBackendAPI(`/search/storefront?${fallbackSearchParams.toString()}`);
+
+            if (!result.success) {
+                return { error: result.error };
+            }
+        }
+    }
+
+    const products = result.data.results || result.data.data || result.data.products || (Array.isArray(result.data) ? result.data : []);
 
     if (products.length === 0) {
         return {
@@ -147,8 +245,14 @@ async function handleSearchProducts(params, sessionId, state = null) {
         }
     }
 
+    // Extract SEO metadata if present (either from resolve-slug or inferred)
+    const seo = resolvedSeo || result.data.seo || {
+        title: result.data.title,
+        description: result.data.meta_description || result.data.description
+    };
+
     return {
-        message: `I found ${products.length} product${products.length > 1 ? 's' : ''} for you:`,
+        message: `I found ${products.length} product${products.length > 1 ? 's' : ''}${seo.title ? ` for "${seo.title}"` : ''}:`,
         products: products.map(p => ({
             id: p.id,
             name: p.name,
@@ -156,6 +260,7 @@ async function handleSearchProducts(params, sessionId, state = null) {
             description: p.description,
             image_url: p.image_url
         })),
+        seo: seo.title ? seo : null,
         total: result.data.pagination?.total || products.length
     };
 }
@@ -229,17 +334,59 @@ async function handleViewProduct(params, sessionId, state = null) {
 /**
  * Compare multiple products
  */
-async function handleCompareProducts(params, sessionId) {
-    const { product_names = [], product_ids = [] } = params;
+async function handleCompareProducts(params, sessionId, state = null) {
+    let { product_names = [], product_ids = [] } = params;
 
-    const identifiers = [...product_ids, ...product_names];
+    // Robust extraction: Handle if AI returns product1, product2, etc.
+    Object.keys(params).forEach(key => {
+        if (key.match(/^product\d+$/)) {
+            if (!product_names.includes(params[key])) {
+                product_names.push(params[key]);
+            }
+        }
+    });
 
-    if (identifiers.length < 2) {
+    // Ensure they are arrays
+    if (!Array.isArray(product_names)) product_names = [product_names];
+    if (!Array.isArray(product_ids)) product_ids = [product_ids];
+
+    const rawIdentifiers = [...product_ids, ...product_names];
+
+    if (rawIdentifiers.length < 2) {
         return { error: "Please specify at least 2 products to compare." };
     }
 
-    // Fetch all products
-    const productPromises = identifiers.map(id =>
+    console.log(`[Handlers] Resolving ${rawIdentifiers.length} identifiers for comparison: ${rawIdentifiers.join(', ')}`);
+
+    // Step 1: Resolve all identifiers to real product IDs/handles
+    const resolvedIdentifiers = [];
+    for (const ident of rawIdentifiers) {
+        let resolvedIdent = ident;
+
+        // Try state resolution first (for "the first one", "the last one")
+        if (state) {
+            const stateRef = await stateManager.resolveReference(sessionId, ident);
+            if (stateRef) {
+                console.log(`[Handlers] Resolved "${ident}" via state reference to: ${stateRef}`);
+                resolvedIdent = stateRef;
+            }
+        }
+
+        // If it's a generic name and wasn't a state ref, try to find it via search
+        if (resolvedIdent === ident && (ident.includes(' ') || ident.length > 20)) {
+            console.log(`[Handlers] Searching for product match for: "${ident}"`);
+            const searchRes = await handleSearchProducts({ query: ident, limit: 1 }, sessionId, state);
+            if (searchRes.products && searchRes.products.length > 0) {
+                console.log(`[Handlers] Resolved "${ident}" via search to: ${searchRes.products[0].id}`);
+                resolvedIdent = searchRes.products[0].id;
+            }
+        }
+
+        resolvedIdentifiers.push(resolvedIdent);
+    }
+
+    // Step 2: Fetch all products
+    const productPromises = resolvedIdentifiers.map(id =>
         callBackendAPI(`/products/storefront/products/${id}`)
     );
 
@@ -634,6 +781,65 @@ async function handleCancelOrder(params, sessionId) {
 }
 
 /**
+ * Get advice or follow-up reasoning for products in state
+ */
+async function handleGetAdvice(params, sessionId, state = null) {
+    const { product_name } = params;
+    let products = [];
+    let product = null;
+
+    // 1. If a specific product name is provided, try to find it
+    if (product_name) {
+        console.log(`[Handlers] Advice requested for specific product: ${product_name}`);
+        const resolvedId = await stateManager.resolveReference(sessionId, product_name);
+        const identifier = resolvedId || product_name;
+
+        const result = await callBackendAPI(`/products/storefront/products/${identifier}`);
+        if (result.success) {
+            product = result.data.product;
+        }
+    }
+
+    // 2. If no specific product, or search failed, pull from currently viewing
+    if (!product && state?.product_context?.currently_viewing) {
+        console.log(`[Handlers] Pulling advice context from currently_viewing: ${state.product_context.currently_viewing}`);
+        const result = await callBackendAPI(`/products/storefront/products/${state.product_context.currently_viewing}`);
+        if (result.success) {
+            product = result.data.product;
+        }
+    }
+
+    // 3. Fallback: Pull from last search results
+    if (!product && state?.product_context?.last_search?.results) {
+        console.log(`[Handlers] Pulling advice context from last search results.`);
+        products = state.product_context.last_search.results.slice(0, 3);
+    }
+
+    if (!product && products.length === 0) {
+        return {
+            message: "I don't have any products in mind. Which one are you asking about?",
+            error: "No context found"
+        };
+    }
+
+    return {
+        message: "Context gathered for advice.",
+        product: product ? {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            description: product.description,
+            attributes: product.resolved_attributes || []
+        } : null,
+        recent_products: products.map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price
+        }))
+    };
+}
+
+/**
  * Handle help request
  */
 async function handleHelp(params, sessionId) {
@@ -669,6 +875,7 @@ const INTENT_HANDLERS = {
     [INTENTS.TRACK_ORDER]: handleTrackOrder,
     [INTENTS.CANCEL_ORDER]: handleCancelOrder,
     [INTENTS.HELP]: handleHelp,
+    [INTENTS.GET_ADVICE]: handleGetAdvice,
     [INTENTS.FALLBACK_UNKNOWN]: handleFallbackUnknown
 };
 

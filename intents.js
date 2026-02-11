@@ -18,6 +18,7 @@ const INTENTS = {
     TRACK_ORDER: 'track_order',
     CANCEL_ORDER: 'cancel_order',
     HELP: 'help',
+    GET_ADVICE: 'get_advice',
     FALLBACK_UNKNOWN: 'fallback_unknown'
 };
 
@@ -179,6 +180,18 @@ const INTENT_DESCRIPTIONS = {
         ],
         parameters: []
     },
+    [INTENTS.GET_ADVICE]: {
+        description: "User is asking for advice, opinions, or follow-up questions about products they are currently looking at or have just searched for. They might ask about suitability for a specific use case (e.g. 'is this good for students?') or for a recommendation based on the current list.",
+        examples: [
+            "Is this good for a computer science student?",
+            "Which of these would you recommend for me?",
+            "I don't have much money, is the second one better?",
+            "Why should I buy this one instead of the other?",
+            "Do you think this fits my needs?",
+            "Is it worth the price?"
+        ],
+        parameters: ['product_name', 'context_query']
+    },
     [INTENTS.FALLBACK_UNKNOWN]: {
         description: "User's message is unclear, ambiguous, or doesn't match any specific intent",
         examples: [
@@ -195,7 +208,10 @@ const INTENT_DESCRIPTIONS = {
  * Generate the intent classification prompt for the AI
  * This prompt teaches the AI how to classify user messages
  */
-function getIntentClassificationPrompt() {
+function getIntentClassificationPrompt(categories = [], vendors = []) {
+    const categoryList = categories.length > 0 ? categories.join(', ') : 'None available';
+    const vendorList = vendors.length > 0 ? vendors.join(', ') : 'None available';
+
     const intentList = Object.entries(INTENT_DESCRIPTIONS)
         .map(([intent, { description, examples }]) => {
             return `${intent}:
@@ -209,6 +225,10 @@ function getIntentClassificationPrompt() {
 AVAILABLE INTENTS:
 
 ${intentList}
+
+DYNAMIC STORE CONTEXT:
+Valid Categories: ${categoryList}
+Valid Vendors: ${vendorList}
 
 INSTRUCTIONS:
 1. Read the user's message carefully
@@ -234,6 +254,10 @@ RULES:
 - Confidence should be between 0 and 1
 - If the message is unclear or doesn't match any intent, use "fallback_unknown"
 - For product references like "this", "that", "the first one", extract the product name if it was mentioned in the conversation history.
+- For comparisons (compare_products), ALWAYS put the names in the "product_names" ARRAY. Do not use "product1", "product2".
+- CATEGORY EXTRACTION: If the user mentions a category from the DYNAMIC STORE CONTEXT (e.g. "desktops", "smartphones"), put it in the "category" param. If they mention a product that implies a category (e.g. "Macbook"), keep the query as "Macbook" but also set "category" if you can infer it from the list.
+- ACTIONABLE INTENTS: If the user says "Find me affordable desktops", set intent="search_products", category="desktops", query="affordable desktops".
+- RE-EXTRACTION: If the user clarifies a category (e.g. User: "Show me phones", then "I mean Android phones"), extract "Android phones" as the category.
 
 EXAMPLES:
 

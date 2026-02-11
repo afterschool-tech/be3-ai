@@ -58,6 +58,12 @@ const DEFAULT_STATE = {
         platform: 'whatsapp'
     },
 
+    microstate: {
+        type: null, // clause_resolution, cart_interaction, etc
+        data: {},
+        expires_at: null
+    },
+
     created_at: null,
     updated_at: null,
     version: 1
@@ -296,6 +302,50 @@ class StateManager {
      */
     async clearExpectingInput(userId) {
         await this.updateState(userId, { expecting_input: null });
+    }
+
+    // ============ MICROSTATE MANAGEMENT ============
+
+    /**
+     * Set a short-lived microstate for specific reasoning contexts
+     */
+    async setMicrostate(userId, type, data = {}, ttlSeconds = 300) {
+        const state = await this.getState(userId);
+        const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
+        state.microstate = {
+            type,
+            data,
+            expires_at: expiresAt
+        };
+
+        await this.setState(userId, state);
+        console.log(`[StateManager] Set microstate "${type}" for ${userId} (Expires: ${expiresAt})`);
+    }
+
+    /**
+     * Get valid microstate
+     */
+    async getMicrostate(userId) {
+        const state = await this.getState(userId);
+        if (!state.microstate || !state.microstate.expires_at) return null;
+
+        // Check expiry
+        if (new Date() > new Date(state.microstate.expires_at)) {
+            await this.clearMicrostate(userId);
+            return null;
+        }
+
+        return state.microstate;
+    }
+
+    /**
+     * Clear microstate
+     */
+    async clearMicrostate(userId) {
+        const state = await this.getState(userId);
+        state.microstate = { type: null, data: {}, expires_at: null };
+        await this.setState(userId, state);
     }
 
     // ============ PRODUCT CONTEXT MANAGEMENT ============

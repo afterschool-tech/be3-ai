@@ -3,9 +3,17 @@ const express = require('express');
 const { OpenAI } = require("openai");
 const { getIntentClassificationPrompt } = require('./intents');
 const { executeIntent } = require('./handlers');
+const { resolveClauses } = require('./resolver');
+const { CATEGORIES, VENDORS } = require('./storeContext');
 const stateManager = require('./stateManager');
 const redisClient = require('./redis');
 const cors = require('cors');
+const fs = require('fs');
+
+function logStep(msg) {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync('ai_steps.log', `[${timestamp}] ${msg}\n`);
+}
 
 const app = express();
 app.use(express.json());
@@ -13,7 +21,7 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3005;
 const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
-const MODEL_ID = "Qwen/Qwen2.5-Coder-32B-Instruct";
+const MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct";
 
 const client = new OpenAI({
     baseURL: "https://router.huggingface.co/v1",
@@ -58,7 +66,10 @@ async function queryAI(messages, maxTokens = 512, retries = 2) {
  * Stage 1: Classify user intent
  */
 async function classifyIntent(userMessage, conversationHistory = []) {
-    const classificationPrompt = getIntentClassificationPrompt();
+    const categories = Object.values(CATEGORIES).map(c => c.label);
+    const vendors = Object.values(VENDORS).map(v => v.business_name);
+
+    const classificationPrompt = getIntentClassificationPrompt(categories, vendors);
 
     // Build messages for classification (only last 3 for context to avoid distractions)
     const messages = [
@@ -128,7 +139,7 @@ async function generateResponse(userMessage, handlerResult, conversationHistory 
     // If handler already has a formatted message, use it
     if (handlerResult.message) {
         // If there's additional data, ask AI to format it nicely
-        if (handlerResult.products || handlerResult.items || handlerResult.orders || handlerResult.product) {
+        if (handlerResult.products || handlerResult.items || handlerResult.orders || handlerResult.product || handlerResult.recent_products || handlerResult.advice) {
             const dataContext = JSON.stringify(handlerResult, null, 2);
 
             const messages = [
@@ -182,29 +193,67 @@ app.post('/chat', async (req, res) => {
         // STAGE 1: Classify Intent (with state context)
         console.log('[Stage 1] Classifying intent...');
         const classification = await classifyIntent(message, state.conversation_history);
-        console.log(`[Stage 1] Intent: ${classification.intent} (confidence: ${classification.confidence})`);
-        console.log(`[Stage 1] Params:`, classification.params);
+        const { intent, params, confidence } = classification;
+        console.log(`[Stage 1] Intent: ${intent} (confidence: ${confidence})`);
+        console.log(`[Stage 1] Params:`, params);
 
         // Update current intent
-        await stateManager.setCurrentIntent(session_id, classification.intent);
+        await stateManager.setCurrentIntent(session_id, intent);
 
-        // STAGE 2: Execute Intent Handler (with state)
-        console.log('[Stage 2] Executing handler...');
-        const handlerResult = await executeIntent(
-            classification.intent,
-            classification.params,
-            session_id,
-            state  // Pass state to handler
-        );
-        console.log(`[Stage 2] Handler result:`, handlerResult);
+        // STAGE 2: Semantic Resolution (Bridge Natural Language to Canonical Logic)
+        let resolvedCategory = params.category || state.product_context?.last_search?.category;
+
+        // Fallback: If category is missing but query matches a category name, use it
+        if (!resolvedCategory && params.query) {
+            const queryLower = params.query.toLowerCase();
+            const foundCat = Object.values(CATEGORIES).find(c => c.label.toLowerCase() === queryLower || c.slug.toLowerCase() === queryLower);
+            if (foundCat) {
+                resolvedCategory = foundCat.label;
+                console.log(`[Stage 2] Inferred category from query: "${resolvedCategory}"`);
+            }
+        }
+
+        let resolvedContext = null;
+        if (intent === 'search_products' && resolvedCategory) {
+            console.log(`[Stage 2] Resolving clauses for category: "${resolvedCategory}"`);
+            resolvedContext = await resolveClauses(message, resolvedCategory, state.conversation_history);
+            if (resolvedContext.clauses.length > 0) {
+                console.log(`[Stage 2] Success! Resolved clauses: ${resolvedContext.clauses.join(', ')}`);
+                await stateManager.setMicrostate(session_id, 'clause_resolution', {
+                    category: resolvedCategory,
+                    clauses: resolvedContext.clauses,
+                    display_words: resolvedContext.display_words
+                });
+
+                // CRITICAL: Refresh the state object so Stage 3 handler sees the new microstate
+                const refreshedState = await stateManager.getState(session_id);
+                Object.assign(state, refreshedState);
+            }
+        }
+
+        // Propagate resolved category back to params for normalization in handlers
+        if (resolvedCategory && !params.category) {
+            params.category = resolvedCategory;
+        }
+
+        // STAGE 3: Execute Intent Handler (with refreshed state)
+        console.log('[Stage 3] Executing handler...');
+        const handlerResult = await executeIntent(intent, params, session_id, state);
+        console.log(`[Stage 3] Handler result:`, handlerResult);
 
         // Reload state after handler execution (handlers may have updated it)
         const updatedState = await stateManager.getState(session_id);
 
-        // STAGE 3: Generate Natural Response (with updated state context)
-        console.log('[Stage 3] Generating response...');
+        // STAGE 4: Generate Natural Response (with updated state context)
+        console.log('[Stage 4] Generating response...');
         const reply = await generateResponse(message, handlerResult, updatedState.conversation_history);
-        console.log(`[Stage 3] Final reply: "${reply}"\n`);
+        console.log(`[Stage 4] Final reply: "${reply}"\n`);
+
+        // Auto-clear short-lived microstates
+        const currentMicro = await stateManager.getMicrostate(session_id);
+        if (currentMicro && (currentMicro.type === 'clause_resolution' || currentMicro.type === 'cart_interaction')) {
+            await stateManager.clearMicrostate(session_id);
+        }
 
         // Save AI response to history
         await stateManager.addMessage(session_id, 'ai', reply, classification.intent);
