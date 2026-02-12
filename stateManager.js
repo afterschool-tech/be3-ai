@@ -64,6 +64,14 @@ const DEFAULT_STATE = {
         expires_at: null
     },
 
+    last_bot_suggestion: {
+        type: null,  // 'product_offer', 'action_offer', 'category_offer'
+        intent: null,  // What intent would be triggered if user accepts
+        params: {},    // Parameters for that intent
+        text: null,    // Human-readable description of what was offered
+        timestamp: null
+    },
+
     created_at: null,
     updated_at: null,
     version: 1
@@ -634,6 +642,33 @@ class StateManager {
         };
     }
 
+
+    // ============ SUGGESTION TRACKING ============
+
+    async setLastSuggestion(userId, suggestion) {
+        const suggestionWithTimestamp = { ...suggestion, timestamp: new Date().toISOString() };
+        await this.updateState(userId, { last_bot_suggestion: suggestionWithTimestamp });
+        console.log(`[StateManager] Tracked suggestion: ${suggestion.type} -> ${suggestion.intent}`);
+    }
+
+    async getLastSuggestion(userId) {
+        const state = await this.getState(userId);
+        const suggestion = state.last_bot_suggestion;
+        if (suggestion?.timestamp) {
+            const age = Date.now() - new Date(suggestion.timestamp).getTime();
+            if (age > 5 * 60 * 1000) {
+                await this.clearLastSuggestion(userId);
+                return null;
+            }
+        }
+        return suggestion;
+    }
+
+    async clearLastSuggestion(userId) {
+        await this.updateState(userId, {
+            last_bot_suggestion: { type: null, intent: null, params: {}, text: null, timestamp: null }
+        });
+    }
     /**
      * Get state summary for debugging
      */
@@ -653,3 +688,4 @@ class StateManager {
 
 // Export singleton instance
 module.exports = new StateManager();
+

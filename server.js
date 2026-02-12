@@ -4,10 +4,11 @@ const { OpenAI } = require("openai");
 const { getIntentClassificationPrompt } = require('./intents');
 const { executeIntent } = require('./handlers');
 const { resolveClauses } = require('./resolver');
-const { CATEGORIES, VENDORS } = require('./storeContext');
+const { CATEGORIES, VENDORS, CATEGORY_INVENTORY } = require('./storeContext');
 const stateManager = require('./stateManager');
 const redisClient = require('./redis');
 const cors = require('cors');
+const { isConfirmation, isImplicitReference, extractSuggestion } = require('./suggestionHelper');
 const fs = require('fs');
 
 function logStep(msg) {
@@ -156,6 +157,12 @@ REASONING & STARTERS:
 1. GREETINGS: Welcome them warmly! Use the "rotation_context" in the data to suggest ONE fun thing (either a category or a capability like "tracking orders"). Pick one at random so it feels fresh every time!
 2. CAPABILITIES: If they ask what you can do, be very brief. Mention we find items, manage carts, and track orders with a cute "Be3" twist.
 
+AVAILABILITY CHECKING:
+- If a product isn't in the current "Data to present", check the "category_inventory" map before saying "we don't have it"
+- If a likely category exists and has products (count > 0), suggest: "Let me search for that! We have items in that category."
+- If the category doesn't exist or count = 0, say: "I don't see that in our inventory right now"
+- NEVER say "we don't have X" definitively unless you've checked the inventory
+
 GROUNDING RULES:
 1. Feel free to discuss and provide advice on any products (even those NOT in the provided data) using your general knowledge.
 2. For **Price**, **Stock Availability**, and **Store-Specific Specs**, you must ONLY use information from the "Data to present" section. 
@@ -206,7 +213,38 @@ app.post('/chat', async (req, res) => {
 
         // STAGE 1: Classify Intent (with state context)
         console.log('[Stage 1] Classifying intent...');
-        const classification = await classifyIntent(message, state.conversation_history);
+
+        let classification = await classifyIntent(message, state.conversation_history);
+
+        // CHECK FOR REFERENCE RESOLUTION (Bot Suggestion)
+        const lastSuggestion = await stateManager.getLastSuggestion(session_id);
+        if (lastSuggestion) {
+            console.log(`[Stage 1] Checking against last suggestion: ${lastSuggestion.text} (${lastSuggestion.intent})`);
+
+            // Check for explicit confirmation ("yes", "okay", "sure")
+            const confirmation = isConfirmation(message);
+            if (confirmation === 'yes') {
+                console.log(`[Stage 1] User confirmed suggestion! Switching intent to: ${lastSuggestion.intent}`);
+                classification = {
+                    intent: lastSuggestion.intent,
+                    params: lastSuggestion.params,
+                    confidence: 0.95
+                };
+                // Clear suggestion since it's now being used
+                await stateManager.clearLastSuggestion(session_id);
+            }
+            // Check for implicit reference ("compare", "show me")
+            else if (isImplicitReference(message, lastSuggestion)) {
+                console.log(`[Stage 1] User implicitly referenced suggestion! Switching intent to: ${lastSuggestion.intent}`);
+                classification = {
+                    intent: lastSuggestion.intent,
+                    params: lastSuggestion.params,
+                    confidence: 0.90
+                };
+                await stateManager.clearLastSuggestion(session_id);
+            }
+        }
+
         const { intent, params, confidence } = classification;
         console.log(`[Stage 1] Intent: ${intent} (confidence: ${confidence})`);
         console.log(`[Stage 1] Params:`, params);
@@ -252,6 +290,14 @@ app.post('/chat', async (req, res) => {
 
         // STAGE 3: Execute Intent Handler (with refreshed state)
         console.log('[Stage 3] Executing handler...');
+
+        // Enrich state with store context
+        state.store_context = {
+            categories: Object.values(CATEGORIES).map(c => ({ label: c.label, slug: c.slug })),
+            vendors: Object.values(VENDORS).map(v => ({ name: v.business_name, tag: v.tag })),
+            category_inventory: CATEGORY_INVENTORY
+        };
+
         const handlerResult = await executeIntent(intent, params, session_id, state);
         console.log(`[Stage 3] Handler result:`, handlerResult);
 
@@ -262,6 +308,13 @@ app.post('/chat', async (req, res) => {
         console.log('[Stage 4] Generating response...');
         const reply = await generateResponse(message, handlerResult, updatedState.conversation_history);
         console.log(`[Stage 4] Final reply: "${reply}"\n`);
+
+        // TRACK BOT SUGGESTIONS (from reply or handler result)
+        const newSuggestion = extractSuggestion(reply, handlerResult);
+        if (newSuggestion) {
+            console.log(`[Stage 4] Extracted suggestion: "${newSuggestion.text.substring(0, 50)}..." -> Intent: ${newSuggestion.intent}`);
+            await stateManager.setLastSuggestion(session_id, newSuggestion);
+        }
 
         // Auto-clear short-lived microstates
         const currentMicro = await stateManager.getMicrostate(session_id);

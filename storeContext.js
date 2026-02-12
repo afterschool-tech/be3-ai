@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Store Context
- * Generated on: 2026-02-11T08:30:37.533Z
+ * Generated on: 2026-02-11T10:28:54.340Z
  */
 const CATEGORIES = {
     "desktops": {
@@ -524,5 +524,46 @@ const VENDORS = {
     }
 };
 const BUSINESSES = { ...VENDORS };
+const CATEGORY_INVENTORY = {
+    "gaming-laptops": 0,
+    "tablets": 0,
+    "flight-stick": 0,
+    "xbox": 1,
+    "ultrabooks": 1,
+    "nintendo-switch": 0,
+    "desktops": 0,
+    "ipad": 0,
+    "phone-accessories": 0,
+    "smartphones-tablets": 6,
+    "sound-gadget": 1,
+    "racing-wheels": 0,
+    "controller-game-pads": 0,
+    "playstation": 0,
+    "components": 0,
+    "game-consoles": 0,
+    "kitchen-appliances": 1,
+    "electronics": 2,
+    "new-cat": 7,
+    "ram-storage": 0,
+    "iphones": 4,
+    "workstations": 0,
+    "laptops-computers": 6,
+    "smartphones": 0,
+    "e-readers": 0,
+    "gaming-accessories": 0,
+    "gadgets": 7,
+    "food": 10,
+    "gaming-desktops": 0,
+    "android-tablets": 3,
+    "vr-ar-headset": 1,
+    "gaming-chairs-furnitures": 0,
+    "graphics-card": 0,
+    "cooling-system": 0,
+    "all-in-one-pcs": 0,
+    "windows-tablets": 0,
+    "business-laptops": 0,
+    "gaming": 6,
+    "android-phones": 4
+};
 
-module.exports = { CATEGORIES, COLLECTIONS, VENDORS, BUSINESSES };
+module.exports = { CATEGORIES, COLLECTIONS, VENDORS, BUSINESSES, CATEGORY_INVENTORY };

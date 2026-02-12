@@ -198,22 +198,14 @@ async function handleSearchProducts(params, sessionId, state = null) {
 
         if (vendor) searchParams.append('vendor', vendor);
 
-        // Apply semantic clauses for canonical filtering
-        if (semanticClauses.length > 0) {
-            console.log(`[Handlers] Applying semantic clauses: ${semanticClauses.join(', ')}`);
-            semanticClauses.forEach(c => searchParams.append('clauses', c));
-        }
-
-        result = await callBackendAPI(`/search?${searchParams.toString()}`);
+        // Use the specialized products endpoint for AI bot (forces content_type=product)
+        result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
 
         if (!result.success) {
-            // Fallback to storefront search if initial search fails
+            // Fallback to storefront search if specialized search fails or 404s
             const fallbackSearchParams = new URLSearchParams({
                 q: searchString,
                 category: category || '',
-                price_min: pMin || '',
-                price_max: finalPriceMax || '',
-                vendor: vendor || '',
                 limit
             });
 
@@ -225,41 +217,45 @@ async function handleSearchProducts(params, sessionId, state = null) {
         }
     }
 
-    const products = result.data.results || result.data.data || result.data.products || (Array.isArray(result.data) ? result.data : []);
+    // Capture results from either specialized or standard endpoints
+    const rawProducts = result.data.products || result.data.results || result.data.data || (Array.isArray(result.data) ? result.data : []) || [];
 
-    if (products.length === 0) {
-        return {
-            message: "I couldn't find any products matching your search. Try different keywords or filters.",
-            products: []
-        };
-    }
+    // Normalize product data
+    let products = rawProducts.map(p => ({
+        id: p.id || p._id,
+        name: p.name || p.title,
+        price: p.price || (p.offers ? p.offers.price : null),
+        description: p.description,
+        image: p.image || p.image_url,
+        url: p.url,
+        categories: p.categories || p.category
+    })).filter(p => p.id && p.name); // Simple filter, backend now handles exclusion 
 
     // Update state with search results and reference map
     if (state) {
-        await stateManager.updateLastSearch(sessionId, searchString, { price_min: pMin, price_max: finalPriceMax, category, vendor }, products, products.length);
+        // Use pMax or inferred pMax for learning
+        const learnPriceMax = pMax || cleanPrice(params.price_max) || null;
+
+        await stateManager.updateLastSearch(sessionId, searchString, { price_min: pMin, price_max: learnPriceMax, category, vendor }, products, products.length);
         await stateManager.updateReferenceMap(sessionId, products);
 
-        // Learn from search behavior (use pMax specifically from this search)
-        if (pMax !== null) {
-            await stateManager.learnFromBehavior(sessionId, 'search', { price_max: pMax, category });
+        if (learnPriceMax !== null) {
+            await stateManager.learnFromBehavior(sessionId, 'search', { price_max: learnPriceMax, category });
         }
     }
 
-    // Extract SEO metadata if present (either from resolve-slug or inferred)
-    const seo = resolvedSeo || result.data.seo || {
-        title: result.data.title,
-        description: result.data.meta_description || result.data.description
-    };
+    // Extract SEO metadata if present
+    const seo = resolvedSeo || result.data.seo || (result.data.mainEntityOfPage ? {
+        title: result.data.name,
+        description: result.data.description
+    } : {
+        title: query ? `Results for "${query}"` : 'Search Results',
+        description: `Found ${products.length} products`
+    });
 
     return {
         message: `I found ${products.length} product${products.length > 1 ? 's' : ''}${seo.title ? ` for "${seo.title}"` : ''}:`,
-        products: products.map(p => ({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            description: p.description,
-            image_url: p.image_url
-        })),
+        products: products,
         seo: seo.title ? seo : null,
         total: result.data.pagination?.total || products.length
     };

@@ -118,6 +118,20 @@ async function buildContext() {
             };
         });
 
+        // 5. Fetch Category Inventory (product counts)
+        const inventoryRes = await pool.query(`
+            SELECT c.slug, COUNT(pc.product_id) as product_count
+            FROM categories c
+            LEFT JOIN product_categories pc ON c.id = pc.category_id
+            WHERE c.tenant_id = $1
+            GROUP BY c.slug
+        `, [process.env.TENANT_ID]);
+
+        const categoryInventory = {};
+        inventoryRes.rows.forEach(r => {
+            categoryInventory[r.slug] = parseInt(r.product_count);
+        });
+
         // Write storeContext.js
         const contextContent = `
 /**
@@ -128,8 +142,9 @@ const CATEGORIES = ${JSON.stringify(categories, null, 4)};
 const COLLECTIONS = ${JSON.stringify(collections, null, 4)};
 const VENDORS = ${JSON.stringify(vendors, null, 4)};
 const BUSINESSES = { ...VENDORS };
+const CATEGORY_INVENTORY = ${JSON.stringify(categoryInventory, null, 4)};
 
-module.exports = { CATEGORIES, COLLECTIONS, VENDORS, BUSINESSES };
+module.exports = { CATEGORIES, COLLECTIONS, VENDORS, BUSINESSES, CATEGORY_INVENTORY };
 `;
         fs.writeFileSync('storeContext.js', contextContent);
         console.log('✅ storeContext.js updated');

@@ -43,6 +43,18 @@ async function gatherData() {
         `, [process.env.TENANT_ID]);
         console.log(JSON.stringify(products.rows, null, 2));
 
+        // 5. Category Inventory Counts
+        console.log('\n[Category Product Counts]');
+        const inventory = await pool.query(`
+            SELECT c.slug, COUNT(pc.product_id) as product_count
+            FROM categories c
+            LEFT JOIN product_categories pc ON c.id = pc.category_id
+            WHERE c.tenant_id = $1
+            GROUP BY c.slug
+            ORDER BY product_count DESC
+        `, [process.env.TENANT_ID]);
+        console.log(JSON.stringify(inventory.rows, null, 2));
+
     } catch (err) {
         console.error('Error gathering data:', err.message);
     } finally {
