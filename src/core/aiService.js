@@ -1,0 +1,50 @@
+require('dotenv').config();
+const { OpenAI } = require("openai");
+
+const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
+const MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"; // Using Llama 3 as configured
+
+const client = new OpenAI({
+    baseURL: "https://router.huggingface.co/v1",
+    apiKey: HF_TOKEN,
+});
+
+/**
+ * Call Hugging Face Inference API via OpenAI SDK
+ */
+async function queryAI(messages, maxTokens = 512, retries = 2) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            // console.log(`[AI] Sending request to Model (Attempt ${i + 1})...`);
+
+            const completion = await client.chat.completions.create({
+                model: MODEL_ID,
+                messages: messages,
+                max_tokens: maxTokens,
+                temperature: 0.7,
+            });
+
+            return completion.choices[0].message.content || "";
+        } catch (err) {
+            const isRateLimit = err.message.toLowerCase().includes('rate limit') ||
+                err.message.toLowerCase().includes('429') ||
+                err.message.toLowerCase().includes('subscribe to pro');
+
+            if (i < retries && (isRateLimit || err.message.includes('timeout') || err.message.includes('socket'))) {
+                const waitTime = Math.pow(2, i) * 1000;
+                console.warn(`[AI] Error: ${err.message}. Retrying in ${waitTime}ms...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+            }
+
+            console.error("AI API Error:", err.message);
+            throw new Error(`Failed to communicate with AI model: ${err.message}`);
+        }
+    }
+}
+
+module.exports = {
+    queryAI,
+    MODEL_ID,
+    client
+};

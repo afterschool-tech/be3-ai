@@ -1,2 +1,30 @@
-/node_modules
+/# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# Logs and debug files
+*.log
+ai_debug.txt
+debug_server.log
+*_debug.txt
+*_results.txt
+*_out.txt
+
+# Test outputs
+test_*.txt
+
+# Temp files
+*.tmp
+*.swp
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
 .env

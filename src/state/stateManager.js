@@ -72,6 +72,8 @@ const DEFAULT_STATE = {
         timestamp: null
     },
 
+    paused_context: null, // Stores context when user wants to chat mid-transaction
+
     created_at: null,
     updated_at: null,
     version: 1
@@ -83,7 +85,7 @@ const memoryCache = new Map();
 class StateManager {
     constructor() {
         this.historyLimit = parseInt(process.env.CONVERSATION_HISTORY_LIMIT || '20');
-        this.defaultTTL = parseInt(process.env.STATE_TTL || '3600');
+        this.defaultTTL = parseInt(process.env.STATE_TTL || '300'); // Default 5 mins (was 3600)
         this.enableLearning = process.env.ENABLE_PREFERENCE_LEARNING !== 'false'; // Enabled by default
     }
 
@@ -654,13 +656,24 @@ class StateManager {
     async getLastSuggestion(userId) {
         const state = await this.getState(userId);
         const suggestion = state.last_bot_suggestion;
-        if (suggestion?.timestamp) {
-            const age = Date.now() - new Date(suggestion.timestamp).getTime();
-            if (age > 5 * 60 * 1000) {
-                await this.clearLastSuggestion(userId);
-                return null;
-            }
+
+        // If no suggestion or no intent, return null
+        if (!suggestion || !suggestion.intent) {
+            return null;
         }
+
+        // Check timestamp validity and age
+        const timestamp = suggestion.timestamp ? new Date(suggestion.timestamp).getTime() : 0;
+        const age = Date.now() - timestamp;
+        const TTL = 2 * 60 * 1000; // 2 minutes expiry (was 5)
+
+        // If expired or invalid timestamp, clear and return null
+        if (!suggestion.timestamp || age > TTL || age < 0) {
+            console.log(`[StateManager] Clearing expired suggestion: ${suggestion.intent} (Age: ${Math.round(age / 1000)}s)`);
+            await this.clearLastSuggestion(userId);
+            return null;
+        }
+
         return suggestion;
     }
 
@@ -669,6 +682,54 @@ class StateManager {
             last_bot_suggestion: { type: null, intent: null, params: {}, text: null, timestamp: null }
         });
     }
+    /**
+     * Pause current context (e.g. search results) to switch to conversation
+     */
+    async pauseContext(userId, type, data) {
+        // Save contextual data with a timestamp
+        const context = {
+            type,
+            data,
+            pausedAt: new Date().toISOString()
+        };
+        await this.updateState(userId, { paused_context: context });
+        console.log(`[StateManager] Context paused: ${type}`);
+    }
+
+    /**
+     * Get paused context
+     */
+    async getPausedContext(userId) {
+        const state = await this.getState(userId);
+        return state.paused_context;
+    }
+
+    /**
+     * Resume paused context and clear it
+     */
+    async resumeContext(userId) {
+        const state = await this.getState(userId);
+        if (!state.paused_context) return null;
+
+        const context = state.paused_context;
+        // Check expiry (e.g. 10 mins) - conversational drift might make it irrelevant
+        const age = Date.now() - new Date(context.pausedAt).getTime();
+        if (age > 10 * 60 * 1000) {
+            console.log(`[StateManager] Paused context expired (${Math.round(age / 60000)}m)`);
+            await this.clearPausedContext(userId);
+            return null;
+        }
+
+        console.log(`[StateManager] Resuming context: ${context.type}`);
+        // Clear it after retrieving
+        await this.clearPausedContext(userId);
+        return context;
+    }
+
+    async clearPausedContext(userId) {
+        await this.updateState(userId, { paused_context: null });
+    }
+
     /**
      * Get state summary for debugging
      */

@@ -1,5 +1,5 @@
-const { CLAUSES, getClausesForCategory } = require('./clauses');
-const { CATEGORIES } = require('./storeContext');
+const { CLAUSES, getClausesForCategory } = require('../context/clauses');
+const { CATEGORIES } = require('../context/storeContext');
 const { OpenAI } = require("openai");
 
 const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;

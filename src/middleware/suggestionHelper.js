@@ -105,8 +105,56 @@ function extractSuggestion(reply, handlerResult) {
     return null;
 }
 
+
+const { queryAI } = require('../core/aiService');
+
+/**
+ * AI-Powered check for suggestion acknowledgement
+ * Returns 'accepted', 'rejected', or 'ignored'
+ */
+async function checkSuggestionAcknowledgement(message, lastSuggestion) {
+    if (!lastSuggestion || !message) return 'ignored';
+
+    try {
+        const prompt = [
+            {
+                role: "system",
+                content: `You are a conversation analyst.
+                Bot recently suggested: "${lastSuggestion.text || 'something'}" (Intent: ${lastSuggestion.intent})
+                User replied: "${message}"
+
+                Determine the user's reaction:
+                - ACCEPTED: User accepts, asks for details, or follows up on the suggestion.
+                - REJECTED: User explicitly declines (no, stop, don't).
+                - IGNORED: User asks a completely different question, asks about a different entity (e.g., specific vendor), or changes topic.
+
+                Example:
+                Suggestion: "Food"
+                User: "Is Taye's Home Decor a vendor?"
+                Status: IGNORED (Asking about vendor, not food product).
+
+                Respond with JSON: { "status": "ACCEPTED" | "REJECTED" | "IGNORED" }`
+            }
+        ];
+
+        const response = await queryAI(prompt, 64, 1);
+        const start = response.indexOf('{');
+        const end = response.lastIndexOf('}');
+
+        if (start !== -1 && end !== -1) {
+            const json = JSON.parse(response.substring(start, end + 1));
+            return json.status?.toLowerCase() || 'ignored';
+        }
+    } catch (e) {
+        console.error("[SuggestionHelper] AI check failed:", e.message);
+    }
+
+    return 'ignored'; // Default to ignored (safe)
+}
+
 module.exports = {
     isConfirmation,
     isImplicitReference,
-    extractSuggestion
+    extractSuggestion,
+    checkSuggestionAcknowledgement
 };

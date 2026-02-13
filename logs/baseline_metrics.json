@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-02-12T08:29:34.619Z",
+  "queries_run": 20,
+  "success_count": 17,
+  "error_count": 3,
+  "metrics": {
+    "requests": 40,
+    "apiCalls": 35,
+    "totalResponseTime": 180401,
+    "avgResponseTime": 4510.025,
+    "errors": 5,
+    "errorRate": "12.50%"
+  },
+  "summary": "📊 Metrics Summary:\nLegacy:    40 requests | 35 API calls | 4510ms avg | 12.50% errors\nTool Sys:  0 requests | 0 API calls | 0ms avg | 0.00% errors\nContext Hit Rate: 0.0%\nComparison: 100.0% API reduction | 100.0% faster"
+}

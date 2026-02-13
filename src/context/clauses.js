@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Semantic Clauses
- * Generated on: 2026-02-11T10:28:54.340Z
+ * Generated: 2026-02-12T06:43:11.690Z
  */
 const CLAUSES = {
     "apple_product": {

@@ -5,9 +5,9 @@
 
 const axios = require('axios');
 const { INTENTS, getHelpMessage } = require('./intents');
-const { CATEGORIES, VENDORS } = require('./storeContext');
-const { CLAUSES } = require('./clauses');
-const stateManager = require('./stateManager');
+const { CATEGORIES, VENDORS } = require('../context/storeContext');
+const { CLAUSES } = require('../context/clauses');
+const stateManager = require('../state/stateManager');
 
 /**
  * Constructs a semantic slug for the resolve-slug endpoint
@@ -845,9 +845,12 @@ async function handleGetAdvice(params, sessionId, state = null) {
  * Handle initial greetings
  */
 async function handleGreeting(params, sessionId, state = null) {
-    // Get store categories
-    const categories = state?.store_context?.categories || [];
-    const randomCats = [...categories].sort(() => 0.5 - Math.random()).slice(0, 3).map(c => c.label);
+    // Get store categories with products
+    const availableCategories = Object.values(CATEGORIES)
+        .filter(c => c.product_count > 0 || c.total_count > 0)
+        .map(c => c.label);
+
+    const randomCats = availableCategories.sort(() => 0.5 - Math.random()).slice(0, 3);
 
     // Dynamic rotation pool of things we can do
     const thingsWeDo = [
@@ -874,7 +877,52 @@ async function handleGreeting(params, sessionId, state = null) {
  * Override standard help with context
  */
 async function handleHelp(params, sessionId, state = null) {
-    const categories = state?.store_context?.categories || [];
+    const availableCategories = Object.values(CATEGORIES)
+        .filter(c => c.product_count > 0 || c.total_count > 0)
+        .slice(0, 5)
+        .map(c => c.label);
+
+    // Check if user is asking about a specific vendor
+    const vendorParam = params?.vendor || params?.vendor_name;
+
+    if (vendorParam) {
+        const vendorQuery = vendorParam.toLowerCase();
+        const foundVendor = Object.values(VENDORS).find(v =>
+            v.business_name.toLowerCase().includes(vendorQuery) ||
+            v.tag.toLowerCase().includes(vendorQuery)
+        );
+
+        if (foundVendor) {
+            return {
+                message: `Yes, **${foundVendor.business_name}** is a valued partner on Be3! They currently have **${foundVendor.product_count} products** available and offer **${foundVendor.delivery_scope}** delivery.\n\nWould you like to browse their collection, or do you have any specific questions?`,
+                vendor_details: {
+                    name: foundVendor.business_name,
+                    delivery: foundVendor.delivery_scope,
+                    tag: foundVendor.tag,
+                    product_count: foundVendor.product_count
+                },
+                type: 'vendor_info',
+                rotation_context: {
+                    what_we_can_do: [
+                        `view products from ${foundVendor.business_name}`,
+                        `ask about ${foundVendor.business_name} policies`,
+                        `find similar vendors`
+                    ]
+                }
+            };
+        } else {
+            const vendorNames = Object.values(VENDORS)
+                .filter(v => v.product_count > 0)
+                .slice(0, 3)
+                .map(v => v.business_name)
+                .join(', ');
+
+            return {
+                message: `I couldn't find a vendor named "${vendorParam}". However, we work with great partners like ${vendorNames}.\n\nWould you like to explore products from one of them instead?`,
+                type: 'vendor_info_not_found'
+            };
+        }
+    }
 
     return {
         message: "I'm your Be3 assistant. I can help find products, manage your cart, and track orders.",
@@ -885,7 +933,7 @@ async function handleHelp(params, sessionId, state = null) {
             "Track shipments",
             "Personalized shopping advice"
         ],
-        available_categories: categories.slice(0, 10),
+        available_categories: availableCategories,
         help_menu: true
     };
 }
@@ -895,7 +943,9 @@ async function handleHelp(params, sessionId, state = null) {
  */
 async function handleFallbackUnknown(params, sessionId) {
     return {
-        message: "I'm not sure I understand. Could you rephrase that? You can also type 'help' to see what I can do for you."
+        message: "I'm not sure I understand. Could you rephrase that? You can also type 'help' to see what I can do for you.",
+        intent: 'fallback_unknown',
+        params: params || {}
     };
 }
 

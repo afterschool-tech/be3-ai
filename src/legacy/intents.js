@@ -171,7 +171,7 @@ const INTENT_DESCRIPTIONS = {
         parameters: ['order_number', 'order_id']
     },
     [INTENTS.HELP]: {
-        description: "User is explicitly asking about your capabilities, seeking assistance, or asking 'What can you do?' and 'Can you help?'.",
+        description: "User is explicitly asking about capabilities, assistance, or asking if a specific vendor/partner exists in the store.",
         examples: [
             "Help",
             "What can you do?",
@@ -179,9 +179,12 @@ const INTENT_DESCRIPTIONS = {
             "I need assistance",
             "Can you help me?",
             "What services do you offer?",
-            "Tell me about your features"
+            "Tell me about your features",
+            "Is Dareymi a vendor?",
+            "Do you partner with Bola Foods?",
+            "Is Taye's Home Decor available here?"
         ],
-        parameters: []
+        parameters: ['vendor']
     },
     [INTENTS.GREETING]: {
         description: "User is saying hello or hi to start a conversation with NO specific request or question yet. Just initial pleasantries.",
@@ -225,9 +228,30 @@ const INTENT_DESCRIPTIONS = {
  * Generate the intent classification prompt for the AI
  * This prompt teaches the AI how to classify user messages
  */
-function getIntentClassificationPrompt(categories = [], vendors = []) {
-    const categoryList = categories.length > 0 ? categories.join(', ') : 'None available';
-    const vendorList = vendors.length > 0 ? vendors.join(', ') : 'None available';
+function getIntentClassificationPrompt(categories = {}, vendors = {}, attributes = {}, collections = {}) {
+    // Format categories with hierarchy and product counts (Handle both array and object)
+    let categoryInfo = "None available";
+    if (categories && typeof categories === 'object') {
+        const catEntries = Array.isArray(categories) ? categories.map(c => [c, { label: c, children: [] }]) : Object.entries(categories);
+        categoryInfo = catEntries
+            .map(([id, cat]) => {
+                const label = typeof cat === 'string' ? cat : cat.label;
+                const childrenStr = (cat.children && cat.children.length > 0) ? ` (Subcategories: ${cat.children.join(', ')})` : '';
+                const pCount = cat.product_count !== undefined ? `: ${cat.product_count} products` : '';
+                return `- ${label} [ID: ${id}]${childrenStr}${pCount}`;
+            })
+            .join('\n');
+    }
+
+    const formatContextList = (obj) => {
+        if (!obj) return 'None available';
+        const vals = Array.isArray(obj) ? obj : Object.values(obj);
+        return vals.map(v => typeof v === 'string' ? v : (v.label || v.business_name || v.name)).join(', ') || 'None available';
+    };
+
+    const vendorList = formatContextList(vendors);
+    const attributeList = formatContextList(attributes);
+    const collectionList = formatContextList(collections);
 
     const intentList = Object.entries(INTENT_DESCRIPTIONS)
         .map(([intent, { description, examples }]) => {
@@ -244,14 +268,19 @@ AVAILABLE INTENTS:
 ${intentList}
 
 DYNAMIC STORE CONTEXT:
-Valid Categories: ${categoryList}
+Valid Categories (Hierarchical):
+${categoryInfo}
+
 Valid Vendors: ${vendorList}
+Valid Attributes: ${attributeList}
+Valid Collections: ${collectionList}
 
 INSTRUCTIONS:
-1. Read the user's message carefully
-2. Classify it into ONE of the intents above
-3. Extract any relevant parameters mentioned in the message
-4. Return ONLY a JSON object with this exact format:
+1. Read the user's message carefully.
+2. Classify it into ONE of the intents above.
+3. Extract any relevant parameters mentioned in the message. 
+4. If a category is mentioned, use the ID from the list (e.g., "all_in_one_pcs").
+5. Return ONLY a JSON object with this exact format:
 {
   "intent": "intent_name",
   "params": {
@@ -261,36 +290,15 @@ INSTRUCTIONS:
 }
 
 RULES:
-- Always return valid JSON
-- Use lowercase for intent names (e.g., "search_products" not "SEARCH_PRODUCTS")
-- Extract as many relevant parameters as possible. 
-- For pricing: "under $X" or "less than $X" means price_max = X. "over $X" or "more than $X" means price_min = X.
-- IGNORE conversational fillers like "Now", "Actually", "Also", "By the way" when determining intent. Focus on the core request.
-- If a user says "Show me X", even if they said "Now show me X", it's a search_products intent.
+- Always return valid JSON.
+- Use lowercase for intent names.
+- For pricing: "under $X" means price_max = X. "over $X" means price_min = X.
+- CATEGORY EXTRACTION: If the user mentions a category (e.g. "laptops"), map it to the closest ID in the DYNAMIC STORE CONTEXT (e.g. "laptops_&_computers").
 - If no parameters are found, use empty object: "params": {}
-- Confidence should be between 0 and 1
-- CONFIRMATION & TRANSITIONS: If the user says "yes", "ok", "sure", or "do that" to a suggestion made in the LAST AI message (e.g., "Should I show you laptops?"), classify the intent based on that suggestion (e.g., search_products, category="laptops").
-- CONTEXT STICKINESS: Do NOT carry over parameters (like category or product names) from previous turns if the user's current message is a generic confirmation or a shift in focus. 
-- For comparisons (compare_products), ALWAYS put the names in the "product_names" ARRAY. Do not use "product1", "product2".
-- CATEGORY EXTRACTION: If the user mentions a category from the DYNAMIC STORE CONTEXT (e.g. "desktops", "smartphones"), put it in the "category" param. If they mention a product that implies a category (e.g. "Macbook"), keep the query as "Macbook" but also set "category" if you can infer it from the list.
-- ACTIONABLE INTENTS: If the user says "Find me affordable desktops", set intent="search_products", category="desktops", query="affordable desktops".
-- RE-EXTRACTION: If the user clarifies a category (e.g. User: "Show me phones", then "I mean Android phones"), extract "Android phones" as the category.
+- Confidence should be between 0 and 1.
+- CONTEXT STICKINESS: If the user clarifies a search (e.g. "I mean gaming ones"), extract the refinement.
 
-EXAMPLES:
-
-User: "Show me laptops under $1000"
-Response: {"intent": "search_products", "params": {"query": "laptops", "price_max": 1000}, "confidence": 0.98}
-
-User: "Add 2 to my cart"
-Response: {"intent": "add_to_cart", "params": {"quantity": 2}, "confidence": 0.85}
-
-User: "What's in my cart?"
-Response: {"intent": "view_cart", "params": {}, "confidence": 1.0}
-
-User: "Where is my order?"
-Response: {"intent": "track_order", "params": {}, "confidence": 0.95}
-
-Now classify the following user message:`;
+User message to classify:`;
 }
 
 /**
