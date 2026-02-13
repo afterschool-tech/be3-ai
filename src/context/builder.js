@@ -223,11 +223,13 @@ async function buildComprehensiveContext() {
                 u.business_name, 
                 u.first_name, 
                 u.last_name,
+                u.checkout_style,
+                u.whatsapp_phone,
                 COUNT(DISTINCT p.id) as product_count
             FROM users u
             JOIN products p ON p.created_by = u.id
             WHERE p.tenant_id = $1
-            GROUP BY u.id, u.business_name, u.first_name, u.last_name
+            GROUP BY u.id, u.business_name, u.first_name, u.last_name, u.checkout_style, u.whatsapp_phone
         `, [process.env.TENANT_ID]);
 
         const vendorsMap = {};
@@ -238,6 +240,8 @@ async function buildComprehensiveContext() {
                 id: v.id,
                 business_name: name,
                 tag: name,
+                checkout_style: v.checkout_style || 'inhouse',
+                whatsapp_phone: v.whatsapp_phone || null,
                 delivery_scope: "Local & National",
                 product_count: parseInt(v.product_count) || 0,
                 categories: []
@@ -296,49 +300,54 @@ async function buildComprehensiveContext() {
 function getCategoryTree() {
     const roots = Object.keys(CATEGORIES).filter(k => !CATEGORIES[k].parent_id);
     
+    const getAncestors = (categoryKey) => {
+        const ancestors = [];
+        let current = CATEGORIES[categoryKey];
+        while (current && current.parent_id) {
+            const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === current.parent_id);
+            if (parentKey) {
+                ancestors.unshift(parentKey);
+                current = CATEGORIES[parentKey];
+            } else break;
+        }
+        return ancestors;
+    };
+    
+    const getDescendants = (categoryKey) => {
+        const descendants = [];
+        const queue = [...(CATEGORIES[categoryKey]?.children || [])];
+        while (queue.length > 0) {
+            const child = queue.shift();
+            descendants.push(child);
+            queue.push(...(CATEGORIES[child]?.children || []));
+        }
+        return descendants;
+    };
+    
+    const getSiblings = (categoryKey) => {
+        const cat = CATEGORIES[categoryKey];
+        if (!cat || !cat.parent_id) return [];
+        const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === cat.parent_id);
+        if (!parentKey) return [];
+        return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
+    };
+    
+    const getPath = (categoryKey) => {
+        const ancestors = getAncestors(categoryKey);
+        return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
+    };
+    
+    const findBySlug = (slug) => {
+        return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
+    };
+
     return {
         roots,
-        
-        getAncestors: (categoryKey) => {
-            const ancestors = [];
-            let current = CATEGORIES[categoryKey];
-            while (current && current.parent_id) {
-                const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === current.parent_id);
-                if (parentKey) {
-                    ancestors.unshift(parentKey);
-                    current = CATEGORIES[parentKey];
-                } else break;
-            }
-            return ancestors;
-        },
-        
-        getDescendants: (categoryKey) => {
-            const descendants = [];
-            const queue = [...(CATEGORIES[categoryKey]?.children || [])];
-            while (queue.length > 0) {
-                const child = queue.shift();
-                descendants.push(child);
-                queue.push(...(CATEGORIES[child]?.children || []));
-            }
-            return descendants;
-        },
-        
-        getSiblings: (categoryKey) => {
-            const cat = CATEGORIES[categoryKey];
-            if (!cat || !cat.parent_id) return [];
-            const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === cat.parent_id);
-            if (!parentKey) return [];
-            return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
-        },
-        
-        getPath: (categoryKey) => {
-            const ancestors = this.getAncestors(categoryKey);
-            return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
-        },
-        
-        findBySlug: (slug) => {
-            return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
-        }
+        getAncestors,
+        getDescendants,
+        getSiblings,
+        getPath,
+        findBySlug
     };
 }
 
@@ -393,7 +402,9 @@ function getContextSummary() {
             total: Object.keys(VENDORS).length,
             list: Object.values(VENDORS).map(v => ({
                 name: v.business_name,
-                products: v.product_count
+                products: v.product_count,
+                checkout_style: v.checkout_style,
+                whatsapp: v.whatsapp_phone
             }))
         }
     };
@@ -444,8 +455,8 @@ module.exports = {
 };
 `;
 
-        fs.writeFileSync('storeContext.js', contextContent);
-        console.log('\n✅ storeContext.js generated successfully');
+        fs.writeFileSync('src/context/storeContext.js', contextContent);
+        console.log('\n✅ src/context/storeContext.js generated successfully');
 
         // ===== 9. WRITE clauses.js (semantic clauses for AI) =====
         const clausesContent = `
@@ -468,8 +479,8 @@ function getClausesForCategory(categoryName) {
 module.exports = { CLAUSES, getClausesForCategory };
 `;
 
-        fs.writeFileSync('clauses.js', clausesContent);
-        console.log('✅ clauses.js generated successfully');
+        fs.writeFileSync('src/context/clauses.js', clausesContent);
+        console.log('✅ src/context/clauses.js generated successfully');
 
         // ===== 10. PRINT SUMMARY =====
         console.log('\n📊 Context Summary:');

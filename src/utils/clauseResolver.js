@@ -1,5 +1,6 @@
 const { CLAUSES, getClausesForCategory } = require('../context/clauses');
 const { CATEGORIES } = require('../context/storeContext');
+const { normalizeCategory } = require('../utils/normalization');
 const { OpenAI } = require("openai");
 
 const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
@@ -17,17 +18,18 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
     // 1. Identify which category we are talking about
     if (!category) return { clauses: [], display_words: [] };
 
-    // Normalize category to its key (sluggified)
-    let categoryKey = category.toLowerCase().replace(/\s+/g, '_');
-
-    // Fallback: look up by label if normalization is different
-    if (!CATEGORIES[categoryKey]) {
-        const found = Object.entries(CATEGORIES).find(([id, cat]) => cat.label.toLowerCase() === category.toLowerCase());
-        if (found) categoryKey = found[0];
+    // Normalize category to its UUID first
+    const categoryId = normalizeCategory(category);
+    if (!categoryId) {
+        console.warn(`[Resolver] Category "${category}" could not be normalized.`);
+        return { clauses: [], display_words: [] };
     }
 
-    if (!CATEGORIES[categoryKey]) {
-        console.warn(`[Resolver] Category "${category}" not found in context (key: ${categoryKey})`);
+    // Find the category KEY in our context (e.g. "android_phones")
+    const categoryKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === categoryId);
+
+    if (!categoryKey) {
+        console.warn(`[Resolver] Category key not found for ID: ${categoryId}`);
         return { clauses: [], display_words: [] };
     }
 

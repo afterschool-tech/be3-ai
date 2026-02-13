@@ -6,10 +6,10 @@
 require('dotenv').config();
 
 const FEATURES = {
-    contextIntegration: process.env.FEATURE_CONTEXT_INTEGRATION === 'true',
-    apiOptimization: process.env.FEATURE_API_OPTIMIZATION === 'true',
-    toolSystem: process.env.FEATURE_TOOL_SYSTEM === 'true',
-    toolTrafficPercent: parseInt(process.env.TOOL_SYSTEM_TRAFFIC_PERCENT || '0', 10)
+    contextIntegration: process.env.FEATURE_CONTEXT_INTEGRATION === 'true' || true,
+    apiOptimization: process.env.FEATURE_API_OPTIMIZATION === 'true' || true,
+    toolSystem: process.env.FEATURE_TOOL_SYSTEM === 'true' || true, // Temporarily forced true for dev
+    toolTrafficPercent: parseInt(process.env.TOOL_SYSTEM_TRAFFIC_PERCENT || '100')
 };
 
 /**

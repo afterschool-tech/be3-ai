@@ -12,18 +12,19 @@ const client = new OpenAI({
 /**
  * Call Hugging Face Inference API via OpenAI SDK
  */
-async function queryAI(messages, maxTokens = 512, retries = 2) {
+async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2) {
     for (let i = 0; i <= retries; i++) {
         try {
-            // console.log(`[AI] Sending request to Model (Attempt ${i + 1})...`);
+            console.log(`[AI] Querying Model: ${MODEL_ID} (Attempt ${i + 1}, maxTokens: ${maxTokens})...`);
 
             const completion = await client.chat.completions.create({
                 model: MODEL_ID,
                 messages: messages,
                 max_tokens: maxTokens,
-                temperature: 0.7,
+                temperature: temperature,
             });
 
+            console.log(`[AI] QueryAI Success: Got ${completion.choices[0].message.content.length} characters.`);
             return completion.choices[0].message.content || "";
         } catch (err) {
             const isRateLimit = err.message.toLowerCase().includes('rate limit') ||

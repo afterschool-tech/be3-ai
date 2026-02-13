@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Comprehensive Store Context
- * Generated: 2026-02-13T06:25:38.438Z
+ * Generated: 2026-02-13T06:11:02.023Z
  * 
  * This context powers the AI with:
  * - Hierarchical categories (parent→child)
@@ -1162,54 +1162,49 @@ const CATEGORY_INVENTORY = {
 function getCategoryTree() {
     const roots = Object.keys(CATEGORIES).filter(k => !CATEGORIES[k].parent_id);
     
-    const getAncestors = (categoryKey) => {
-        const ancestors = [];
-        let current = CATEGORIES[categoryKey];
-        while (current && current.parent_id) {
-            const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === current.parent_id);
-            if (parentKey) {
-                ancestors.unshift(parentKey);
-                current = CATEGORIES[parentKey];
-            } else break;
-        }
-        return ancestors;
-    };
-    
-    const getDescendants = (categoryKey) => {
-        const descendants = [];
-        const queue = [...(CATEGORIES[categoryKey]?.children || [])];
-        while (queue.length > 0) {
-            const child = queue.shift();
-            descendants.push(child);
-            queue.push(...(CATEGORIES[child]?.children || []));
-        }
-        return descendants;
-    };
-    
-    const getSiblings = (categoryKey) => {
-        const cat = CATEGORIES[categoryKey];
-        if (!cat || !cat.parent_id) return [];
-        const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === cat.parent_id);
-        if (!parentKey) return [];
-        return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
-    };
-    
-    const getPath = (categoryKey) => {
-        const ancestors = getAncestors(categoryKey);
-        return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
-    };
-    
-    const findBySlug = (slug) => {
-        return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
-    };
-
     return {
         roots,
-        getAncestors,
-        getDescendants,
-        getSiblings,
-        getPath,
-        findBySlug
+        
+        getAncestors: (categoryKey) => {
+            const ancestors = [];
+            let current = CATEGORIES[categoryKey];
+            while (current && current.parent_id) {
+                const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === current.parent_id);
+                if (parentKey) {
+                    ancestors.unshift(parentKey);
+                    current = CATEGORIES[parentKey];
+                } else break;
+            }
+            return ancestors;
+        },
+        
+        getDescendants: (categoryKey) => {
+            const descendants = [];
+            const queue = [...(CATEGORIES[categoryKey]?.children || [])];
+            while (queue.length > 0) {
+                const child = queue.shift();
+                descendants.push(child);
+                queue.push(...(CATEGORIES[child]?.children || []));
+            }
+            return descendants;
+        },
+        
+        getSiblings: (categoryKey) => {
+            const cat = CATEGORIES[categoryKey];
+            if (!cat || !cat.parent_id) return [];
+            const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === cat.parent_id);
+            if (!parentKey) return [];
+            return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
+        },
+        
+        getPath: (categoryKey) => {
+            const ancestors = this.getAncestors(categoryKey);
+            return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
+        },
+        
+        findBySlug: (slug) => {
+            return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
+        }
     };
 }
 
@@ -1264,9 +1259,7 @@ function getContextSummary() {
             total: Object.keys(VENDORS).length,
             list: Object.values(VENDORS).map(v => ({
                 name: v.business_name,
-                products: v.product_count,
-                checkout_style: v.checkout_style,
-                whatsapp: v.whatsapp_phone
+                products: v.product_count
             }))
         }
     };

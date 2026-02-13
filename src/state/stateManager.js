@@ -72,6 +72,8 @@ const DEFAULT_STATE = {
         timestamp: null
     },
 
+    last_tools: [], // Array of { tool, params }
+
     paused_context: null, // Stores context when user wants to chat mid-transaction
 
     created_at: null,
@@ -305,8 +307,23 @@ class StateManager {
         };
 
         await this.updateState(userId, { expecting_input: expecting });
+        return expecting;
     }
 
+    /**
+     * Set last tools executed
+     */
+    async setLastTools(userId, tools) {
+        await this.updateState(userId, { last_tools: tools });
+    }
+
+    /**
+     * Get last tools executed
+     */
+    async getLastTools(userId) {
+        const state = await this.getState(userId);
+        return state.last_tools || [];
+    }
     /**
      * Clear expecting input
      */

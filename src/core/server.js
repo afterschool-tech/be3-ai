@@ -5,18 +5,27 @@ const { getIntentClassificationPrompt } = require('../legacy/intents');
 const { executeIntent } = require('../legacy/handlers');
 const { resolveClauses } = require('../utils/clauseResolver');
 const { CATEGORIES, VENDORS, CATEGORY_INVENTORY, ATTRIBUTES, COLLECTIONS, getContextSummary } = require('../context/storeContext');
+const { evaluateContextSufficiency } = require('../middleware/contextEvaluator');
 const stateManager = require('../state/stateManager');
 const redisClient = require('../state/redis');
 const cors = require('cors');
 const { isConfirmation, isImplicitReference, extractSuggestion, checkSuggestionAcknowledgement } = require('../middleware/suggestionHelper');
 const { detectConversationalIntent, isResumeRequest } = require('../middleware/conversationalDetector');
 const { trackRequest, getMetrics, getMetricsSummary } = require('../utils/metrics');
-const { FEATURES } = require('../middleware/featureFlags');
+const { FEATURES, shouldUseToolSystem } = require('../middleware/featureFlags');
+const { selectTools } = require('./toolSelector');
+const { executeTools } = require('./orchestrator');
 const fs = require('fs');
 
 function logStep(msg) {
     const timestamp = new Date().toISOString();
-    fs.appendFileSync('ai_steps.log', `[${timestamp}] ${msg}\n`);
+    const entry = `[${timestamp}] ${msg}`;
+    console.log(entry); // Log to console for user visibility
+    try {
+        fs.appendFileSync('ai_steps.log', `${entry}\n`);
+    } catch (e) {
+        console.error(`[LogStep] Failed to write to log file: ${e.message}`);
+    }
 }
 
 const app = express();
@@ -180,6 +189,42 @@ If you CANNOT relate it to anything, then say: "I'm not sure what you mean. Can 
         return `I'm sorry, but ${handlerResult.error}`;
     }
 
+    // NEW: DATA-FIRST CONTEXT GROUNDING (Phase 2)
+    // If the answer was found in context without an API call
+    if (handlerResult.source === 'context') {
+        const contextData = handlerResult.context_data;
+        console.log(`[Response Generation] Using context grounding for ${contextData.type}`);
+
+        let contextInstruction = `You are a helpful Be3 shopping assistant.
+        
+CRITICAL: You are answering this question using STORE METADATA (static context). 
+NO API call was made to the backend.
+
+- BE ACCURATE: Always use the "count" and "exists" fields from the Context Data below.
+- BE HONEST: If count is 0, say we don't have it. If count is 10, say we have 10.
+- BE PROACTIVE: If alternatives are provided in "suggested_alternatives" or "subcategories", suggest them.
+- FOCUS: Use the "Context Data" ONLY. Use the "Store Summary" only for general brand personality.
+
+Context Data for this SPECIFIC query: ${JSON.stringify(contextData)}
+Detailed Store Summary (Reference only): ${JSON.stringify(getContextSummary())}`;
+
+        const contextMessages = [
+            { role: "system", content: contextInstruction },
+            ...conversationHistory.slice(-5).map(h => ({
+                role: h.role === 'ai' ? 'assistant' : 'user',
+                content: h.text
+            })),
+            { role: "user", content: userMessage }
+        ];
+
+        try {
+            return await queryAI(contextMessages, 512);
+        } catch (error) {
+            console.error('[Response Generation] Context response failed:', error);
+            return "I'm looking at our store information right now, and it seems we don't have that specific item in stock. Would you like to see something similar?";
+        }
+    }
+
     // If intent is fallback_unknown or greeting, allow full conversational freedom
     if ((handlerResult.intent === 'fallback_unknown' && !handlerResult.error) || handlerResult.intent === 'greeting') {
         const messages = [
@@ -261,7 +306,8 @@ GROUNDING RULES:
             ];
 
             try {
-                const response = await queryAI(messages, 512);
+                // Increased max tokens and slightly higher temperature for better reasoning
+                const response = await queryAI(messages, 1024, 0.2);
                 if (!response) return handlerResult.message;
                 return response.trim();
             } catch (error) {
@@ -277,6 +323,85 @@ GROUNDING RULES:
 }
 
 /**
+ * Generate response based on tool results
+ */
+async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
+    const contextSummary = JSON.stringify(getContextSummary()).substring(0, 1000);
+
+    // Optimize results for AI context (remove bloat, keep smart data)
+    const optimizedResults = toolResults.map(tr => {
+        if (tr.result && (tr.result.products || tr.result.results)) {
+            const rawProducts = tr.result.products || tr.result.results;
+            return {
+                ...tr,
+                result: {
+                    ...tr.result,
+                    products: rawProducts.map(p => ({
+                        id: p.id,
+                        name: p.name || p.title,
+                        price: p.price,
+                        description: p.description ? (p.description.substring(0, 150) + '...') : null,
+                        attributes: p.attributes || p.metadata?.attributes || {}, // Crucial for storage, etc.
+                        categories: p.metadata?.category_names || [],
+                        vendor: p.tags?.[0] || p.metadata?.tags?.[0] || 'Be3 Store',
+                        in_stock: (p.inventory_quantity ?? 1) > 0
+                    }))
+                }
+            };
+        }
+        return tr;
+    });
+
+    const resultsSummary = JSON.stringify(optimizedResults, null, 2);
+
+    const messages = [
+        {
+            role: "system",
+            content: `You are a helpful, knowledgeable Be3 shopping assistant.
+            
+STORE CONTEXT:
+${contextSummary}
+
+TOOL RESULTS (Data sourced for this query):
+${resultsSummary}
+
+INSTRUCTIONS:
+1. Answer the user's question using the TOOL RESULTS.
+2. If tools returned an error, apologize and explain simply.
+3. If no tools were used, respond conversationally based on context.
+4. CART GROUPING: If cart.view results contain "vendor_groups", MUST summarize the cart grouped by vendor. Mention clearly which items belong to which seller.
+5. LINK INTEGRITY: If a tool returns a URL (e.g., "whatsapp_link", "checkout_url"), you MUST provide the URL EXACTLY as it is in the data. DO NOT add spaces, DO NOT decode it, and DO NOT reformat it. A URL is an atomic string; never modify its characters.
+6. LINK PRESENTATION RULES (CRITICAL):
+   - ONLY show checkout or WhatsApp links if the TOOL RESULTS explicitly contain a "whatsapp_link" or "checkout_url" field.
+   - NEVER generate, fabricate, or suggest checkout links like "[Click here to confirm...](https://wa.me/...)" unless the tool data provides the actual URL.
+   - Wrap real checkout links in Markdown: [Click here to confirm your order via WhatsApp](actual_url_from_tool)
+7. Be concise, friendly, and helpful. 
+8. If the tool results are empty or don't answer the question, say you couldn't find that specific info.
+10. VENDOR CONTEXT: Do NOT assume the user is still interested in a previously discussed vendor if their new query is about a completely different product category. If the tool results don't specify a vendor, speak generally.
+11. STRICT DATA ADHERENCE: Use ONLY the prices, specifications, and descriptions provided in the TOOL RESULTS. If a tool returns a price of $200.00, do NOT say $1,099.99 based on your internal knowledge. Never hallucinate specs (like storage or color) not present in the data.
+12. INTENT ALIGNMENT: Do NOT push for checkout or provide a "confirm order" link unless the user's intent is clearly to buy, checkout, or they have confirmed the item they want. If they are just browsing ("Do you have X?", "What about Y?"), just provide the info and casually mention "Would you like to add it to your cart?" at most.
+13. TRANSACTIONAL CAPABILITY: You are a fully capable e-commerce assistant. NEVER tell the user to "visit our store" or "visit us in person" for availability. We are an online-only store. If a user asks for a physical location or expresses a desire to visit, politely explain that we are exclusively online and point them to our official web storefront: https://Be3.shop. Remind them that you can also help them browse and buy everything right here in the chat. YOU have all the data; always assume you are the primary way they shop.
+14. SUGGESTION AWARENESS: If tool results include a "suggestion_type: recovery", it means a previous search failed. Acknowledge the missing item briefly, then pivot enthusiastically to the suggested alternatives. Treat suggestions as "Hero" items that are great alternatives.
+9. MEDIA HANDLING: Actual product images will be sent automatically by the WhatsApp bot following your text response. You do NOT need to provide image URLs in your text unless specifically requested. Focus on describing the products' benefits and value.
+`
+        },
+        ...conversationHistory.slice(-3).map(h => ({
+            role: h.role === 'ai' ? 'assistant' : 'user',
+            content: h.text
+        })),
+        { role: "user", content: userMessage }
+    ];
+
+    try {
+        const response = await queryAI(messages, 512);
+        return response || "I'm sorry, I couldn't generate a response.";
+    } catch (error) {
+        console.error('[Tool Response] Error:', error);
+        return "I'm having a bit of trouble connecting right now.";
+    }
+}
+
+/**
  * Main chat endpoint - State-aware two-stage intent processing
  */
 app.post('/chat', async (req, res) => {
@@ -285,6 +410,100 @@ app.post('/chat', async (req, res) => {
 
     try {
         const startTime = Date.now();
+
+        // Check if we should use the new Tool System
+        if (shouldUseToolSystem(session_id)) {
+            console.log(`[Server] Routing session ${session_id} to NEW TOOL SYSTEM 🛠️`);
+
+            // 1. Load State
+            const state = await stateManager.getState(session_id);
+            await stateManager.addMessage(session_id, 'user', message);
+
+            // 2. AI Tool Selection
+            console.log('[Tool System] Selecting tools...');
+            const lastSuggestion = await stateManager.getLastSuggestion(session_id);
+            let toolsSelected = await selectTools(message, state.conversation_history, lastSuggestion);
+
+            // Check for retry intent
+            const isRetry = toolsSelected.some(t => t.tool === 'conversation.retry');
+            if (isRetry) {
+                console.log('[Tool System] User requested retry. Loading last tools from state...');
+                const lastTools = await stateManager.getLastTools(session_id);
+                if (lastTools && lastTools.length > 0) {
+                    toolsSelected = lastTools;
+                } else {
+                    console.warn('[Tool System] No last tools found in state to retry.');
+                }
+            } else if (toolsSelected.length > 0) {
+                // Save tools for potential retry 
+                await stateManager.setLastTools(session_id, toolsSelected);
+            }
+
+            // 3. Tool Execution
+            let toolResults = [];
+            if (toolsSelected.length > 0) {
+                console.log(`[Tool System] Tools selected: ${toolsSelected.map(t => t.tool).join(', ')}`);
+                toolResults = await executeTools(toolsSelected, session_id);
+            } else {
+                console.log('[Tool System] No tools selected (pure conversation or unclear).');
+            }
+
+            // 4. Response Generation
+            console.log('[Tool System] Generating response via AI...');
+            const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
+            console.log('[Tool System] AI response received.');
+
+            // 5. Engagement Tracking (Phase 17)
+            if (lastSuggestion) {
+                const resultsWithSuggestions = toolResults.some(r => r.result && (r.result.suggestion_type === 'recovery' || r.result.suggestions));
+
+                // If AI selected a tool related to the last suggestion (e.g. search from category)
+                const acknowledged = toolsSelected.some(t =>
+                    t.tool === lastSuggestion.intent ||
+                    (t.params && JSON.stringify(t.params).includes(lastSuggestion.params.category))
+                );
+
+                if (acknowledged) {
+                    console.log(`[Metrics] Suggestion ACKNOWLEDGED: ${lastSuggestion.type} -> ${lastSuggestion.intent}`);
+                    // You could emit this to a DB/Analytics here
+                } else if (!resultsWithSuggestions) {
+                    // If no new suggestion was made this turn and the user drifted to a new topic
+                    console.log(`[Metrics] Suggestion ABANDONED: ${lastSuggestion.type}`);
+                    await stateManager.clearLastSuggestion(session_id);
+                }
+            }
+
+            // Save to history
+            await stateManager.addMessage(session_id, 'ai', response);
+            await stateManager.extendTTL(session_id);
+
+            // FINAL RESPONSE LOGGING
+            const finalPayload = {
+                session_id,
+                user_message: message,
+                ai_reply: response,
+                tools_used: toolsSelected.map(t => t.tool),
+                results_count: toolResults.length
+            };
+            logStep(`FINAL_RESPONSE (ToolSystem): ${JSON.stringify(finalPayload, null, 2)}`);
+
+            // Track metrics
+            trackRequest('toolSystem', {
+                apiCalls: toolResults.filter(r => r.result && r.result.apiCalls).length, // Approximation
+                responseTime: Date.now() - startTime,
+                error: toolResults.some(r => !r.success),
+                tools: toolsSelected.map(t => t.tool)
+            });
+
+            return res.json({
+                success: true,
+                reply: response,
+                tools_used: toolsSelected,
+                results: toolResults
+            });
+        }
+
+        // === LEGACY FLOW BELOW ===
 
         // STAGE 0: Load/Initialize State
         console.log('[Stage 0] Loading state...');
@@ -437,9 +656,6 @@ app.post('/chat', async (req, res) => {
             params.category = resolvedCategory;
         }
 
-        // STAGE 3: Execute Intent Handler (with refreshed state)
-        console.log('[Stage 3] Executing handler...');
-
         // Enrich state with store context
         state.store_context = {
             categories: Object.values(CATEGORIES).map(c => ({ label: c.label, slug: c.slug })),
@@ -447,7 +663,27 @@ app.post('/chat', async (req, res) => {
             category_inventory: CATEGORY_INVENTORY
         };
 
-        const handlerResult = await executeIntent(intent, params, session_id, state);
+        // NEW: AI-POWERED CONTEXT EVALUATION (Phase 2)
+        const evaluation = await evaluateContextSufficiency(intent, params, message);
+        console.log(`[Context Eval] Decision: ${evaluation.decision}, Reason: ${evaluation.reason}`);
+
+        let handlerResult;
+        let apiCallsMade = 1;
+
+        if (evaluation.decision === 'sufficient') {
+            handlerResult = {
+                intent,
+                params,
+                message: '', // AI will generate
+                context_data: evaluation.data,
+                source: 'context',
+                total: evaluation.data.count || 0
+            };
+            apiCallsMade = 0;
+            console.log(`[Optimization] ⚡ Answered from context, skipped API call`);
+        } else {
+            handlerResult = await executeIntent(intent, params, session_id, state);
+        }
         console.log(`[Stage 3] Handler result:`, handlerResult);
 
         // Reload state after handler execution (handlers may have updated it)
@@ -457,6 +693,17 @@ app.post('/chat', async (req, res) => {
         console.log('[Stage 4] Generating response...');
         const reply = await generateResponse(message, handlerResult, updatedState.conversation_history);
         console.log(`[Stage 4] Final reply: "${reply}"\n`);
+
+        // FINAL RESPONSE LOGGING
+        const legacyPayload = {
+            session_id,
+            user_message: message,
+            ai_reply: reply,
+            intent: classification.intent,
+            confidence: classification.confidence,
+            source: handlerResult.source || 'api'
+        };
+        logStep(`FINAL_RESPONSE (Legacy): ${JSON.stringify(legacyPayload, null, 2)}`);
 
         // TRACK BOT SUGGESTIONS (from reply or handler result)
         const newSuggestion = extractSuggestion(reply, handlerResult);
@@ -480,9 +727,10 @@ app.post('/chat', async (req, res) => {
         // Track metrics (all requests currently go to legacy)
         const requestDuration = Date.now() - startTime;
         trackRequest('legacy', {
-            apiCalls: 1, // Approximation for now
+            apiCalls: apiCallsMade,
             responseTime: requestDuration,
-            error: false
+            error: false,
+            optimizationHit: apiCallsMade === 0
         });
 
         res.json({
@@ -495,6 +743,9 @@ app.post('/chat', async (req, res) => {
 
     } catch (err) {
         console.error("Chat Error:", err);
+
+        // ERROR LOGGING
+        logStep(`ERROR (Chat): ${err.message}\nStack: ${err.stack}`);
 
         // Track error
         trackRequest('legacy', {
@@ -584,4 +835,14 @@ process.on('SIGINT', async () => {
     console.log('\n\nShutting down gracefully...');
     await redisClient.closeRedis();
     process.exit(0);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('\nCRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+    // In production, you might want to shutdown gracefully but for now we need to see the error
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('\nCRITICAL: Uncaught Exception:', error);
+    process.exit(1);
 });
