@@ -323,6 +323,85 @@ GROUNDING RULES:
 }
 
 /**
+ * Detect if the user wants to see images
+ */
+function detectImageIntent(message, toolResults) {
+    const msg = message.toLowerCase();
+
+    // Explicit image requests
+    if (msg.includes('show') || msg.includes('see') || msg.includes('picture') ||
+        msg.includes('photo') || msg.includes('image') || msg.includes('look like')) {
+        return true;
+    }
+
+    // Product detail requests (likely want to see it)
+    if (msg.includes('tell me more') || msg.includes('details about') || msg.includes('what about')) {
+        return true;
+    }
+
+    // First-time product discovery (not repeat browsing)
+    const hasProducts = toolResults.some(r => r.result && (r.result.products || r.result.results));
+    if (hasProducts) {
+        // Check if this is a "list" or "browse" query (show images)
+        if (msg.includes('what do you have') || msg.includes('show me') || msg.includes('need')) {
+            return true;
+        }
+    }
+
+    // Default: Don't send images for general q&a, cart ops, order ops, etc.
+    return false;
+}
+
+/**
+ * Extract only images of products mentioned in the AI response
+ */
+async function extractMentionedProductImages(aiResponse, toolResults, sessionId) {
+    const images = [];
+    const responseText = aiResponse.toLowerCase();
+
+    // Get all products from tool results
+    const allProducts = [];
+    for (const tr of toolResults) {
+        if (tr.result) {
+            // Handle arrays (products, results)
+            if (tr.result.products || tr.result.results) {
+                const products = tr.result.products || tr.result.results;
+                allProducts.push(...products);
+            }
+            // Handle single product object (from product.getDetails)
+            else if (tr.result.product) {
+                allProducts.push(tr.result.product);
+            }
+            // Handle if the result itself is a product
+            else if (tr.result.id && (tr.result.name || tr.result.title)) {
+                allProducts.push(tr.result);
+            }
+        }
+    }
+
+    // Filter to only products mentioned in the AI response
+    const mentionedProducts = allProducts.filter(p => {
+        const productName = (p.name || p.title || '').toLowerCase();
+        return responseText.includes(productName);
+    });
+
+    console.log(`[Image Filter] Found ${allProducts.length} products, AI mentioned ${mentionedProducts.length}`);
+
+    // Extract image URLs
+    for (const product of mentionedProducts) {
+        if (product.image_url || product.metadata?.image_url) {
+            images.push({
+                url: product.image_url || product.metadata.image_url,
+                caption: product.name || product.title,
+                product_id: product.id
+            });
+        }
+    }
+
+    return images.slice(0, 5); // Limit to 5 images max
+}
+
+/**
  * Generate response based on tool results
  */
 async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
@@ -453,6 +532,10 @@ app.post('/chat', async (req, res) => {
             const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
             console.log('[Tool System] AI response received.');
 
+            // 4.5. Intelligent Image Detection (Phase 17)
+            const shouldSendImages = detectImageIntent(message, toolResults);
+            const imagesToSend = shouldSendImages ? await extractMentionedProductImages(response, toolResults, session_id) : [];
+
             // 5. Engagement Tracking (Phase 17)
             if (lastSuggestion) {
                 const resultsWithSuggestions = toolResults.some(r => r.result && (r.result.suggestion_type === 'recovery' || r.result.suggestions));
@@ -499,7 +582,8 @@ app.post('/chat', async (req, res) => {
                 success: true,
                 reply: response,
                 tools_used: toolsSelected,
-                results: toolResults
+                results: toolResults,
+                display_images: imagesToSend  // Smart image metadata
             });
         }
 
