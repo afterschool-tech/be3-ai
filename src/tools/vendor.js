@@ -182,10 +182,10 @@ const vendorTools = {
         }
     },
     'vendor.getContactLink': {
-        description: 'Generate a WhatsApp contact link for a vendor with an optional predefined message',
+        description: 'Generate a WhatsApp contact link for a vendor. CRITICAL: If the user wants to "send a message", "tell them", or "feedback", you MUST provide the `message` parameter with the exact text they want to send.',
         params: {
             vendor: { type: 'string', description: 'Vendor name or tag' },
-            message: { type: 'string', description: 'Optional message to pre-fill in WhatsApp' }
+            message: { type: 'string', description: 'The exact message content to pre-fill (e.g. "I loved your last product"). Required if user wants to send specific text.' }
         },
         handler: async (params, context) => {
             const { vendor: vendorName, message } = params;

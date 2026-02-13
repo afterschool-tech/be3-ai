@@ -24,8 +24,7 @@ const discoveryTools = {
                 message: "Here are some of our most popular categories right now:",
                 trending: topCategories.map(c => ({
                     label: c.label,
-                    slug: c.slug,
-                    items_available: c.total_count
+                    slug: c.slug
                 })),
                 tip: "You can ask for products in any of these categories!"
             };
