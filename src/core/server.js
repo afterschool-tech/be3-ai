@@ -13,9 +13,10 @@ const { isConfirmation, isImplicitReference, extractSuggestion, checkSuggestionA
 const { detectConversationalIntent, isResumeRequest } = require('../middleware/conversationalDetector');
 const { trackRequest, getMetrics, getMetricsSummary } = require('../utils/metrics');
 const { FEATURES, shouldUseToolSystem } = require('../middleware/featureFlags');
+const { injectImages } = require('../utils/imageInjector');
 const { selectTools } = require('./toolSelector');
 const { executeTools } = require('./orchestrator');
-const { getMainSystemPrompt, getToolSystemPrompt } = require('./personalities');
+const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
 const fs = require('fs');
 
 function logStep(msg) {
@@ -347,6 +348,14 @@ function detectImageIntent(message, toolResults) {
 }
 
 /**
+ * Normalize string for comparison (remove spaces, symbols, lowercase)
+ */
+function normalizeString(str) {
+    if (!str) return '';
+    return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Extract only images of products mentioned in the AI response
  */
 async function extractMentionedProductImages(aiResponse, toolResults, sessionId) {
@@ -373,22 +382,40 @@ async function extractMentionedProductImages(aiResponse, toolResults, sessionId)
         }
     }
 
-    // Filter to only products mentioned in the AI response
+    // Find IDs in the response text using the (#ID) pattern
+    const idMatches = aiResponse.match(/\(#([a-z0-9-]+)\)/gi) || [];
+    const extractedIds = idMatches.map(m => m.replace(/[()#]/g, '').toLowerCase());
+
     const mentionedProducts = allProducts.filter(p => {
-        const productName = (p.name || p.title || '').toLowerCase();
-        return responseText.includes(productName);
+        const pid = (p.id || '').toLowerCase();
+        // Direct ID match from regex
+        if (extractedIds.includes(pid)) return true;
+
+        // Fallback: Name matching (if AI forgot the ID)
+        const fullName = normalizeString(p.name || p.title || '');
+        return normalizeString(aiResponse).includes(fullName);
     });
 
-    console.log(`[Image Filter] Found ${allProducts.length} products, AI mentioned ${mentionedProducts.length}`);
+    // Debugging: Identify which extracted IDs didn't find a product
+    const matchedIds = mentionedProducts.map(p => (p.id || '').toLowerCase());
+    const missingIds = extractedIds.filter(id => !matchedIds.includes(id));
+    if (missingIds.length > 0) {
+        console.warn(`[Image Filter] ⚠️ Could not find products for extracted IDs: ${missingIds.join(', ')}`);
+    }
+
+    console.log(`[Image Filter] Found ${allProducts.length} products, AI IDs extracted: ${extractedIds}, Matched: ${mentionedProducts.length}`);
 
     // Extract image URLs
     for (const product of mentionedProducts) {
-        if (product.image_url || product.metadata?.image_url) {
+        const imageUrl = product.image_url || product.metadata?.image_url;
+        if (imageUrl) {
             images.push({
-                url: product.image_url || product.metadata.image_url,
+                url: imageUrl,
                 caption: product.name || product.title,
                 product_id: product.id
             });
+        } else {
+            console.warn(`[Image Filter] ❌ ID present but image_url missing for product: ${product.id} (${product.name || product.title})`);
         }
     }
 
@@ -396,12 +423,14 @@ async function extractMentionedProductImages(aiResponse, toolResults, sessionId)
 }
 
 /**
- * Generate response based on tool results
+ * Generate response based on tool results (2-Layer Architecture)
+ * Layer 1: Logic Engine (Strict, Grounded)
+ * Layer 2: Personality Renderer (Style Only)
  */
 async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
     const contextSummary = JSON.stringify(getContextSummary()).substring(0, 1000);
 
-    // Optimize results for AI context (remove bloat, keep smart data)
+    // Optimize results for AI context
     const optimizedResults = toolResults.map(tr => {
         if (tr.result && (tr.result.products || tr.result.results)) {
             const rawProducts = tr.result.products || tr.result.results;
@@ -414,10 +443,12 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                         name: p.name || p.title,
                         price: p.price,
                         description: p.description ? (p.description.substring(0, 150) + '...') : null,
-                        attributes: p.attributes || p.metadata?.attributes || {}, // Crucial for storage, etc.
+                        attributes: p.attributes || p.metadata?.attributes || {},
                         categories: p.metadata?.category_names || [],
                         vendor: p.tags?.[0] || p.metadata?.tags?.[0] || 'Be3 Store',
-                        in_stock: (p.inventory_quantity ?? 1) > 0
+                        in_stock: (p.inventory_quantity ?? 1) > 0,
+                        whatsapp_link: p.whatsapp_link, // Critical for 2-layer
+                        checkout_url: p.checkout_url    // Critical for 2-layer
                     }))
                 }
             };
@@ -427,24 +458,44 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
 
     const resultsSummary = JSON.stringify(optimizedResults, null, 2);
 
-    const messages = [
+    // --- LAYER 1: LOGIC ENGINE (Strict Grounding) ---
+    console.log('[AI] Executing Layer 1: Logic Engine 🧠');
+    const logicMessages = [
         {
             role: "system",
-            content: getToolSystemPrompt(contextSummary, resultsSummary)
+            content: getLogicSystemPrompt(contextSummary, resultsSummary)
         },
-        ...conversationHistory.slice(-3).map(h => ({
-            role: h.role === 'ai' ? 'assistant' : 'user',
-            content: h.text
-        })),
         { role: "user", content: userMessage }
     ];
 
+    let safeOutput = "";
     try {
-        const response = await queryAI(messages, 512);
-        return response || "I'm sorry, I couldn't generate a response.";
+        safeOutput = await queryAI(logicMessages, 512, 0.1); // Low temp for facts
+        if (!safeOutput) throw new Error("Empty response from Logic Engine");
     } catch (error) {
-        console.error('[Tool Response] Error:', error);
-        return "I'm having a bit of trouble connecting right now.";
+        console.error('[AI] Layer 1 Failed:', error);
+        return "I'm having trouble connecting to the logic engine.";
+    }
+
+    console.log('[AI] Layer 1 Output (Safe):', safeOutput.substring(0, 100) + '...');
+
+    // --- LAYER 2: PERSONALITY RENDERER (Style Rewrite) ---
+    console.log('[AI] Executing Layer 2: Personality Renderer 🎨');
+    const styleMessages = [
+        {
+            role: "system",
+            content: getPersonalityRewritePrompt(safeOutput)
+        },
+        { role: "user", content: safeOutput }
+    ];
+
+    try {
+        // Higher temp for creativity, but constrained by the input data
+        const styledResponse = await queryAI(styleMessages, 1024, 0.6);
+        return styledResponse || safeOutput; // Fallback to safe output if styling fails
+    } catch (error) {
+        console.error('[AI] Layer 2 Failed:', error);
+        return safeOutput; // Fallback to safe output
     }
 }
 
@@ -454,6 +505,32 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
 app.post('/chat', async (req, res) => {
     const { message, session_id, history = [] } = req.body;
     console.log(`\n[Chat] Received from ${session_id}: "${message}"`);
+
+    // ADMIN: Clear Cache Command
+    if (message.trim() === '.clearcache') {
+        console.log(`[Admin] Clearing cache for ${session_id}`);
+        await stateManager.clearState(session_id);
+
+        // Also clear the cart in the main backend
+        try {
+            const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:3000';
+            const clearCartUrl = `${backendUrl}/cart?session_id=${session_id}`;
+            console.log(`[Admin] Clearing backend cart: ${clearCartUrl}`);
+
+            // Use fetch (Node 18+)
+            await fetch(clearCartUrl, {
+                method: 'DELETE',
+                headers: { 'X-Tenant-ID': process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713' }
+            });
+        } catch (error) {
+            console.error('[Admin] Failed to clear backend cart:', error.message);
+        }
+
+        return res.json({
+            success: true,
+            reply: "Cache cleared! 🧹 All session state, cart, and history have been reset."
+        });
+    }
 
     try {
         const startTime = Date.now();
@@ -500,9 +577,33 @@ app.post('/chat', async (req, res) => {
             const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
             console.log('[Tool System] AI response received.');
 
-            // 4.5. Intelligent Image Detection (Phase 17)
+            // 4.5. IMAGE REINJECTION (Optimization Phase)
+            // Restore images from Redis to the results so the frontend can display them
+            if (toolResults.length > 0) {
+                console.log('[Tool System] Reinjecting cached images...');
+                await injectImages(toolResults, stateManager);
+            }
+
+            // 4.6. Intelligent Image Detection (Phase 17)
             const shouldSendImages = detectImageIntent(message, toolResults);
             const imagesToSend = shouldSendImages ? await extractMentionedProductImages(response, toolResults, session_id) : [];
+
+            // 4.7. STEALTH SANITIZATION: Strip IDs and fix WhatsApp formatting
+            // Catches: (#id), (id with min 8 chars), #id (with min 8 chars)
+            const idPattern = /(\(#[a-z0-9-]+\)|\([a-z0-9-]{8,}\)|#[a-z0-9-]{8,})/gi;
+            const strippedCount = (response.match(idPattern) || []).length;
+
+            // Clean response: 
+            // 1. Strip IDs 
+            // 2. Convert **Bold** to *Bold* (WhatsApp best practice)
+            const sanitizedResponse = response
+                .replace(idPattern, '')
+                .replace(/\*\*(.*?)\*\*/g, '*$1*')
+                .trim();
+
+            if (strippedCount > 0) {
+                console.log(`[Sanitizer] 🧼 Stripped ${strippedCount} ID tags from response.`);
+            }
 
             // 5. Engagement Tracking (Phase 17)
             if (lastSuggestion) {
@@ -524,15 +625,15 @@ app.post('/chat', async (req, res) => {
                 }
             }
 
-            // Save to history
-            await stateManager.addMessage(session_id, 'ai', response);
+            // Save to history (Sanitized for user readability)
+            await stateManager.addMessage(session_id, 'ai', sanitizedResponse);
             await stateManager.extendTTL(session_id);
 
             // FINAL RESPONSE LOGGING
             const finalPayload = {
                 session_id,
                 user_message: message,
-                ai_reply: response,
+                ai_reply: sanitizedResponse,
                 tools_used: toolsSelected.map(t => t.tool),
                 results_count: toolResults.length
             };
@@ -548,7 +649,7 @@ app.post('/chat', async (req, res) => {
 
             return res.json({
                 success: true,
-                reply: response,
+                reply: sanitizedResponse,
                 tools_used: toolsSelected,
                 results: toolResults,
                 display_images: imagesToSend  // Smart image metadata

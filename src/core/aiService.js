@@ -12,7 +12,7 @@ const client = new OpenAI({
 /**
  * Call Hugging Face Inference API via OpenAI SDK
  */
-async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2) {
+async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2, extraParams = {}) {
     for (let i = 0; i <= retries; i++) {
         try {
             console.log(`[AI] Querying Model: ${MODEL_ID} (Attempt ${i + 1}, maxTokens: ${maxTokens})...`);
@@ -22,6 +22,7 @@ async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2
                 messages: messages,
                 max_tokens: maxTokens,
                 temperature: temperature,
+                ...extraParams  // response_format goes here
             });
 
             console.log(`[AI] QueryAI Success: Got ${completion.choices[0].message.content.length} characters.`);

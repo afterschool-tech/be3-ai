@@ -4,10 +4,14 @@
  */
 
 const { CATEGORIES, VENDORS, COLLECTIONS } = require('../context/storeContext');
+const { normalizeCategory, normalizeVendor } = require('../utils/normalization');
+const { performSemanticSearch } = require('../utils/searchUtility');
+const { callBackendAPI } = require('../utils/apiClient');
 
 const discoveryTools = {
-    'discovery.getTrending': {
-        description: 'Get trending categories and popular items based on inventory volume.',
+    /*
+    'discovery.getTrendingCategories': {
+        description: 'Get trending product CATEGORIES based on inventory volume. (Does NOT return products).',
         params: {
             limit: { type: 'number', description: 'Number of categories to return (default 3)' }
         },
@@ -30,7 +34,88 @@ const discoveryTools = {
             };
         }
     },
+    */
 
+    /*
+    'discovery.getTrendingProducts': {
+        description: 'Get actual TRENDING PRODUCTS from popular categories.',
+        params: {
+            query: { type: 'string', description: 'Optional keywords' },
+            price_min: { type: 'number', description: 'Minimum price' },
+            price_max: { type: 'number', description: 'Maximum price' },
+            limit: { type: 'number', description: 'Max results (default 5)' }
+        },
+        handler: async (params, context) => {
+            // 1. Pick a popular category
+            const topCategories = Object.values(context.CATEGORIES)
+                .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'))
+                .sort((a, b) => b.total_count - a.total_count)
+                .slice(0, 10);
+
+            if (topCategories.length > 0) {
+                const randomCat = topCategories[Math.floor(Math.random() * topCategories.length)];
+                console.log(`[Discovery] Trending products will utilize category: ${randomCat.label}`);
+                params.category = randomCat.slug;
+            }
+
+            // 2. Execute exact product.search logic
+            const { query, category, price_min, price_max, limit = 5, sort = 'relevance', tag, attributes = {} } = params;
+
+            const searchParams = new URLSearchParams({
+                per_page: limit,
+                sort: sort
+            });
+
+            if (query) searchParams.append('q', query);
+            if (price_min) searchParams.append('price_min', price_min);
+            if (price_max) searchParams.append('price_max', price_max);
+            if (tag) searchParams.append('tag', tag);
+
+            const catId = normalizeCategory(category);
+            const cat = catId ? context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)] : null;
+
+            if (catId) {
+                searchParams.append('category', cat.slug || catId);
+            }
+
+            // --- STAGE 0: Semantic Search (The "Power" step via Util) ---
+            if (cat) {
+                const semanticResult = await performSemanticSearch(query, cat, context, callBackendAPI, limit);
+                if (semanticResult) return semanticResult;
+            }
+
+            // Add dynamic attributes
+            const safeAttributes = attributes || {};
+            Object.entries(safeAttributes).forEach(([key, val]) => {
+                const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
+                searchParams.append(`attribute.${key}`, finalVal);
+            });
+
+            // Call Legacy Search specialized products endpoint
+            const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
+
+            if (!result.success) {
+                return { error: "Failed to search products", details: result.error };
+            }
+
+            const products = result.data.products || result.data.results || [];
+
+            // --- STAGE 2: Reference Mapping (Phase 8) ---
+            if (products.length > 0 && context.sessionId) {
+                const stateManager = require('../state/stateManager');
+                await stateManager.updateReferenceMap(context.sessionId, products);
+            }
+
+            return {
+                products,
+                total: result.data.pagination?.total || result.data.total || 0,
+                facets: result.data.facets
+            };
+        }
+    },
+    */
+
+    /*
     'discovery.getSuggestions': {
         description: 'Get randomized or curated suggestions to help users explore the store. Use this for "What else do you have?" or as a fallback when a search yields no results.',
         params: {
@@ -133,6 +218,7 @@ const discoveryTools = {
             };
         }
     },
+    */
 
     'discovery.ensureSuggestions': {
         description: 'Sentinel tool that shadows product searches. It verifies results and autonomously infers alternative categories if search fails or returns irrelevant items.',
@@ -275,6 +361,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
         }
     },
 
+    /*
     'discovery.getPersonalized': {
         description: 'Get personalized recommendations based on the current session history.',
         params: {},
@@ -294,6 +381,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
             };
         }
     }
+    */
 };
 
 module.exports = discoveryTools;

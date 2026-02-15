@@ -61,12 +61,64 @@ const productTools = {
                 return { error: "Failed to search products", details: result.error };
             }
 
-            const products = result.data.products || result.data.results || [];
+            let products = result.data.products || result.data.results || [];
+
+            // --- DATA STRIPPING & IMAGE CACHING ---
+            const stateManager = require('../state/stateManager');
+
+            // Helper to strip data
+            const stripProductData = async (product) => {
+                console.log("product data response: ", JSON.stringify(product, null, 2));
+
+                const imageUrl = product.image_url || product.metadata?.image_url;
+                const productId = product.id;
+
+                // Cache image (await to ensure it's ready for reinjection)
+                if (imageUrl) {
+                    try {
+                        await stateManager.cacheProductImage(productId, imageUrl);
+                    } catch (e) {
+                        console.error('Failed to cache image:', e);
+                    }
+                }
+
+                // Create lean object
+                const leanProduct = {
+                    id: product.id,
+                    content_type: product.content_type || 'product',
+                    title: product.title || product.name,
+                    name: product.name || product.title,
+                    description: product.description,
+                    price: product.price,
+                    metadata: {
+                        ...product.metadata,
+                        image_url: undefined, // Strip from metadata
+                        description: undefined, // Strip redundant description
+                        search_vector: undefined, // Strip internal vector
+                        keywords: undefined // Strip keywords
+                    },
+                    // Explicitly remove top-level heavy fields
+                    image_url: undefined,
+                    search_vector: undefined,
+                    keywords: undefined
+                };
+
+                // Clean up metadata further if needed
+                if (leanProduct.metadata) {
+                    delete leanProduct.metadata.image_url;
+                    delete leanProduct.metadata.search_vector;
+                }
+
+                console.log("product data after stripping: ", JSON.stringify(leanProduct, null, 2));
+                return leanProduct;
+            };
+
+            // Process all products
+            products = await Promise.all(products.map(stripProductData));
 
             // --- STAGE 2: Reference Mapping (Phase 8) ---
             // Ensure products are in the state reference map so AI can say "add the first one" or "add it"
             if (products.length > 0 && context.sessionId) {
-                const stateManager = require('../state/stateManager');
                 await stateManager.updateReferenceMap(context.sessionId, products);
             }
 
@@ -221,6 +273,49 @@ const productTools = {
             return {
                 original: product.name,
                 similar_products: similar.slice(0, 3)
+            };
+        }
+    },
+
+    'product.getImage': {
+        description: 'Retrieve images for products. Use this when the user specifically asks to see photos, pictures, or images.',
+        params: {
+            query: { type: 'string', description: 'Search keywords' },
+            category: { type: 'string', description: 'Category name or slug' },
+            price_min: { type: 'number', description: 'Minimum price' },
+            price_max: { type: 'number', description: 'Maximum price' },
+            limit: { type: 'number', description: 'Max results (default 5)' },
+            sort: { type: 'string', description: 'price_asc, price_desc, date_desc, relevance' },
+            tag: { type: 'string', description: 'The exact vendor tag (e.g. "Tayes Home Decor"). Use this when searching for products from a specific vendor.' },
+            attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' },
+            product_id: { type: 'string', description: 'Specific product ID if known' }
+        },
+        handler: async (params, context) => {
+            // Reuse product.search logic with ALL params
+            const searchResult = await productTools['product.search'].handler({
+                ...params,
+                limit: params.limit || 5 // Default limit for images
+            }, context);
+
+            if (searchResult.error) return searchResult;
+
+            // Strict stripping: Keep only ID, name, price
+            const strippedProducts = (searchResult.products || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                price: p.price,
+                content_type: 'product' // Required for imageInjector
+            }));
+
+            // Check if we found anything
+            if (strippedProducts.length === 0) {
+                return { message: "I couldn't find any images matching that description." };
+            }
+
+            return {
+                message: `Here are the images for "${params.query || 'your request'}":`,
+                products: strippedProducts,
+                instruction: "Display these images to the user. Do not generate detailed descriptions."
             };
         }
     }

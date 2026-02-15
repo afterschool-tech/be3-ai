@@ -436,6 +436,32 @@ class StateManager {
     }
 
     /**
+     * Cache product image URL in Redis (to keep state lean)
+     */
+    async cacheProductImage(productId, imageUrl) {
+        if (!productId || !imageUrl) return;
+        try {
+            // Store with a long TTL (e.g. 24 hours) as images don't change often
+            await redisClient.getClient().setEx(`product_image:${productId}`, 86400, imageUrl);
+        } catch (error) {
+            console.error(`[StateManager] Failed to cache image for ${productId}:`, error.message);
+        }
+    }
+
+    /**
+     * Retrieve product image URL from Redis
+     */
+    async getProductImage(productId) {
+        if (!productId) return null;
+        try {
+            return await redisClient.getClient().get(`product_image:${productId}`);
+        } catch (error) {
+            console.error(`[StateManager] Failed to get image for ${productId}:`, error.message);
+            return null;
+        }
+    }
+
+    /**
      * Update reference map from product list
      */
     async updateReferenceMap(userId, products) {

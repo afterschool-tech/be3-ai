@@ -143,13 +143,39 @@ const orderTools = {
                         });
                     }
                 } else {
-                    checkoutResults.push({
-                        vendor: group.businessName,
-                        type: 'inhouse',
-                        subtotal: groupSubtotal.toFixed(2),
-                        checkout_url: `/checkout?vendor_id=${group.vendorId}`,
-                        message: `Please complete the checkout for this vendor on our secure checkout page.`
+                    // In-house vendor: Record pre-order for dashboard
+                    const orderRes = await callBackendAPI('/orders/inhouse-preorder', {
+                        method: 'POST',
+                        data: {
+                            cartId: cartRes.data.cart?.id,
+                            vendorId: group.vendorId,
+                            items: group.items,
+                            total: groupSubtotal,
+                            customerName: customer_name,
+                            customerEmail: customer_email,
+                            session_id: sessionId
+                        }
                     });
+
+                    if (orderRes.success) {
+                        const itemsList = group.items.map(i => `- ${i.product_name} x${i.quantity} ($${(parseFloat(i.price) * i.quantity).toFixed(2)})`).join('\n');
+                        checkoutResults.push({
+                            vendor: group.businessName,
+                            type: 'inhouse',
+                            subtotal: groupSubtotal.toFixed(2),
+                            order_number: orderRes.data.order.order_number,
+                            checkout_url: `/checkout?vendor_id=${group.vendorId}&order_id=${orderRes.data.order.id}`,
+                            status: `Pre-order created as ${orderRes.data.order.order_number}. Vendor will contact you for payment.`,
+                            items_summary: itemsList
+                        });
+                    } else {
+                        checkoutResults.push({
+                            vendor: group.businessName,
+                            type: 'inhouse',
+                            error: "Failed to record pre-order",
+                            details: orderRes.error || orderRes.data?.error
+                        });
+                    }
                 }
             }
 

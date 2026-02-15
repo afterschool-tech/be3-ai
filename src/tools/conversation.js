@@ -66,6 +66,22 @@ const conversationTools = {
                 is_retry: true
             };
         }
+    },
+    'conversation.clarify': {
+        description: 'Ask the user for clarification when their intent is ambiguous or unclear. Use this when the INTENT ADVISOR suggests clarification needed.',
+        params: {
+            reason: { type: 'string', description: 'Why clarification is needed (e.g. "Ambiguous intent between A and B")' },
+            options: { type: 'array', description: 'Possible interpretations to offer the user (e.g. ["View Orders", "Buy Items"])' }
+        },
+        handler: async (params, context) => {
+            console.log(`[Conversation] Clarification requested: ${params.reason}`);
+            return {
+                message: "I'm not quite sure I follow. Could you clarify what you'd like to do?",
+                reason: params.reason,
+                options: params.options,
+                action: "clarification_requested"
+            };
+        }
     }
 };
 

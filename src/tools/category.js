@@ -2,7 +2,7 @@ const { normalizeCategory } = require('../utils/normalization');
 
 const categoryTools = {
     'category.list': {
-        description: 'List all top-level categories',
+        description: 'Use ONLY when the user wants to see ALL available categories or asks what categories/departments exist in the store. Do NOT use this when the user mentions a specific category by name.',
         params: {},
         handler: async (params, context) => {
             return Object.values(context.CATEGORIES)
@@ -11,7 +11,7 @@ const categoryTools = {
         }
     },
     'category.getInfo': {
-        description: 'Get detailed information about a specific category',
+        description: 'Use when the user wants to browse, explore, or get details about a specific named category (e.g. "show me phones", "tell me about laptops"). Requires a category name.',
         params: {
             category: { type: 'string', description: 'Category name or slug' }
         },
@@ -34,7 +34,7 @@ const categoryTools = {
     },
 
     'category.getSubcategories': {
-        description: 'Get the subcategories (children) of a specific category',
+        description: 'Use when the user wants to see what sub-types exist within a category (e.g. "what kinds of headphones do you have?", "show me types of laptops").',
         params: {
             category: { type: 'string', description: 'Parent category name or slug' }
         },
