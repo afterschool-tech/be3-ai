@@ -50,7 +50,7 @@ const cartTools = {
             }
 
             const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            return {
+            const cartSummary = {
                 items: items.map(i => ({
                     id: i.id,
                     product_name: i.product_name,
@@ -58,15 +58,23 @@ const cartTools = {
                     price: i.price,
                     subtotal: i.price * i.quantity
                 })),
+                total: total.toFixed(2),
+                item_count: items.length
+            };
+
+            // Sync to State
+            const stateManager = require('../state/stateManager');
+            await stateManager.updateCart(sessionId, cartSummary);
+
+            return {
+                ...cartSummary,
                 vendor_groups: vendorGroups.map(vg => ({
                     vendor_id: vg.vendorId,
                     business_name: vg.businessName,
                     checkout_style: vg.checkoutStyle,
                     item_count: vg.items.length,
                     subtotal: vg.items.reduce((s, i) => s + (parseFloat(i.price) * i.quantity), 0).toFixed(2)
-                })),
-                total: total.toFixed(2),
-                item_count: items.length
+                }))
             };
         }
     },
@@ -109,6 +117,29 @@ const cartTools = {
             });
 
             if (!result.success) return { error: "Failed to add to cart", details: result.error };
+
+            // Sync to State
+            const stateManager = require('../state/stateManager');
+            const cartUpdate = {
+                item_count: result.data.cart?.item_count || 1,
+                total: result.data.cart?.total || product.price
+            };
+            await stateManager.updateCart(sessionId, cartUpdate);
+
+            // Track for abandoned items
+            const currentState = await stateManager.getState(sessionId);
+            const abandoned = currentState.preferences.abandoned_items || [];
+            if (!abandoned.some(i => i.id === product_id)) {
+                abandoned.push({
+                    id: product_id,
+                    name: product.name,
+                    price: product.price,
+                    abandoned_at: new Date().toISOString()
+                });
+                await stateManager.updateState(sessionId, {
+                    preferences: { ...currentState.preferences, abandoned_items: abandoned.slice(-5) }
+                });
+            }
 
             return {
                 success: true,

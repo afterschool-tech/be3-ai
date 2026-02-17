@@ -1161,7 +1161,7 @@ const CATEGORY_INVENTORY = {
  */
 function getCategoryTree() {
     const roots = Object.keys(CATEGORIES).filter(k => !CATEGORIES[k].parent_id);
-    
+
     const getAncestors = (categoryKey) => {
         const ancestors = [];
         let current = CATEGORIES[categoryKey];
@@ -1174,7 +1174,7 @@ function getCategoryTree() {
         }
         return ancestors;
     };
-    
+
     const getDescendants = (categoryKey) => {
         const descendants = [];
         const queue = [...(CATEGORIES[categoryKey]?.children || [])];
@@ -1185,7 +1185,7 @@ function getCategoryTree() {
         }
         return descendants;
     };
-    
+
     const getSiblings = (categoryKey) => {
         const cat = CATEGORIES[categoryKey];
         if (!cat || !cat.parent_id) return [];
@@ -1193,12 +1193,12 @@ function getCategoryTree() {
         if (!parentKey) return [];
         return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
     };
-    
+
     const getPath = (categoryKey) => {
         const ancestors = getAncestors(categoryKey);
         return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
     };
-    
+
     const findBySlug = (slug) => {
         return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
     };
@@ -1218,7 +1218,7 @@ function getCategoryTree() {
  */
 function getContextSummary() {
     const tree = getCategoryTree();
-    
+
     return {
         categories: {
             total: Object.keys(CATEGORIES).length,
@@ -1239,7 +1239,7 @@ function getContextSummary() {
                 .filter(([k, c]) => c.total_count === 0)
                 .map(([k, c]) => tree.getPath(k))
         },
-        
+
         attributes: {
             total: Object.keys(ATTRIBUTES).length,
             list: Object.entries(ATTRIBUTES).map(([k, a]) => ({
@@ -1249,7 +1249,7 @@ function getContextSummary() {
                 example_categories: a.categories.slice(0, 3)
             }))
         },
-        
+
         collections: {
             total: Object.keys(COLLECTIONS).length,
             dynamic: Object.entries(COLLECTIONS).filter(([k, c]) => c.is_dynamic).length,
@@ -1259,7 +1259,7 @@ function getContextSummary() {
                 manual_count: c.manual_product_ids.length
             }))
         },
-        
+
         vendors: {
             total: Object.keys(VENDORS).length,
             list: Object.values(VENDORS).map(v => ({
@@ -1272,16 +1272,63 @@ function getContextSummary() {
     };
 }
 
+/**
+ * Get LEAN context for System Prompts (Token Efficient)
+ * Only exposes Roots, Vendors, and Collections.
+ * Forces AI to use tools for deep dives.
+ */
+function getLeanContext() {
+    const tree = getCategoryTree();
+
+    // 1. Root Categories (Structure)
+    const roots = tree.roots.map(k => CATEGORIES[k].label);
+
+    // 1b. Active Categories (Where products actually live)
+    // Flattened list of ANY category with products > 0
+    const activeCategories = Object.values(CATEGORIES)
+        .filter(c => c.total_count > 0)
+        .map(c => ({
+            name: c.label,
+            count: c.total_count
+        }));
+
+    // 2. Vendors (with details)
+    const vendors = Object.values(VENDORS).map(v => ({
+        name: v.business_name,
+        checkout: v.checkout_style,
+        phone: v.whatsapp_phone
+    }));
+
+    // 3. Collections (Names only)
+    const collections = Object.values(COLLECTIONS).map(c => c.label);
+
+    // 4. Attributes (Names only, no details)
+    const attributes = Object.values(ATTRIBUTES).map(a => a.label);
+
+    return {
+        store_scope: {
+            root_departments: roots,
+            active_departments: activeCategories,
+            partners: vendors,
+            featured_collections: collections,
+            filters: attributes
+        },
+        policy: "Use 'category.list' to see sub-departments. Use 'product.search' to find items."
+    };
+}
+
 
 const CATEGORY_TREE = getCategoryTree();
 
-module.exports = { 
-    CATEGORIES, 
+module.exports = {
+    CATEGORIES,
     ATTRIBUTES,
-    COLLECTIONS, 
-    VENDORS, 
-    BUSINESSES, 
+    COLLECTIONS,
+    VENDORS,
+    BUSINESSES,
     CATEGORY_INVENTORY,
     CATEGORY_TREE,
-    getContextSummary
+    CATEGORY_TREE,
+    getContextSummary,
+    getLeanContext
 };

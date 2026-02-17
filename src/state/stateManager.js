@@ -47,6 +47,7 @@ const DEFAULT_STATE = {
         price_range: { min: null, max: null },
         favorite_brands: [],
         favorite_categories: [],
+        abandoned_items: [], // [{ id, name, price, abandoned_at }]
         language: 'en'
     },
 
@@ -54,6 +55,7 @@ const DEFAULT_STATE = {
         started_at: null,
         last_activity: null,
         message_count: 0,
+        search_refinement_count: 0,
         is_active: true,
         platform: 'whatsapp'
     },
@@ -61,6 +63,7 @@ const DEFAULT_STATE = {
     microstate: {
         type: null, // clause_resolution, cart_interaction, etc
         data: {},
+        intent_confidence: 1.0, // Confidence score from tool selection
         expires_at: null
     },
 
@@ -223,6 +226,25 @@ class StateManager {
      */
     async updateConversationSummary(userId, summary) {
         await this.updateState(userId, { conversation_summary: summary });
+    }
+
+    /**
+     * Contextual Pruning: Clear ephemeral state like references when intent shifts
+     */
+    async pruneState(userId, intent) {
+        const isNewSearch = intent === 'new search' || intent.includes('category');
+        if (isNewSearch) {
+            console.log(`[StateManager] ✂️ Pruning ephemeral state for new search intent: ${intent}`);
+            const state = await this.getState(userId);
+            await this.updateState(userId, {
+                reference_map: {},
+                ordinal_list: [],
+                product_context: {
+                    ...state.product_context,
+                    currently_viewing: null
+                }
+            });
+        }
     }
 
     // ============ INTENT & FLOW MANAGEMENT ============
@@ -492,6 +514,8 @@ class StateManager {
             if (index === 0) referenceMap.the_first_one = productIdentifier;
             if (index === 1) referenceMap.the_second_one = productIdentifier;
             if (index === 2) referenceMap.the_third_one = productIdentifier;
+            if (index === 0) referenceMap.first = productIdentifier;
+            if (index === 1) referenceMap.second = productIdentifier;
         });
 
         // Map "this" and "that"
@@ -501,9 +525,20 @@ class StateManager {
 
             referenceMap.this = firstId;
             referenceMap.that = secondId;
+
+            // Singular pronoun references
+            referenceMap.it = firstId;
+            referenceMap.the_one = firstId;
+            referenceMap.that_one = firstId;
+            referenceMap.this_one = firstId;
+
+            // Group/Plural references
+            referenceMap.them = firstId;
+            referenceMap.the_products = ordinalList.join(',');
+            referenceMap.all_of_them = ordinalList.join(',');
         }
 
-        // Map brand and full name references
+        // Map brand, vendor, and full name references
         products.forEach(product => {
             const productIdentifier = product.handle || product.id || product.product_id;
 
@@ -518,8 +553,17 @@ class StateManager {
                     referenceMap[nameIdentifier] = productIdentifier;
                 }
 
-                // Common brands
+                // VENDOR / BRAND RESOLUTION (User Request: Expansion)
+                const vendor = (product.vendor || product.metadata?.vendor || product.tags?.[0] || '').toLowerCase().trim();
                 const brands = ['samsung', 'apple', 'dell', 'hp', 'lenovo', 'asus', 'sony', 'lg', 'infinix', 'tecno'];
+
+                if (vendor) {
+                    const vendorSlug = vendor.replace(/\s+/g, '_');
+                    referenceMap[`from_${vendorSlug}`] = productIdentifier;
+                    referenceMap[`the_${vendorSlug}_one`] = productIdentifier;
+                    referenceMap[vendorSlug] = productIdentifier;
+                }
+
                 brands.forEach(brand => {
                     if (nameLower.includes(brand)) {
                         referenceMap[`the_${brand}`] = productIdentifier;
@@ -529,7 +573,7 @@ class StateManager {
 
                 // Price-based references
                 if (product.price) {
-                    const prices = products.map(p => p.price).sort((a, b) => a - b);
+                    const prices = products.map(p => p.price).filter(p => !isNaN(p)).sort((a, b) => a - b);
                     if (product.price === prices[0]) {
                         referenceMap.the_cheap_one = productIdentifier;
                         referenceMap.the_cheapest = productIdentifier;
@@ -548,7 +592,6 @@ class StateManager {
         await this.setState(userId, state);
         console.log(`[StateManager] Updated reference map with ${products.length} products`);
         console.log(`[StateManager] Reference map keys:`, Object.keys(referenceMap));
-        console.log(`[StateManager] Ordinal list:`, ordinalList);
     }
 
     /**

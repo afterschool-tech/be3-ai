@@ -18,7 +18,7 @@ const productTools = {
             price_max: { type: 'number', description: 'Maximum price' },
             limit: { type: 'number', description: 'Max results (default 5)' },
             sort: { type: 'string', description: 'price_asc, price_desc, date_desc, relevance' },
-            tag: { type: 'string', description: 'The exact vendor tag (e.g. "Tayes Home Decor"). Use this when searching for products from a specific vendor.' },
+            tag: { type: 'string', description: 'The exact vendor tag (e.g. "Taye\'s Home Decor"). Use this when searching for products from a specific vendor.' },
             attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' }
         },
         handler: async (params, context) => {
@@ -41,7 +41,19 @@ const productTools = {
                 searchParams.append('category', cat.slug || catId);
             }
 
-            // --- STAGE 0: Semantic Search (The "Power" step via Util) ---
+            // --- STAGE 0: Context-First Check ---
+            // Optimization: If we know the category is empty, don't bother searching
+            if (cat && cat.total_count === 0) {
+                console.log(`[ProductTool] Short-circuiting search: Category "${cat.label}" has 0 products.`);
+                return {
+                    products: [],
+                    total: 0,
+                    facets: {},
+                    message: `We currently don't have any products in the **${cat.label}** section.`
+                };
+            }
+
+            // --- STAGE 0.5: Semantic Search (The "Power" step via Util) ---
             if (cat) {
                 const semanticResult = await performSemanticSearch(query, cat, context, callBackendAPI, limit);
                 if (semanticResult) return semanticResult;
@@ -122,6 +134,34 @@ const productTools = {
                 await stateManager.updateReferenceMap(context.sessionId, products);
             }
 
+            // --- STAGE 3: State Syncing (Phase 17) ---
+            if (context.sessionId) {
+                // Update search context
+                await stateManager.updateLastSearch(context.sessionId, query || category, params, products, result.data.pagination?.total || result.data.total || 0);
+
+                // Auto-view the first product to populate currently_viewing (Fixes null viewing state)
+                if (products.length > 0) {
+                    const firstId = products[0].handle || products[0].id || products[0].product_id;
+                    await stateManager.setCurrentlyViewing(context.sessionId, firstId);
+                }
+
+                // Increment refinement count
+                const currentState = await stateManager.getState(context.sessionId);
+                const currentCount = currentState.session.search_refinement_count || 0;
+                await stateManager.updateState(context.sessionId, {
+                    session: { ...currentState.session, search_refinement_count: currentCount + 1 }
+                });
+
+                // Robust Learning: If category is missing, try to infer it from results or query
+                let learnedCategory = category;
+                if (!learnedCategory && products.length > 0 && products[0].categories && products[0].categories.length > 0) {
+                    learnedCategory = products[0].categories[0];
+                }
+
+                // Learn from behavior
+                await stateManager.learnFromBehavior(context.sessionId, 'search', { query, category: learnedCategory });
+            }
+
             return {
                 products,
                 total: result.data.pagination?.total || result.data.total || 0,
@@ -144,6 +184,14 @@ const productTools = {
 
             if (!result.success || !result.data.product) {
                 return { error: `Product not found: ${resolvedId}` };
+            }
+
+            // State Syncing
+            if (context.sessionId && result.data.product) {
+                await stateManager.setCurrentlyViewing(context.sessionId, resolvedId);
+                await stateManager.learnFromBehavior(context.sessionId, 'view_product', {
+                    brand: result.data.product.metadata?.attributes?.v || 'Be3 Store'
+                });
             }
 
             return {
@@ -238,12 +286,15 @@ const productTools = {
             if (res.error) return res;
 
             const p = res.product;
+            // TEMPORARY OVERRIDE: Always return available as requested
             const stock = p.inventory_quantity ?? 0;
+            const fakeStock = stock > 0 ? stock : 50;
+
             return {
                 name: p.name,
-                in_stock: stock > 0,
-                quantity: stock,
-                status: stock > 0 ? 'Available' : 'Out of stock'
+                in_stock: true, // FORCE TRUE
+                quantity: fakeStock,
+                status: 'Available' // FORCE AVAILABLE
             };
         }
     },

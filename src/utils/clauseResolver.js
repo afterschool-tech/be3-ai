@@ -1,15 +1,7 @@
 const { CLAUSES, getClausesForCategory } = require('../context/clauses');
 const { CATEGORIES } = require('../context/storeContext');
 const { normalizeCategory } = require('../utils/normalization');
-const { OpenAI } = require("openai");
-
-const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
-const MODEL_ID = "Qwen/Qwen2.5-Coder-32B-Instruct";
-
-const client = new OpenAI({
-    baseURL: "https://router.huggingface.co/v1",
-    apiKey: HF_TOKEN,
-});
+const { queryAI } = require('../core/aiService');
 
 /**
  * Resolver stage: Maps natural language terms to canonical clauses
@@ -74,21 +66,16 @@ Return ONLY a JSON object:
 If no matches, return {"matches": []}.`;
 
     try {
-        const response = await client.chat.completions.create({
-            model: MODEL_ID,
-            messages: [
-                { role: "system", content: prompt },
-                ...conversationHistory.slice(-2).map(h => ({
-                    role: h.role === 'ai' ? 'assistant' : 'user',
-                    content: h.text
-                })),
-                { role: "user", content: userMessage }
-            ],
-            max_tokens: 128,
-            temperature: 0.1, // Low temperature for deterministic mapping
-        });
+        const messages = [
+            { role: "system", content: prompt },
+            ...conversationHistory.slice(-2).map(h => ({
+                role: h.role === 'ai' ? 'assistant' : 'user',
+                content: h.text
+            })),
+            { role: "user", content: userMessage }
+        ];
 
-        const resultStr = response.choices[0].message.content.trim();
+        const resultStr = await queryAI(messages, 128, 0.1);
         console.log(`[Resolver] Raw AI response: ${resultStr}`);
 
         // Extract JSON

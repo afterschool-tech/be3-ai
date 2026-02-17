@@ -61,7 +61,20 @@ function normalizeVendor(vendor, history = []) {
         v.business_name.toLowerCase().includes(vendorLower)
     );
 
-    return match ? match.business_name : vendor;
+    if (match) return match.business_name;
+
+    // 3. Punctuation-Robust Fallback (Strip non-alphanumeric)
+    const strip = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const vendorStripped = strip(vendor);
+
+    const robustMatch = vendors.find(v => {
+        const canonicalStripped = strip(v.business_name);
+        return canonicalStripped === vendorStripped ||
+            canonicalStripped.includes(vendorStripped) ||
+            vendorStripped.includes(canonicalStripped);
+    });
+
+    return robustMatch ? robustMatch.business_name : vendor;
 }
 
 module.exports = {

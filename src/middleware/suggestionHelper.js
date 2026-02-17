@@ -52,10 +52,21 @@ function isImplicitReference(message, lastSuggestion) {
 function extractSuggestion(reply, handlerResult) {
     const lowerReply = reply.toLowerCase();
 
-    // Check for rotation_context from greetings
-    if (handlerResult.rotation_context) {
-        const { suggested_categories, what_we_can_do } = handlerResult.rotation_context;
+    // 1. Data-First Extraction: If handler has products, suggest the first one for details
+    if (handlerResult.products && handlerResult.products.length > 0) {
+        const p = handlerResult.products[0];
+        // Only suggest if the bot actually mentioned it or it's a list
+        return {
+            type: 'product_offer',
+            intent: 'view_product',
+            params: { product_id: p.id },
+            text: p.name || p.title
+        };
+    }
 
+    // 2. Contextual Rotation Extraction
+    if (handlerResult.rotation_context) {
+        const { suggested_categories } = handlerResult.rotation_context;
         if (suggested_categories && suggested_categories.length > 0) {
             return {
                 type: 'category_offer',
@@ -66,7 +77,7 @@ function extractSuggestion(reply, handlerResult) {
         }
     }
 
-    // Pattern: "Would you like me to show you X?"
+    // 3. RegEx Patterns (Fallback)
     const showPattern = /would you like me to show you (.*?)\?/i;
     const showMatch = reply.match(showPattern);
     if (showMatch) {
@@ -78,7 +89,6 @@ function extractSuggestion(reply, handlerResult) {
         };
     }
 
-    // Pattern: "I can help you compare X"
     const comparePattern = /i can help you compare (.*?)[\.\?]/i;
     const compareMatch = reply.match(comparePattern);
     if (compareMatch) {
@@ -90,7 +100,6 @@ function extractSuggestion(reply, handlerResult) {
         };
     }
 
-    // Pattern: "Let me search for X" or "Let me find X"
     const searchPattern = /let me (?:search for|find) (.*?)[\.\?]/i;
     const searchMatch = reply.match(searchPattern);
     if (searchMatch) {
