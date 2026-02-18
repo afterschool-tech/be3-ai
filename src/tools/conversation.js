@@ -3,6 +3,8 @@
  * Capabilities related to managing the conversation flow and user experience.
  */
 
+const { CATEGORIES, VENDORS } = require('../context/storeContext');
+
 const conversationTools = {
     'conversation.help': {
         description: 'Provide help and usage instructions to the user. Use this when the user asks for help or what you can do.',
@@ -20,7 +22,6 @@ const conversationTools = {
             reason: { type: 'string', description: 'Reason for requesting human support' }
         },
         handler: async (params, context) => {
-            // In a real system, this would trigger a socket event or DB update
             console.log(`[Conversation] Handover requested: ${params.reason || 'No reason provided'}`);
             return {
                 message: "I've flagged this conversation for a human agent. Someone will review it shortly. In the meantime, is there anything else I can try to help with?",
@@ -33,7 +34,6 @@ const conversationTools = {
         description: 'End the current conversation session.',
         params: {},
         handler: async (params, context) => {
-            // Logic to clear session state could go here
             return {
                 message: "Thanks for chatting! Have a great day. 👋",
                 action: "session_ended"
@@ -55,18 +55,18 @@ const conversationTools = {
             };
         }
     },
+
     'conversation.retry': {
         description: 'Retry the last tool execution. Use this when the user says "Try again", "Retry", or "Repeat".',
         params: {},
         handler: async (params, context, results) => {
-            // This is a special tool as its execution is handled by the orchestrator re-evaluating the turn
-            // OR we can just return a message saying we are retrying.
             return {
                 message: "Retrying your last request...",
                 is_retry: true
             };
         }
     },
+
     'conversation.clarify': {
         description: 'Ask the user for clarification when their intent is ambiguous or unclear. Use this when the INTENT ADVISOR suggests clarification needed.',
         params: {
@@ -81,6 +81,66 @@ const conversationTools = {
                 options: params.options,
                 action: "clarification_requested"
             };
+        }
+    },
+
+    'conversation.getAdvice': {
+        description: 'Provide AI-powered shopping advice, recommendations, or guidance. Use this ONLY when the user clearly needs advice or help choosing between options.',
+        params: {
+            category: { type: 'string', description: 'Category the user needs advice about' },
+            need: { type: 'string', description: 'Specific need or use case (e.g. "gaming", "budget", "a gift")' },
+            query: { type: 'string', description: 'The full advice query from the user' }
+        },
+        handler: async (params, context) => {
+            const { queryAI } = require('../core/aiService');
+            const { category, need, query } = params;
+
+            // Build store context for AI
+            const categoryList = Object.values(CATEGORIES || {})
+                .filter(c => c.total_count > 0)
+                .map(c => `${c.label} (${c.total_count} items)`)
+                .slice(0, 15)
+                .join(', ');
+
+            const vendorList = Object.values(VENDORS || {})
+                .map(v => v.business_name)
+                .slice(0, 10)
+                .join(', ');
+
+            const prompt = `You are a helpful shopping advisor for an e-commerce store.
+The user needs advice: "${query || need || category || 'general shopping advice'}"
+${category ? `Category of interest: ${category}` : ''}
+${need ? `Specific need: ${need}` : ''}
+
+STORE CONTEXT:
+- Available categories: ${categoryList || 'various products'}
+- Vendors: ${vendorList || 'multiple sellers'}
+
+Provide concise, helpful shopping advice (2-3 sentences max). 
+If relevant, suggest what they should search for or what category to browse.
+Be friendly and knowledgeable.`;
+
+            try {
+                const advice = await queryAI([
+                    { role: 'system', content: 'You are a concise, friendly shopping advisor. Keep answers short and actionable.' },
+                    { role: 'user', content: prompt }
+                ], 300, 0.7);
+
+                return {
+                    advice: advice.trim(),
+                    category: category || null,
+                    need: need || null,
+                    suggested_action: category
+                        ? `Would you like me to search for ${category}?`
+                        : 'Would you like me to search for something specific?'
+                };
+            } catch (e) {
+                console.error('[Conversation] AI Advice failed:', e.message);
+                return {
+                    advice: 'I\'d be happy to help! Could you tell me more about what you\'re looking for? For example, the type of product, your budget, or what you\'ll use it for.',
+                    suggested_action: 'Try telling me what category or product type you\'re interested in.'
+                };
+            }
         }
     }
 };

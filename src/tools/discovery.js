@@ -142,7 +142,118 @@ Reply ONLY with the "slug" of the category. No other text.`;
 
             return { message: "No suggestions found." };
         }
+    },
+
+    'discovery.sentinel': {
+        description: '100% deterministic search shadow. Verifies product.search results using string matching. Falls back to category browsing when results are empty or irrelevant. No AI calls.',
+        params: {
+            query: { type: 'string', description: 'The discovery/browse query' },
+            category: { type: 'string', description: 'Category hint (if provided)' }
+        },
+        handler: async (params, context, accumulatedResults = []) => {
+            const { query, category } = params;
+
+            console.log(`[Sentinel-D] Deterministic check for: "${query || category || 'browse'}"`);
+
+            // 1. Find the search result to shadow (if product.search ran before us)
+            const searchCall = accumulatedResults.find(r => r.tool === 'product.search');
+            const searchProducts = searchCall?.result?.products || [];
+
+            // 2. Deterministic Verification (string matching only)
+            let isRelevant = false;
+            if (searchProducts.length > 0 && query) {
+                const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                isRelevant = searchProducts.some(p => {
+                    const name = p.name.toLowerCase();
+                    return queryWords.some(w => name.includes(w)) ||
+                        name.includes(query.toLowerCase());
+                });
+            } else if (searchProducts.length > 0 && !query) {
+                // No query = general browse, results are fine
+                isRelevant = true;
+            }
+
+            if (isRelevant) {
+                console.log(`[Sentinel-D] Results verified as relevant.`);
+                return { status: 'verified', message: 'Search results are relevant.' };
+            }
+
+            // 3. Deterministic Recovery — find best category match
+            console.log(`[Sentinel-D] Entering deterministic recovery for: "${query || category}"`);
+
+            const categories = Object.values(context.CATEGORIES || {})
+                .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'));
+
+            // Score each category by word overlap
+            const searchTerms = (query || category || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+            let bestCategory = null;
+            let bestScore = 0;
+
+            for (const cat of categories) {
+                const catWords = cat.label.toLowerCase().split(/\s+/);
+                const slugWords = (cat.slug || '').split('-');
+                const allCatWords = [...catWords, ...slugWords];
+
+                let score = 0;
+                for (const term of searchTerms) {
+                    for (const cw of allCatWords) {
+                        if (cw.includes(term) || term.includes(cw)) score += 1;
+                    }
+                }
+                // Tie-break by inventory
+                if (score > bestScore || (score === bestScore && cat.total_count > (bestCategory?.total_count || 0))) {
+                    bestScore = score;
+                    bestCategory = cat;
+                }
+            }
+
+            // If no word overlap, pick highest-inventory category
+            if (!bestCategory || bestScore === 0) {
+                bestCategory = categories.sort((a, b) => b.total_count - a.total_count)[0];
+            }
+
+            if (!bestCategory) {
+                return { message: 'No categories available for browsing.' };
+            }
+
+            // 4. Fetch fallback products deterministically
+            try {
+                const result = await callBackendAPI(`/search/products?category=${bestCategory.slug}&per_page=5`);
+                let products = result.data?.products || result.data?.results || [];
+                products = await processProductList(products);
+
+                if (context.sessionId && products.length > 0) {
+                    await stateManager.updateReferenceMap(context.sessionId, products);
+                    await stateManager.setLastSuggestion(context.sessionId, {
+                        type: 'discovery_browse',
+                        intent: 'discovery.sentinel',
+                        params: { category: bestCategory.slug },
+                        text: `Browse ${bestCategory.label}`,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+
+                const reason = searchProducts.length > 0 ? 'irrelevant_results' : 'no_results';
+                return {
+                    message: query
+                        ? `I couldn't find an exact match for "${query}", but here are great options from **${bestCategory.label}**:`
+                        : `Here are products from our **${bestCategory.label}** collection:`,
+                    products,
+                    target_category: bestCategory.label,
+                    suggestion_type: 'discovery',
+                    recovery_reason: reason
+                };
+            } catch (err) {
+                console.error(`[Sentinel-D] Fallback fetch failed: ${err.message}`);
+                return {
+                    message: `Browse our **${bestCategory.label}** collection with ${bestCategory.total_count} items!`,
+                    target_category: bestCategory.label,
+                    suggestion_type: 'category_hint'
+                };
+            }
+        }
     }
 };
 
 module.exports = discoveryTools;
+

@@ -1,7 +1,11 @@
 const path = require('path');
+const fs = require('fs');
 const SemanticMatcher = require('../semanticLab/utils/SemanticMatcher');
 
-const BENCH_FILE = path.join(__dirname, '../semanticLab/intents/intent_bench.json');
+// Prefer modular joint_bench.json; fallback to monolith intent_bench.json
+const JOINT_BENCH = path.join(__dirname, '../semanticLab/intents/joint_bench.json');
+const LEGACY_BENCH = path.join(__dirname, '../semanticLab/intents/intent_bench.json');
+const BENCH_FILE = fs.existsSync(JOINT_BENCH) ? JOINT_BENCH : LEGACY_BENCH;
 const matcher = new SemanticMatcher(BENCH_FILE, 'Intents');
 const semanticCache = new Map();
 const MAX_CACHE_SIZE = 500;
@@ -65,4 +69,28 @@ function scoreSemantically(intentWinners, cleanedText, extractedParams = {}) {
     return result;
 }
 
-module.exports = { scoreSemantically };
+/**
+ * Exported tool for Stage 4: Candidate Detection
+ * Allows the detector to find potential intents even if keywords don't match.
+ * @param {string} text - The cleaned user input.
+ * @returns {Array} - List of { intentName, score }
+ */
+function discoverCandidates(text) {
+    if (!matcher.isLoaded) return [];
+
+    // Basic masking for discovery (no extracted params yet, just guess based on CAPS or common nouns)
+    const matches = matcher.findMatches(text);
+
+    // Return any match that has a significant signal
+    return matches
+        .filter(m => m.similarity > 0.4 || m.vectorScore > 0.05)
+        .map(m => ({
+            intentName: m.id,
+            score: m.boost / 2.0 // Lower weight for discovery phase
+        }));
+}
+
+module.exports = {
+    scoreSemantically,
+    discoverCandidates
+};

@@ -12,15 +12,9 @@ module.exports = {
 
     synonyms: [
         'show me', 'let me see', 'i want to see', 'looking for',
-        'do you have', 'what do you have', 'any', 'got any', 'do you sell',
-        'help me find', 'where can i find', 'tell me about',
-        'details', 'info', 'information', 'specs', 'features',
-        'more about', 'check out', 'describe',
-        'buy', 'purchase', 'get', 'want to buy', 'want to get',
-        'i want to buy', 'i want to get', 'i want to purchase',
-        'show', 'display', 'see', 'view',
-        'i want to', "i'll take", 'grab', 'cop', 'gimme', 'hook me up with',
-        'let me get', 'let me buy', 'need', 'want', 'buy'
+        'do you have', 'what do you have', 'any', 'got any',
+        'help me find', 'where can i find',
+        'display', 'view', 'buy', 'want', 'get', 'need'
     ],
 
     parameters: {

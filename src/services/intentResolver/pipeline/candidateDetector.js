@@ -86,6 +86,33 @@ function detectCandidates(statement) {
         }
     }
 
+    // Phase 4.5: Semantic Candidate Discovery (The "Language Intuition" Layer)
+    // If we have few or no high-quality keyword candidates (score < 3), ask the semantic bench
+    // to suggest intents based on language similarity.
+    const bestScore = candidates.length > 0 ? candidates[0].keywordScore : 0;
+    if (bestScore < 3.0) {
+        try {
+            const semanticScorer = require('./semanticScorer');
+            if (semanticScorer && semanticScorer.discoverCandidates) {
+                const semanticCandidates = semanticScorer.discoverCandidates(text);
+                for (const sc of semanticCandidates) {
+                    // Only add if not already a candidate (or if keywordScore is very low)
+                    const existing = candidates.find(c => c.intentName === sc.intentName);
+                    if (!existing) {
+                        candidates.push({
+                            intentName: sc.intentName,
+                            matchedKeywords: ['semantic'],
+                            keywordScore: sc.score, // Use raw semantic score as initial bias
+                            invertedFrom: null
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            // Silently fail if semanticScorer is unavailable or bench isn't loaded
+        }
+    }
+
     // Phase 4: Orphan Product Fallback
     // If no candidates found, and text contains non-stop-words, default to product_search
     if (candidates.length === 0 && text.trim().length > 0) {

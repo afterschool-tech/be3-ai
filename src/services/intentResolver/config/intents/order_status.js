@@ -7,10 +7,11 @@ module.exports = {
     name: 'order_status',
 
     keywords: [
-        'order', 'track', 'status', 'tracking', 'delivery'
+        'track', 'status', 'tracking'
     ],
 
     synonyms: [
+        'order', 'delivery',
         'where is my order', "where's my order", 'track my order',
         'order status', 'order tracking', 'shipment',
         'shipped', 'arrived', 'when will', 'eta',

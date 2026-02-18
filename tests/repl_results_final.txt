@@ -1,0 +1,70 @@
+
+🚀 [V2 REPL Simulation] Running 16 creative test cases...
+
+🗣️  User: "bump my macbook count to 3" (Verb 'bump' + 'count' synonym)
+  ✅ WINNER: update_cart_quantity (Score: 13.00, Tool: cart.updateQuantity)
+     PARAMS: {"products":["macbook"],"quantity":3}
+   ----------------------------------------
+🗣️  User: "finished shopping take me to pay" (Creative checkout phrasing)
+  ✅ WINNER: start_checkout (Score: 11.00, Tool: order.checkout)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "explore the summer collection" (Verb 'explore' + collection)
+  ✅ WINNER: browse_collection (Score: 12.00, Tool: collection.getProducts)
+     PARAMS: {"collection_slug":"summer-collection"}
+   ----------------------------------------
+🗣️  User: "i don't know how to use this help me" (Help request)
+  ✅ WINNER: get_help (Score: 12.00, Tool: conversation.help)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "stop the session we are done" (End session)
+  ✅ WINNER: end_conversation (Score: 11.00, Tool: conversation.end)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "the service was great thanks" (Feedback/thanks)
+  ✅ WINNER: give_feedback (Score: 8.00, Tool: conversation.feedback)
+     PARAMS: {"rating":5}
+   ----------------------------------------
+🗣️  User: "what should i buy for a photographer?" (Advice request (AI Tool))
+  ✅ WINNER: get_advice (Score: 18.00, Tool: conversation.getAdvice)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "show my previous purchases" (List orders)
+  ✅ WINNER: list_orders (Score: 16.00, Tool: order.list)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "kill my order #4567" (Cancel order (verb 'kill'))
+  ✅ WINNER: cancel_order (Score: 11.50, Tool: order.cancel)
+     PARAMS: {"order_number":"4567"}
+   ----------------------------------------
+🗣️  User: "i want it delivered to my office" (Set delivery)
+  ✅ WINNER: set_delivery (Score: 16.00, Tool: order.setDelivery)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "everything looks good finalize the order" (Confirm order)
+  ✅ WINNER: confirm_order (Score: 11.00, Tool: order.confirm)
+     PARAMS: {}
+   ----------------------------------------
+🗣️  User: "what else does Samsung sell?" (Vendor products)
+  ✅ WINNER: vendor_products (Score: 9.68, Tool: vendor.getProducts)
+     PARAMS: {"vendor":"Samsung"}
+   ----------------------------------------
+🗣️  User: "tell me more about the Apple store info" (Vendor info)
+  ✅ WINNER: vendor_info (Score: 21.50, Tool: vendor.getInfo)
+     PARAMS: {"vendor":"Apple"}
+   ----------------------------------------
+🗣️  User: "how can i talk to Nike?" (Vendor contact)
+  ✅ WINNER: vendor_contact (Score: 8.30, Tool: vendor.getContactLink)
+     PARAMS: {"vendor":"Nike"}
+   ----------------------------------------
+🗣️  User: "which company makes the Galaxy S21?" (Vendor identity)
+  ✅ WINNER: vendor_identity (Score: 16.83, Tool: vendor.checkIdentity)
+     PARAMS: {"product_name":"which galaxy s21","vendor":"Samsung"}
+   ----------------------------------------
+🗣️  User: "surpise me with something new" (Discovery sentinel / browse)
+  ✅ WINNER: discovery_sentinel (Score: 16.33, Tool: discovery.sentinel)
+     PARAMS: {"category":"577c0281-bccb-4a16-9692-b73714c77299"}
+   ----------------------------------------
+
+📊 Simulation complete: 16/16 creative cases resolved correctly.
+✨ Perfect resolution for all new V2 intents!

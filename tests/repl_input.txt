@@ -1,0 +1,5 @@
+:verbose
+iphone
+add iphone to cart
+what else does samsung sell?
+:quit

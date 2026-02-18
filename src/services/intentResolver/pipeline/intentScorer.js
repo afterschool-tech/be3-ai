@@ -1,18 +1,21 @@
 /**
- * Pipeline Stage 7: Intent Scorer
- * Dynamic shared-parameter weighting and scoring.
+ * Pipeline Stage 7: Intent Scorer — Precision Framework V5
  * 
- * For each candidate intent:
- *   For each non-null parameter that belongs to this intent:
- *     weight = 1.0 / (number of candidate intents that also use this param)
- *   intent_score = sum(param_weights) + (keywordScore * 0.5)
- * 
- * Imports: intentRegistry from config
- * Inline data: NONE
+ * Scoring model:
+ *   1. Shared-parameter weighting (existing)
+ *   2. Verb–Noun weighting: keywords (verbs) get 5x, synonyms (nouns) get 1x
+ *   3. Data Contract Validation: -25.0 penalty for missing required parameters
+ *   4. Contextual safety guards (junk queries, navigational terms)
+ *   5. Semantic scoring boost
  */
 
 const intentRegistry = require('../config/intentRegistry');
 const semanticScorer = require('./semanticScorer');
+
+// Weights
+const KEYWORD_MULTIPLIER = 5.0;   // Action verbs (keywords) are heavily weighted
+const SYNONYM_MULTIPLIER = 1.0;   // Nouns/phrases (synonyms) are baseline
+const CONTRACT_PENALTY = -12.0;   // Softened from -25.0 to allow recovery via semantic boost
 
 /**
  * Score candidate intents based on extracted parameters and keyword matches.
@@ -29,7 +32,6 @@ function scoreIntents(candidates, extractedParams, state = {}, cleanedText = nul
         return null;
     }
 
-    // Multiple candidates: calculate shared-parameter weighting
     let scored = candidates.map(candidate => {
         const intent = intentRegistry.get(candidate.intentName);
         if (!intent) return null;
@@ -37,10 +39,10 @@ function scoreIntents(candidates, extractedParams, state = {}, cleanedText = nul
         const relevantParams = filterParamsForIntent(extractedParams, intent);
         let paramWeightSum = 0;
 
+        // --- SHARED-PARAMETER WEIGHTING ---
         for (const [paramName, value] of Object.entries(relevantParams)) {
             if (value === null || value === undefined) continue;
 
-            // Count how many candidate intents use this parameter
             const sharedCount = candidates.filter(c => {
                 const cIntent = intentRegistry.get(c.intentName);
                 return cIntent && cIntent.parameters && cIntent.parameters[paramName];
@@ -50,16 +52,44 @@ function scoreIntents(candidates, extractedParams, state = {}, cleanedText = nul
             paramWeightSum += weight;
         }
 
-        let totalScore = paramWeightSum + (candidate.keywordScore * 0.5);
+        // --- VERB–NOUN WEIGHTING ---
+        // Keywords (action verbs like "add", "remove", "search") get 5x multiplier
+        // Synonyms (noun phrases like "shopping bag", "my basket") get 1x
+        const keywordSet = new Set((intent.keywords || []).map(k => k.toLowerCase()));
+        let verbNounScore = 0;
 
-        // --- CONTEXTUAL BIAS (Phase 20) ---
-        // Address "buy sugar" (search) vs "buy it" (cart)
+        for (const matchedKw of (candidate.matchedKeywords || [])) {
+            const kw = matchedKw.toLowerCase();
+            if (keywordSet.has(kw)) {
+                verbNounScore += KEYWORD_MULTIPLIER;
+            } else {
+                verbNounScore += SYNONYM_MULTIPLIER;
+            }
+        }
+
+        let totalScore = paramWeightSum + verbNounScore;
+
+        // --- DATA CONTRACT VALIDATION ---
+        // Automatically penalize intents that are missing required parameters
+        if (intent.parameters) {
+            for (const [paramName, paramConfig] of Object.entries(intent.parameters)) {
+                if (paramConfig.required) {
+                    const hasValue = extractedParams[paramName] !== null &&
+                        extractedParams[paramName] !== undefined &&
+                        extractedParams[paramName] !== '';
+                    if (!hasValue) {
+                        totalScore += CONTRACT_PENALTY;
+                        console.log(`[IntentScorer] Contract Penalty: ${candidate.intentName} missing required "${paramName}" → ${CONTRACT_PENALTY}`);
+                    }
+                }
+            }
+        }
+
+        // --- CONTEXTUAL SAFETY GUARDS ---
         const { resolveIdToName } = require('./contextResolver');
         const currentlyViewingId = state.product_context?.currently_viewing;
         const currentlyViewingName = currentlyViewingId ? resolveIdToName(currentlyViewingId, state)?.toLowerCase() : null;
 
-        // Extract product name for comparison. 
-        // Can come from 'products' (list) or 'product_name' (string)
         let extractedProduct = null;
         if (extractedParams.products && Array.isArray(extractedParams.products) && extractedParams.products.length > 0) {
             extractedProduct = extractedParams.products[0].toLowerCase();
@@ -67,50 +97,37 @@ function scoreIntents(candidates, extractedParams, state = {}, cleanedText = nul
             extractedProduct = extractedParams.product_name.toLowerCase();
         }
 
+        // Junk Query Guard: penalize search when query is a navigational term
         if (candidate.intentName === 'product_search') {
-            // Bias towards search if:
-            // 1. No product is mentioned (browsing)
-            // 2. OR if we're NOT currently viewing anything (new intent)
-            // 3. OR if it's a DIFFERENT product than what we're viewing
-            if (!extractedProduct || !currentlyViewingName || extractedProduct !== currentlyViewingName) {
-                totalScore += 2.5; // Much stronger bias for search (replicated "buy" success)
-            }
-
-            // --- JUNK QUERY PENALTY ---
-            // If the query is just a stopword or another intent's keyword (like "cart"), aggressively penalize search
             const junkQueries = [
-                'my', 'me', 'the', 'some', 'any', 'a', 'an', 'it', 'this', 'that',
-                'cart', 'basket', 'bag', 'checkout', 'order', 'status'
+                'buy it', 'purchase it', 'order it',
+                'i want to buy', 'i want to get', 'i want to order',
+                'let me get', 'let me buy', 'need', 'want', 'buy', 'grab', 'cop',
+                'checkout', 'order', 'status'
             ];
             if (extractedProduct && junkQueries.includes(extractedProduct)) {
-                totalScore -= 5.0; // Knock it out
+                totalScore -= 5.0;
             }
-        } else if (candidate.intentName === 'view_cart' || candidate.intentName === 'start_checkout' || candidate.intentName === 'check_order_status') {
-            // Navigational Boost: These are usually direct commands with keywords
-            if (candidate.matchedKeywords.length > 0) {
-                totalScore += 2.0; // Stronger boost
-            }
-        } else if (candidate.intentName === 'add_to_cart') {
-            // Bias towards cart ONLY if product MATCHES or if it was a resolved pronoun
-            if (extractedProduct && currentlyViewingName && extractedProduct === currentlyViewingName) {
-                totalScore += 1.0;
-            }
+        }
 
-            // --- WEAK DESIRE PENALTY ---
-            // If triggered by "i want", "i need", etc. WITHOUT context, penalize for cart
-            const weakSynonyms = require('../config/weakSynonyms');
-            const weakSet = new Set(weakSynonyms.map(s => s.toLowerCase()));
-            const isWeakDesire = candidate.matchedKeywords.some(kw => weakSet.has(kw.toLowerCase()));
-
-            if (isWeakDesire && (!currentlyViewingName || extractedProduct !== currentlyViewingName)) {
-                totalScore -= 2.0; // Replicate "i want to buy" success by pushing towards search
-            }
-
-            // --- JUNK PRODUCT PENALTY ---
-            // If we're adding "cart" to cart, it's almost certainly a misinterpretation of "view cart"
+        // Junk Product Guard: penalize cart actions when product is a navigational term
+        if (candidate.intentName === 'add_to_cart') {
             const navigationalTerms = ['cart', 'basket', 'bag', 'it', 'this', 'that', 'my'];
             if (extractedProduct && navigationalTerms.includes(extractedProduct)) {
-                totalScore -= 5.0; // Knock it out
+                totalScore -= 5.0;
+            }
+
+            // Weak Desire Penalty (e.g. "i want to buy" without context → search)
+            try {
+                const weakSynonyms = require('../config/weakSynonyms');
+                const weakSet = new Set(weakSynonyms.map(s => s.toLowerCase()));
+                const isWeakDesire = candidate.matchedKeywords.some(kw => weakSet.has(kw.toLowerCase()));
+
+                if (isWeakDesire && (!currentlyViewingName || extractedProduct !== currentlyViewingName)) {
+                    totalScore -= 2.0;
+                }
+            } catch (e) {
+                // weakSynonyms config may not exist
             }
         }
 
@@ -123,12 +140,12 @@ function scoreIntents(candidates, extractedParams, state = {}, cleanedText = nul
         };
     }).filter(Boolean);
 
-    // --- SEMANTIC SCOURING ---
+    // --- SEMANTIC SCORING ---
     if (cleanedText) {
         scored = semanticScorer.scoreSemantically(scored, cleanedText, extractedParams);
     }
 
-    // Sort by score descending, tie-break by keyword score
+    // Sort by score descending, tie-break by keyword match count
     scored.sort((a, b) => {
         if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
         return b.matchedKeywords.length - a.matchedKeywords.length;
