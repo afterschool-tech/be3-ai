@@ -54,6 +54,11 @@ function cleanQuery(text) {
     doc.conjunctions().remove();
     doc.prepositions().remove();
     doc.pronouns().remove();
+    doc.match('#Modal').remove(); // Removes "can", "could", "should", etc.
+
+    // Remove specific navigation/action verbs that are noise for search
+    const actionNoise = ['get', 'show', 'find', 'view', 'search', 'give', 'want', 'need', 'buy'];
+    actionNoise.forEach(v => doc.match(v).remove());
 
     // Remove social greetings
     const greetings = ['hello', 'hi', 'hey', 'yo', 'sup', 'please', 'thanks', 'thank you'];

@@ -11,12 +11,12 @@ module.exports = {
     ],
 
     synonyms: [
-        "what's in my cart", 'show cart', 'show my cart',
-        'view cart', 'my cart', 'cart contents',
+        "what's in my cart", 'show cart', 'show my cart', 'show me my cart',
+        'view cart', 'my cart', 'cart contents', 'let me see my cart',
         'shopping bag', 'shopping basket', 'shopping cart',
-        'what did i add', 'what have i added',
-        'see my cart', 'open cart', 'check cart',
-        'cart summary', 'items in cart', 'items in my cart'
+        'what did i add', 'what have i added', 'tell me what i got',
+        'see my cart', 'open cart', 'check cart', 'can i see my cart',
+        'cart summary', 'items in cart', 'items in my cart', 'view my basket'
     ],
 
     parameters: {},

@@ -229,16 +229,16 @@ class StateManager {
     }
 
     /**
-     * Contextual Pruning: Clear ephemeral state like references when intent shifts
+     * Contextual Pruning: Clear ephemeral state like ordinals/plurals when intent shifts
+     * Now less aggressive: Slugs are preserved unless manually cleared.
      */
     async pruneState(userId, intent) {
         const isNewSearch = intent === 'new search' || intent.includes('category');
         if (isNewSearch) {
-            console.log(`[StateManager] ✂️ Pruning ephemeral state for new search intent: ${intent}`);
+            console.log(`[StateManager] ✂️ Pruning search context for intent: ${intent}`);
             const state = await this.getState(userId);
+            // We only prune current context, not the whole map (preserving slugs)
             await this.updateState(userId, {
-                reference_map: {},
-                ordinal_list: [],
                 product_context: {
                     ...state.product_context,
                     currently_viewing: null
@@ -484,114 +484,132 @@ class StateManager {
     }
 
     /**
-     * Update reference map from product list
+     * Intelligent Reference Mapping:
+     * - Accumulates single product results (fills empty slots for first, second...).
+     * - Overwrites context for sets (>1 results).
+     * - Preserves product slugs (name-based refs) cumulatively.
+     * - Additive plurals: 'them'/'all' append single products, overwrite on sets.
      */
     async updateReferenceMap(userId, products) {
-        if (!products || products.length === 0) {
-            return;
-        }
+        if (!products || products.length === 0) return;
 
         const state = await this.getState(userId);
-        const referenceMap = {};
-        const ordinalList = [];
+        const referenceMap = state.reference_map || {};
+        let ordinalList = [...(state.ordinal_list || [])];
+        const isSingleProduct = products.length === 1;
 
-        // Debug: Log first product structure
-        console.log(`[StateManager] Updating reference map. First product:`, JSON.stringify(products[0], null, 2));
+        const slotKeys = ['the_first_one', 'the_second_one', 'the_third_one', 'first', 'second', 'third'];
+        const ordinalNames = ['first', 'second', 'third', 'fourth', 'fifth'];
 
-        // Map ordinal references
-        products.forEach((product, index) => {
-            // Use handle if available, otherwise id
-            const productIdentifier = product.handle || product.id || product.product_id;
+        if (!isSingleProduct) {
+            // --- SET OVERWRITE RULE ---
+            console.log(`[StateManager] 🔄 Overwriting context with set of ${products.length} items`);
 
-            if (!productIdentifier) {
-                console.warn(`[StateManager] Product at index ${index} has no identifier:`, product);
-                return;
-            }
+            // Clear positional ordinals
+            slotKeys.forEach(k => delete referenceMap[k]);
+            ordinalList = [];
 
-            ordinalList.push(productIdentifier);
+            products.forEach((product, idx) => {
+                const id = product.handle || product.id || product.product_id;
+                ordinalList.push(id);
 
-            // Map positions: "the first one", "the second one"
-            if (index === 0) referenceMap.the_first_one = productIdentifier;
-            if (index === 1) referenceMap.the_second_one = productIdentifier;
-            if (index === 2) referenceMap.the_third_one = productIdentifier;
-            if (index === 0) referenceMap.first = productIdentifier;
-            if (index === 1) referenceMap.second = productIdentifier;
-        });
+                // Map first few slots
+                if (idx === 0) { referenceMap.the_first_one = id; referenceMap.first = id; }
+                if (idx === 1) { referenceMap.the_second_one = id; referenceMap.second = id; }
+                if (idx === 2) { referenceMap.the_third_one = id; referenceMap.third = id; }
+            });
 
-        // Map "this" and "that"
-        if (products.length > 0) {
-            const firstId = products[0].handle || products[0].id || products[0].product_id;
-            const secondId = products.length > 1 ? (products[1].handle || products[1].id || products[1].product_id) : firstId;
-
-            referenceMap.this = firstId;
-            referenceMap.that = secondId;
-
-            // Singular pronoun references
-            referenceMap.it = firstId;
-            referenceMap.the_one = firstId;
-            referenceMap.that_one = firstId;
-            referenceMap.this_one = firstId;
-
-            // Group/Plural references
-            referenceMap.them = firstId;
+            // Map plurals to full set
+            referenceMap.them = ordinalList.join(',');
+            referenceMap.all = ordinalList.join(',');
             referenceMap.the_products = ordinalList.join(',');
             referenceMap.all_of_them = ordinalList.join(',');
+
+            // Map singulars to first
+            referenceMap.it = ordinalList[0];
+            referenceMap.this = ordinalList[0];
+            referenceMap.that = ordinalList[0];
+            referenceMap.the_one = ordinalList[0];
+
+            // Re-calc Relational references for the set
+            const prices = products.map(p => p.price).filter(p => !isNaN(p)).sort((a, b) => a - b);
+            if (prices.length > 0) {
+                const cheapest = products.find(p => p.price === prices[0]);
+                const expensive = products.find(p => p.price === prices[prices.length - 1]);
+                if (cheapest) referenceMap.the_cheapest = cheapest.handle || cheapest.id || cheapest.product_id;
+                if (expensive) referenceMap.the_most_expensive = expensive.handle || expensive.id || expensive.product_id;
+            }
+        } else {
+            // --- ACCUMULATION RULE (Single Product) ---
+            const product = products[0];
+            const id = product.handle || product.id || product.product_id;
+            console.log(`[StateManager] ➕ Accumulating single product: ${id}`);
+
+            if (!ordinalList.includes(id)) {
+                ordinalList.push(id);
+            }
+
+            // Fill first empty slot
+            for (let i = 0; i < ordinalNames.length; i++) {
+                const name = ordinalNames[i];
+                const the_name = `the_${name}_one`;
+                if (!referenceMap[name] || referenceMap[name] === 'null') {
+                    referenceMap[name] = id;
+                    referenceMap[the_name] = id;
+                    break;
+                }
+            }
+
+            // Additive Plurals
+            let currentPlural = referenceMap.all ? referenceMap.all.split(',') : [];
+            if (!currentPlural.includes(id)) {
+                currentPlural.push(id);
+                const pluralStr = currentPlural.join(',');
+                referenceMap.them = pluralStr;
+                referenceMap.all = pluralStr;
+                referenceMap.the_products = pluralStr;
+                referenceMap.all_of_them = pluralStr;
+            }
+
+            // Singular Overwrite (Always points to latest)
+            referenceMap.it = id;
+            referenceMap.this = id;
+            referenceMap.that = id;
+            referenceMap.the_one = id;
         }
 
-        // Map brand, vendor, and full name references
+        // --- ALWAYS: CUMULATIVE SLUGS ---
         products.forEach(product => {
-            const productIdentifier = product.handle || product.id || product.product_id;
-
+            const id = product.handle || product.id || product.product_id;
             if (product.name) {
-                const nameLower = product.name.toLowerCase();
-                const nameSlug = nameLower.replace(/\s+/g, '_');
-                const nameIdentifier = nameLower.replace(/[^a-z0-9]/g, '_');
+                const nameSlug = product.name.toLowerCase().replace(/\s+/g, '_');
+                const nameIdentifier = product.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                referenceMap[nameSlug] = id;
+                if (nameIdentifier !== nameSlug) referenceMap[nameIdentifier] = id;
 
-                // Add full name as reference
-                referenceMap[nameSlug] = productIdentifier;
-                if (nameIdentifier !== nameSlug) {
-                    referenceMap[nameIdentifier] = productIdentifier;
-                }
-
-                // VENDOR / BRAND RESOLUTION (User Request: Expansion)
-                const vendor = (product.vendor || product.metadata?.vendor || product.tags?.[0] || '').toLowerCase().trim();
-                const brands = ['samsung', 'apple', 'dell', 'hp', 'lenovo', 'asus', 'sony', 'lg', 'infinix', 'tecno'];
+                // Vendor/Brand Slugs
+                const vendor = (product.vendor || product.metadata?.vendor || '').toLowerCase().trim();
+                const brands = ['samsung', 'apple', 'iphone', 'macbook', 'dell', 'hp', 'lenovo', 'asus', 'sony', 'lg', 'infinix', 'tecno'];
 
                 if (vendor) {
                     const vendorSlug = vendor.replace(/\s+/g, '_');
-                    referenceMap[`from_${vendorSlug}`] = productIdentifier;
-                    referenceMap[`the_${vendorSlug}_one`] = productIdentifier;
-                    referenceMap[vendorSlug] = productIdentifier;
+                    referenceMap[vendorSlug] = id;
+                    referenceMap[`the_${vendorSlug}_one`] = id;
                 }
-
                 brands.forEach(brand => {
-                    if (nameLower.includes(brand)) {
-                        referenceMap[`the_${brand}`] = productIdentifier;
-                        referenceMap[`the_${brand}_one`] = productIdentifier;
+                    if (product.name.toLowerCase().includes(brand)) {
+                        referenceMap[brand] = id;
+                        referenceMap[`the_${brand}`] = id;
+                        referenceMap[`the_${brand}_one`] = id;
                     }
                 });
-
-                // Price-based references
-                if (product.price) {
-                    const prices = products.map(p => p.price).filter(p => !isNaN(p)).sort((a, b) => a - b);
-                    if (product.price === prices[0]) {
-                        referenceMap.the_cheap_one = productIdentifier;
-                        referenceMap.the_cheapest = productIdentifier;
-                    }
-                    if (product.price === prices[prices.length - 1]) {
-                        referenceMap.the_expensive_one = productIdentifier;
-                        referenceMap.the_most_expensive = productIdentifier;
-                    }
-                }
             }
         });
 
         state.reference_map = referenceMap;
         state.ordinal_list = ordinalList;
-
         await this.setState(userId, state);
-        console.log(`[StateManager] Updated reference map with ${products.length} products`);
-        console.log(`[StateManager] Reference map keys:`, Object.keys(referenceMap));
+        console.log(`[StateManager] Reference map updated. Keys: ${Object.keys(referenceMap).length}, Items in list: ${ordinalList.length}`);
     }
 
     /**

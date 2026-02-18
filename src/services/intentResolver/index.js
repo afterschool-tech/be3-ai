@@ -25,8 +25,10 @@ const parameterExtractor = require('./pipeline/parameterExtractor');
 const parameterBleeder = require('./pipeline/parameterBleeder');
 const parameterNormalizer = require('./pipeline/parameterNormalizer');
 const intentScorer = require('./pipeline/intentScorer');
+const intentPorter = require('./pipeline/intentPorter');
 const toolMapper = require('./pipeline/toolMapper');
 const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
+const { logDebug } = require('../../utils/debugLogger');
 
 /**
  * Main entry point: resolve user message into tool calls.
@@ -34,42 +36,85 @@ const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
 async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Stage 1: Fuzzy correction (with Guards)
     const afterFuzzy = fuzzyMatcher.correctText(userMessage, storeContext);
+    logDebug('PIPELINE:STAGE1_FUZZY', {
+        original: userMessage,
+        corrected: afterFuzzy,
+        changed: userMessage !== afterFuzzy
+    });
 
     // Stage 2: Context resolution (pronouns, ordinals, brand refs)
     const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(afterFuzzy, state);
+    logDebug('PIPELINE:STAGE2_CONTEXT', {
+        input: afterFuzzy,
+        resolved: afterContext,
+        resolutions: resolutions,
+        changed: afterFuzzy !== afterContext
+    });
 
     // Stage 3: Preprocess (normalize, negate, split)
     const { statements, isMultiIntent } = preprocessor.preprocess(afterContext);
+    logDebug('PIPELINE:STAGE3_PREPROCESS', {
+        input: afterContext,
+        statementCount: statements.length,
+        isMultiIntent,
+        statements: statements.map(s => ({ text: s.text, negated: s.negated }))
+    });
 
     const resolvedStatements = [];
 
-    for (const statement of statements) {
-        // --- NLP CLEANING FOR DETECTION ---
-        // Strip adverbs and fluff so "seriously need" -> "need"
+    for (let i = 0; i < statements.length; i++) {
+        const statement = statements[i];
         const cleanedText = cleanText(statement.text);
 
+        logDebug(`PIPELINE:STAGE4_CANDIDATES [Statement ${i + 1}/${statements.length}]`, {
+            originalText: statement.text,
+            cleanedText,
+            negated: statement.negated
+        });
+
         // Stage 4: Candidate detection (Deterministic)
-        // Pass the full statement object but with cleaned text for detection
         const candidates = candidateDetector.detectCandidates({
             ...statement,
             text: cleanedText
         });
 
+        logDebug(`PIPELINE:STAGE4_CANDIDATES_RESULT [Statement ${i + 1}]`, {
+            candidateCount: candidates.length,
+            candidates: candidates.map(c => ({
+                intent: c.intentName,
+                score: c.score,
+                matchedKeywords: c.matchedKeywords
+            }))
+        });
+
         if (candidates.length === 0) {
-            // Rule 8 (Implicit): If no deterministic match, the AI fallback in paramExtractor might help
-            // but we need at least a potential candidate. 
-            // We'll proceed with a "generic" candidate if the message looks like a request.
+            logDebug(`PIPELINE:STAGE4_NO_MATCH [Statement ${i + 1}]`, {
+                text: cleanedText,
+                action: 'Skipping — no candidates detected'
+            });
             continue;
         }
 
         // Stage 5: Parameter extraction (AI + Deterministic)
-        // Note: AI uses the ORIGINAL statement text for full context
         const extractedParams = await parameterExtractor.extractParameters(
-            statement.text, candidates, aiQueryFn
+            statement.text, candidates, aiQueryFn, storeContext, resolutions
         );
+        logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
+            text: statement.text,
+            aiUsed: !!aiQueryFn,
+            extractedParams
+        });
 
-        // Stage 7: Score and pick winner
-        const winner = intentScorer.scoreIntents(candidates, extractedParams, state);
+        // Stage 7: Score and pick winner (with Semantic Boosting)
+        const winner = intentScorer.scoreIntents(candidates, extractedParams, state, cleanedText);
+        logDebug(`PIPELINE:STAGE7_SCORING [Statement ${i + 1}]`, {
+            winner: winner ? {
+                intent: winner.intentName,
+                score: winner.score,
+                parameters: winner.parameters,
+                matchedKeywords: winner.matchedKeywords
+            } : null
+        });
 
         if (winner) {
             resolvedStatements.push({
@@ -85,6 +130,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
     // --- RULE 8: CLARIFICATION FALLBACK ---
     if (resolvedStatements.length === 0 && userMessage.length > 3) {
+        logDebug('PIPELINE:RULE8_FALLBACK', {
+            reason: 'No statements resolved to a valid intent',
+            userMessage,
+            action: 'Returning fallback_unknown + conversation.clarify'
+        });
         return {
             intents: [{ intentName: 'fallback_unknown', score: 0, parameters: {} }],
             tools: [{ tool: 'conversation.clarify', params: { query: userMessage }, reason: 'Rule 8: Unknown Intent' }],
@@ -93,11 +143,25 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         };
     }
 
+    // Stage 7.5: Intent Porting (Dynamic Buy-vs-Search)
+    const portedStatements = intentPorter.portIntents(resolvedStatements, state);
+    logDebug('PIPELINE:STAGE7.5_PORTING', {
+        before: resolvedStatements.map(s => s.intentName),
+        after: portedStatements.map(s => s.intentName)
+    });
+
     // Stage 6: Cross-intent parameter bleeding
-    const bledStatements = parameterBleeder.bleedParameters(resolvedStatements);
+    const bledStatements = parameterBleeder.bleedParameters(portedStatements);
+    logDebug('PIPELINE:STAGE6_BLEEDING', {
+        before: portedStatements.map(s => ({ intent: s.intentName, params: s.parameters })),
+        after: bledStatements.map(s => ({ intent: s.intentName, params: s.parameters, bledParams: s.bledParams }))
+    });
 
     // Stage 6.5: Parameter Normalization
     const normalizedStatements = parameterNormalizer.normalizeParameters(bledStatements, storeContext);
+    logDebug('PIPELINE:STAGE6.5_NORMALIZATION', {
+        normalized: normalizedStatements.map(s => ({ intent: s.intentName, params: s.parameters }))
+    });
 
     // Build final intents array
     const intents = normalizedStatements.map(stmt => ({
@@ -114,6 +178,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         intentName: i.intentName,
         parameters: i.parameters || {}
     })));
+
+    logDebug('PIPELINE:STAGE8_TOOL_MAPPING', {
+        intents: intents.map(i => ({ intent: i.intentName, score: i.score, params: i.parameters })),
+        tools: tools.map(t => ({ tool: t.tool, params: t.params, reason: t.reason }))
+    });
 
     return {
         intents,

@@ -1,3 +1,9 @@
+console.log('💎 REPL ID: ALPHA-9-SEC');
+const path = require('path');
+const fs = require('fs');
+const LOG_FILE = path.join(__dirname, '../debug_trace.log');
+fs.writeFileSync(LOG_FILE, `=== START SESSION ${new Date().toISOString()} ===\n`);
+
 const readline = require('readline');
 const { resolveAndMap } = require('../src/services/intentResolver');
 const stateManager = require('../src/state/stateManager');
@@ -24,7 +30,7 @@ function cleanMessageForExtraction(text) {
 
     // 2. Manual filler list for specific desire verbs and noise
     const fillers = [
-        'need', 'want', 'buy', 'purchase', 'get', 'order', 'show', 'view', 'see',
+        'need', 'want', 'buy', 'purchase', 'get', 'order', 'show', 'view', 'see', 'can',
         'you', 'your', 'me', 'my', 'i', 'the', 'a', 'an', 'some', 'any',
         'love', 'like', 'hate', 'really', 'seriously', 'actually', 'just',
         'please', 'thanks', 'thank you', 'how', 'what', 'where', 'when'
@@ -51,14 +57,13 @@ async function mockAiQuery(messages) {
         'iphone 12', 'iphone 14', 'iphone 13', 'iphone xs max',
         'galaxy s23', 'galaxy s24', 'infinix hot 30 i', 'macbook pro',
         'samsung a54', 'tecno spark 10', 'xiaomi redmi note 12',
-        'surround sound headset'
+        'surround sound headset', 'iphone6', 'infinix hot 30', 'sugar'
     ];
 
     // Check for exact known product phrases first
     for (const product of knownProducts) {
         if (text.includes(product)) {
             products.push(product);
-            break;
         }
     }
 

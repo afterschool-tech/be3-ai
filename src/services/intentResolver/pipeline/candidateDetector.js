@@ -86,6 +86,22 @@ function detectCandidates(statement) {
         }
     }
 
+    // Phase 4: Orphan Product Fallback
+    // If no candidates found, and text contains non-stop-words, default to product_search
+    if (candidates.length === 0 && text.trim().length > 0) {
+        const stopWords = require('../config/stopWords');
+        const words = text.toLowerCase().split(/\s+/).filter(w => !stopWords.includes(w) && w.length > 0);
+
+        if (words.length > 0) {
+            candidates.push({
+                intentName: 'product_search',
+                matchedKeywords: ['implicit'],
+                keywordScore: 0.5,
+                invertedFrom: null
+            });
+        }
+    }
+
     // Sort by keywordScore descending
     candidates.sort((a, b) => b.keywordScore - a.keywordScore);
 

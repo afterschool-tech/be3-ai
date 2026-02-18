@@ -36,36 +36,41 @@ function resolveReferences(text, state) {
 
     // Build sorted reference keys: longest first for greedy matching
     const refKeys = Object.keys(referenceMap).sort((a, b) => b.length - a.length);
+    if (refKeys.length === 0) return { resolvedText: text, resolutions: [] };
 
-    for (const refKey of refKeys) {
-        // Convert underscore key back to natural phrase for matching
-        const phrase = refKey.replace(/_/g, ' ');
-        const regex = new RegExp(`\\b${escapeRegex(phrase)}\\b`, 'gi');
+    // Build a single-pass regex to avoid re-resolving already replaced text
+    const patterns = refKeys.map(k => `\\b${escapeRegex(k.replace(/_/g, ' '))}\\b`).join('|');
+    const regex = new RegExp(patterns, 'gi');
 
-        if (regex.test(resolvedText)) {
-            const productId = referenceMap[refKey];
+    resolvedText = text.replace(regex, (matched) => {
+        const phrase = matched.toLowerCase();
+        const refKey = phrase.replace(/ /g, '_');
 
-            // Handle comma-separated IDs (plurals like "all of them")
-            let productName;
-            if (typeof productId === 'string' && productId.includes(',')) {
-                const ids = productId.split(',');
-                const names = ids.map(id => resolveIdToName(id.trim(), state)).filter(Boolean);
-                productName = names.length > 0 ? names.join(' and ') : null;
-            } else {
-                productName = resolveIdToName(productId, state);
-            }
+        // Exact match check (or underscore version)
+        const productId = referenceMap[refKey] || referenceMap[phrase];
+        if (!productId) return matched;
 
-            if (productName) {
-                resolvedText = resolvedText.replace(regex, productName);
-                resolutions.push({
-                    original: phrase,
-                    resolved: productName,
-                    productId: productId,
-                    source: 'reference_map'
-                });
-            }
+        // Handle comma-separated IDs (plurals like "all of them")
+        let productName;
+        if (typeof productId === 'string' && productId.includes(',')) {
+            const ids = productId.split(',');
+            const names = ids.map(id => resolveIdToName(id.trim(), state)).filter(Boolean);
+            productName = names.length > 0 ? names.join(' and ') : null;
+        } else {
+            productName = resolveIdToName(productId, state);
         }
-    }
+
+        if (productName) {
+            resolutions.push({
+                original: matched,
+                resolved: productName,
+                productId: productId,
+                source: 'reference_map'
+            });
+            return productName;
+        }
+        return matched;
+    });
 
     return { resolvedText, resolutions };
 }

@@ -6,6 +6,7 @@
 
 const { TOOL_REGISTRY } = require('../tools/registry');
 const { getContextSummary, CATEGORIES, VENDORS, ATTRIBUTES, COLLECTIONS } = require('../context/storeContext');
+const { logDebug } = require('../utils/debugLogger');
 
 /**
  * Execute a list of selected tools
@@ -14,7 +15,6 @@ const { getContextSummary, CATEGORIES, VENDORS, ATTRIBUTES, COLLECTIONS } = requ
  * @returns {Promise<Array>} Array of execution results
  */
 async function executeTools(toolsSelected, sessionId) {
-    // Standard context available to all tools
     const context = {
         CATEGORIES,
         VENDORS,
@@ -26,14 +26,18 @@ async function executeTools(toolsSelected, sessionId) {
 
     const results = [];
 
-    console.log(`[Orchestrator] Executing ${toolsSelected.length} tools for session ${sessionId}`);
+    logDebug('ORCHESTRATOR:START', {
+        sessionId,
+        toolCount: toolsSelected.length,
+        tools: toolsSelected.map(t => ({ tool: t.tool, params: t.params, reason: t.reason }))
+    });
 
     for (const toolCall of toolsSelected) {
         const toolName = toolCall.tool;
         const toolDef = TOOL_REGISTRY[toolName];
 
         if (!toolDef) {
-            console.warn(`[Orchestrator] Tool not found: ${toolName}`);
+            logDebug('ORCHESTRATOR:TOOL_NOT_FOUND', { toolName });
             results.push({
                 tool: toolName,
                 error: `Tool ${toolName} not found`,
@@ -42,42 +46,59 @@ async function executeTools(toolsSelected, sessionId) {
             continue;
         }
 
-        console.log(`[Orchestrator] Running ${toolName} with params:`, JSON.stringify(toolCall.params));
+        logDebug(`ORCHESTRATOR:EXECUTING [${toolName}]`, {
+            params: toolCall.params,
+            reason: toolCall.reason
+        });
 
         try {
-            // Execute the tool handler
-            // Params: tool params, store context, accumulated results (for shadowing/chaining)
             const result = await toolDef.handler(toolCall.params, context, results);
 
             const executionResult = {
                 tool: toolName,
+                params: toolCall.params,
                 result: result,
-                success: result && !result.error, // Safe check for result
+                success: result && !result.error,
                 reason: toolCall.reason
             };
 
             results.push(executionResult);
 
-            // RESILIENCE: Only trigger circuit breaker for critical tools or fatal errors
+            logDebug(`ORCHESTRATOR:RESULT [${toolName}]`, {
+                success: executionResult.success,
+                error: result.error || null,
+                productCount: result.products?.length || result.results?.length || null,
+                message: result.message || null
+            });
+
             const isCritical = toolName.startsWith('cart.') || toolName.startsWith('order.');
             if (result.error && isCritical) {
-                console.warn(`[Orchestrator] Circuit breaker triggered by critical tool ${toolName}: ${result.error}`);
+                logDebug('ORCHESTRATOR:CIRCUIT_BREAKER', { toolName, error: result.error });
                 break;
             } else if (result.error) {
-                console.warn(`[Orchestrator] Non-critical tool ${toolName} failed: ${result.error}. Continuing...`);
+                logDebug('ORCHESTRATOR:NON_CRITICAL_FAIL', { toolName, error: result.error });
             }
 
         } catch (error) {
-            console.error(`[Orchestrator] Error executing ${toolName}:`, error);
+            logDebug(`ORCHESTRATOR:EXCEPTION [${toolName}]`, {
+                error: error.message,
+                stack: error.stack?.split('\n').slice(0, 3)
+            });
             results.push({
                 tool: toolName,
                 error: error.message,
                 success: false
             });
-            // Stop on exception as well
             break;
         }
     }
+
+    logDebug('ORCHESTRATOR:COMPLETE', {
+        sessionId,
+        totalResults: results.length,
+        successes: results.filter(r => r.success).length,
+        failures: results.filter(r => !r.success).length
+    });
 
     return results;
 }

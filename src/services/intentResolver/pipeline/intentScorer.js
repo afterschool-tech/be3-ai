@@ -12,6 +12,7 @@
  */
 
 const intentRegistry = require('../config/intentRegistry');
+const semanticScorer = require('./semanticScorer');
 
 /**
  * Score candidate intents based on extracted parameters and keyword matches.
@@ -20,15 +21,16 @@ const intentRegistry = require('../config/intentRegistry');
  * @param {Array} candidates - Array of { intentName, matchedKeywords, keywordScore }
  * @param {Object} extractedParams - { paramName: value | null }
  * @param {Object} state - User state for contextual bias
+ * @param {string} cleanedText - NLP-cleaned text for semantic scoring
  * @returns {Object} - { intentName, score, parameters, matchedKeywords }
  */
-function scoreIntents(candidates, extractedParams, state = {}) {
+function scoreIntents(candidates, extractedParams, state = {}, cleanedText = null) {
     if (candidates.length === 0) {
         return null;
     }
 
     // Multiple candidates: calculate shared-parameter weighting
-    const scored = candidates.map(candidate => {
+    let scored = candidates.map(candidate => {
         const intent = intentRegistry.get(candidate.intentName);
         if (!intent) return null;
 
@@ -120,6 +122,11 @@ function scoreIntents(candidates, extractedParams, state = {}) {
             invertedFrom: candidate.invertedFrom || null
         };
     }).filter(Boolean);
+
+    // --- SEMANTIC SCOURING ---
+    if (cleanedText) {
+        scored = semanticScorer.scoreSemantically(scored, cleanedText, extractedParams);
+    }
 
     // Sort by score descending, tie-break by keyword score
     scored.sort((a, b) => {

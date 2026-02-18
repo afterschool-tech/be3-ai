@@ -17,24 +17,56 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false) {
     const cats = context || CATEGORIES;
     let catLower = cat.trim().toLowerCase();
 
-    // 1. Handle breadcrumbs like "Smartphones & Tablets > Smartphones"
-    // We take the last part as it's the most specific.
+    // 1. Handle breadcrumbs
     if (catLower.includes('>')) {
         catLower = catLower.split('>').pop().trim();
     }
 
-    // 2. Direct match with key (if input was already a normalized key)
+    // 2. Direct match with key
     if (cats[catLower]) return cats[catLower].id;
 
-    // 3. Find by label, slug, or partial label match
-    const match = Object.values(cats).find(c =>
-        c.id === catLower || // Already an ID
-        c.slug === catLower ||
-        c.label.toLowerCase() === catLower ||
-        (!exactMatchOnly && (catLower.includes(c.label.toLowerCase()) || c.label.toLowerCase().includes(catLower)))
-    );
+    // 3. Find all potential candidate categories
+    const candidates = Object.values(cats).map(c => {
+        if (!c || (!c.label && !c.slug)) return null;
+        let score = 0;
+        const labelLower = (c.label || '').toLowerCase();
+        const slugLower = (c.slug || '').toLowerCase();
 
-    return match ? match.id : null;
+        // Exact match (highest priority)
+        if (c.id === catLower || slugLower === catLower || labelLower === catLower) {
+            score = 100;
+        }
+        // Partial match with word boundary check
+        else if (!exactMatchOnly) {
+            const regex = new RegExp(`\\b${catLower}\\b`, 'i');
+            if (regex.test(labelLower) || regex.test(slugLower)) {
+                score = 10;
+            }
+        }
+
+        if (score === 0) return null;
+
+        // --- TIE BREAKERS & SMART BOOSTS ---
+
+        // Boost populated categories (CRITICAL: prevents picking empty niches)
+        if ((c.total_count || c.product_count) > 0) score += 50;
+
+        // Boost broad categories (Top level parents)
+        if (!c.parent_id) score += 20;
+
+        // Boost for label similarity (e.g. "laptops" vs "business laptops")
+        // If the user word is exactly the label, it's better than if it's just part of it
+        if (labelLower === catLower) score += 30;
+
+        return { id: c.id, score };
+    }).filter(Boolean);
+
+    if (candidates.length === 0) return null;
+
+    // Sort by score descending
+    candidates.sort((a, b) => b.score - a.score);
+
+    return candidates[0].id;
 }
 
 /**

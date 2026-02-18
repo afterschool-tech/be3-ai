@@ -53,15 +53,15 @@ const productTools = {
                 }
             }
 
-            const cat = catId ? context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)] : null;
+            const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
+            const cat = catKey ? context.CATEGORIES[catKey] : null;
 
             if (catId) {
-                searchParams.append('category', cat.slug || catId);
+                searchParams.append('category', cat?.slug || catId);
             }
 
             // --- STAGE 0: Context-First Check ---
             if (cat && cat.total_count === 0) {
-                console.log(`[ProductTool] Short-circuiting search: Category "${cat.label}" has 0 products.`);
                 return {
                     products: [],
                     total: 0,

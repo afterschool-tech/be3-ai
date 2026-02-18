@@ -7,32 +7,31 @@
  */
 
 const intentRegistry = require('../config/intentRegistry');
+const { normalizeCategory } = require('../../../utils/normalization');
 
 /**
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
  */
-function extractDeterministic(text) {
+function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = []) {
     const extracted = {};
 
-    // Quantity: must follow an action keyword like "add 3", "buy 2", "get 5", "order 10"
-    // Does NOT match model numbers like "iphone 6", "galaxy s23", "note 12"
+    // 1. Quantity detection
     const qtyMatch = text.match(/\b(?:add|buy|get|order|want|need|grab|purchase)\s+(\d+)\b/i);
     if (qtyMatch) {
         const qty = parseInt(qtyMatch[1]);
-        // Sanity: quantities above 100 are likely not quantities
         if (qty > 0 && qty <= 100) {
             extracted.quantity = qty;
         }
     }
 
-    // Order ID: #12345, order 12345, ORD-12345, order-12345
+    // 2. Order ID detection
     const orderMatch = text.match(/(?:#|order\s*[-#]?|ord[-#])\s*(\d{3,})/i);
     if (orderMatch) {
         extracted.order_id = orderMatch[1];
     }
 
-    // Price: $123, $45.67, or "under $50" / "below 100" / "cheap" patterns
+    // 3. Price detection
     const priceMaxMatch = text.match(/(?:under|below|less than|max|cheaper than|budget)\s*\$?\s*(\d+(?:\.\d{1,2})?)/i);
     if (priceMaxMatch) {
         extracted.price_max = parseFloat(priceMaxMatch[1]);
@@ -45,7 +44,102 @@ function extractDeterministic(text) {
 
     // "cheap" / "budget" → price_max heuristic
     if (/\b(cheap|budget|affordable|inexpensive)\b/i.test(text) && !extracted.price_max) {
-        extracted.price_max = 200; // configurable threshold
+        extracted.price_max = 200;
+    }
+
+    // --- SHARED EXCLUDE SET FOR CLEANING ---
+    const excludeSet = new Set(['show', 'me', 'i', 'need', 'want', 'cheap', 'expensive', 'premium', 'under', 'for', 'the', 'a', 'any', 'some', 'compare', 'difference', 'between', 'versus', 'vs', 'v/s', 'and', 'with', 'what', 'is', 'it', 'tell', 'about', 'of', 'those', 'these', 'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm", 'to']);
+
+    // Add deterministic parameter values to excludeSet to prevent them leaking into product_name
+    if (extracted.quantity) excludeSet.add(extracted.quantity.toString());
+    if (extracted.order_id) excludeSet.add(extracted.order_id.toString());
+    if (extracted.price_max) excludeSet.add(extracted.price_max.toString());
+    if (extracted.price_min) excludeSet.add(extracted.price_min.toString());
+
+    candidates.forEach(c => {
+        const intent = intentRegistry.get(c.intentName);
+        if (intent) {
+            (intent.keywords || []).forEach(k => excludeSet.add(k.toLowerCase()));
+            (intent.synonyms || []).forEach(s => excludeSet.add(s.toLowerCase()));
+        }
+    });
+
+    // 4. Comparison Logic (New!)
+    const isCompare = candidates.some(c => c.intentName === 'product_compare');
+    if (isCompare) {
+        const products = [];
+        let textForRaw = text.toLowerCase();
+
+        // A. Start with any resolved IDs from contextResolver
+        if (resolutions.length > 0) {
+            resolutions.forEach(res => {
+                if (res.productId) {
+                    products.push(res.productId);
+
+                    // Remove ORIGINAL resolved phrase (e.g., "it")
+                    const escapedOriginal = (res.original || '').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    if (escapedOriginal) textForRaw = textForRaw.replace(new RegExp(`\\b${escapedOriginal}\\b`, 'gi'), ' ');
+
+                    // Remove RESOLVED name (e.g., "iphone 17 pro") to prevent double-extraction as raw
+                    const escapedResolved = (res.resolved || '').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    if (escapedResolved) textForRaw = textForRaw.replace(new RegExp(`\\b${escapedResolved}\\b`, 'gi'), ' ');
+                }
+            });
+        }
+
+        // B. Split text by comparison tokens to find raw names
+        const cleanMessage = textForRaw
+            .replace(/\b(?:compare|difference between|difference|between|vs|v\/s|versus|with|and)\b/gi, '|')
+            .split('|')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+
+        cleanMessage.forEach(segment => {
+            // Extract words, filter out exclusions (don't skip numbers like '12')
+            const words = segment.split(/\s+/).filter(w => !excludeSet.has(w) && w.length > 0);
+            if (words.length > 0) {
+                const rawName = words.join(' ');
+                // Avoid adding duplicates (by name or ID)
+                if (!products.includes(rawName)) {
+                    products.push(rawName);
+                }
+            }
+        });
+
+        if (products.length > 0) {
+            extracted.products = products;
+        }
+    }
+
+    // 5. Zero-AI Category & Product Name Discovery (Product Search)
+    const isSearch = candidates.some(c => c.intentName === 'product_search');
+    if (isSearch && storeContext.CATEGORIES) {
+        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        let foundCategoryUUID = null;
+        let categoryWords = [];
+
+        // N-Gram Scanning: Try Bigrams (2 words) then Monograms (1 word)
+        for (let size = 2; size >= 1; size--) {
+            if (foundCategoryUUID) break;
+            for (let i = 0; i <= words.length - size; i++) {
+                const phrase = words.slice(i, i + size).join(' ');
+                const catId = normalizeCategory(phrase, storeContext.CATEGORIES);
+                if (catId) {
+                    foundCategoryUUID = catId;
+                    categoryWords = words.slice(i, i + size);
+                    extracted.category = catId;
+                    break;
+                }
+            }
+        }
+
+        // Add category words to the exclusion set for product name guessing
+        categoryWords.forEach(w => excludeSet.add(w));
+
+        const productWords = words.filter(w => !excludeSet.has(w) && w.length > 0);
+        if (productWords.length > 0) {
+            extracted.product_name = productWords.join(' ');
+        }
     }
 
     return extracted;
@@ -110,9 +204,9 @@ Return a JSON object with parameter names as keys. Use null for parameters that 
  * Main extraction function.
  * Runs deterministic extraction first, then AI for remaining gaps.
  */
-async function extractParameters(text, candidates, aiQueryFn) {
+async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = []) {
     const schema = buildParameterSchema(candidates);
-    const deterministic = extractDeterministic(text);
+    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions);
 
     // Check which params still need AI
     const missingParams = {};
@@ -143,15 +237,11 @@ async function extractParameters(text, candidates, aiQueryFn) {
             aiExtracted = JSON.parse(response);
         } catch (error) {
             console.error('[ParameterExtractor] AI extraction failed:', error.message);
-            // Fallback: return what we have deterministically
         }
     }
 
     // Merge: deterministic takes priority over AI
     const merged = { ...aiExtracted, ...deterministic };
-
-    // NOTE: Defaults are NOT applied here — they'd inflate scoring.
-    // Defaults are applied later in toolMapper, after winner is picked.
 
     return merged;
 }

@@ -16,6 +16,7 @@ const { trackRequest, getMetrics, getMetricsSummary } = require('../utils/metric
 const { FEATURES, shouldUseToolSystem } = require('../middleware/featureFlags');
 const { injectImages, extractImages } = require('../utils/imageInjector');
 const { selectTools } = require('./toolSelector');
+const { resolveDeterministic } = require('./deterministicResolver');
 const { executeTools } = require('./orchestrator');
 const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
 const { logDebug, startRun } = require('../utils/debugLogger');
@@ -306,32 +307,102 @@ app.post('/chat', async (req, res) => {
         const runId = `req_${Date.now()}`;
         startRun(runId);
 
+        logDebug('SERVER:REQUEST_RECEIVED', {
+            runId,
+            sessionId: session_id,
+            message,
+            messageLength: message.length,
+            timestamp: new Date().toISOString()
+        });
+
         if (shouldUseToolSystem(session_id)) {
             const state = await stateManager.getState(session_id);
+
+            // ========== FULL STATE BEFORE ==========
+            logDebug('SERVER:STATE_BEFORE', {
+                session_id: state.session_id,
+                user_id: state.user_id,
+                current_intent: state.current_intent,
+                active_flow: state.active_flow,
+                expecting_input: state.expecting_input,
+                conversation_history: state.conversation_history,
+                conversation_summary: state.conversation_summary,
+                product_context: state.product_context,
+                reference_map: state.reference_map,
+                ordinal_list: state.ordinal_list,
+                cart: state.cart,
+                checkout: state.checkout,
+                preferences: state.preferences,
+                session: state.session,
+                microstate: state.microstate,
+                last_bot_suggestion: state.last_bot_suggestion,
+                last_tools: state.last_tools,
+                paused_context: state.paused_context,
+                created_at: state.created_at,
+                updated_at: state.updated_at,
+                version: state.version
+            });
+
             await stateManager.addMessage(session_id, 'user', message);
 
-            const selection = await selectTools(message, state.conversation_history, state);
+            // Legacy AI-Based Tool Selection (Commented for easily revert)
+            // const selection = await selectTools(message, state.conversation_history, state);
+
+            // New Pure-Deterministic (Zero-AI) Pipeline
+            const selection = await resolveDeterministic(message, state);
+
             let toolsSelected = selection.tools || [];
             const intent = selection.intent || 'unknown';
 
+            logDebug('SERVER:INTENT_RESOLVED', {
+                intent,
+                confidence: selection.confidence,
+                toolCount: toolsSelected.length,
+                toolsSelected: toolsSelected
+            });
+
+            logDebug('SERVER:STATEMANAGER_PRUNE', {
+                action: 'pruneState',
+                intent,
+                willPrune: intent === 'new search' || intent.includes('category')
+            });
             await stateManager.pruneState(session_id, intent);
+
+            logDebug('SERVER:STATEMANAGER_SET_INTENT', {
+                action: 'setCurrentIntent',
+                intent
+            });
             await stateManager.setCurrentIntent(session_id, intent);
 
             let toolResults = [];
             if (toolsSelected.length > 0) {
                 toolResults = await executeTools(toolsSelected, session_id);
-                // Inject cached images from Redis into the tool results for display
                 await injectImages(toolResults, stateManager);
             }
 
+            // ========== FULL TOOL RESULTS (every product, every field) ==========
+            logDebug('SERVER:TOOL_RESULTS_FULL', toolResults);
+
+            logDebug('SERVER:AI_RESPONSE_GENERATION', {
+                model: 'llama-3.3-70b-versatile',
+                purpose: 'Personality response from tool results',
+                inputToolCount: toolResults.length,
+                conversationHistoryLength: state.conversation_history?.length || 0
+            });
+
             const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
 
-            // Extract a flat list of images for the bot to send separately
+            logDebug('SERVER:AI_RAW_RESPONSE', response);
+
             const displayImages = extractImages(toolResults);
+
+            logDebug('SERVER:DISPLAY_IMAGES', displayImages);
 
             // Sanitization
             const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
             const sanitizedResponse = response.replace(idPattern, '').replace(/\*\*(.*?)\*\*/g, '*$1*').trim();
+
+            logDebug('SERVER:SANITIZED_RESPONSE', sanitizedResponse);
 
             await stateManager.addMessage(session_id, 'ai', sanitizedResponse);
             await stateManager.extendTTL(session_id);
@@ -340,13 +411,43 @@ app.post('/chat', async (req, res) => {
                 summarizeConversation(session_id).catch(err => console.error(err));
             }
 
-            return res.json({
+            // ========== FULL STATE AFTER ==========
+            const stateAfter = await stateManager.getState(session_id);
+            logDebug('SERVER:STATE_AFTER', {
+                session_id: stateAfter.session_id,
+                user_id: stateAfter.user_id,
+                current_intent: stateAfter.current_intent,
+                active_flow: stateAfter.active_flow,
+                expecting_input: stateAfter.expecting_input,
+                conversation_history: stateAfter.conversation_history,
+                conversation_summary: stateAfter.conversation_summary,
+                product_context: stateAfter.product_context,
+                reference_map: stateAfter.reference_map,
+                ordinal_list: stateAfter.ordinal_list,
+                cart: stateAfter.cart,
+                checkout: stateAfter.checkout,
+                preferences: stateAfter.preferences,
+                session: stateAfter.session,
+                microstate: stateAfter.microstate,
+                last_bot_suggestion: stateAfter.last_bot_suggestion,
+                last_tools: stateAfter.last_tools,
+                paused_context: stateAfter.paused_context,
+                updated_at: stateAfter.updated_at
+            });
+
+            const finalResponse = {
                 success: true,
                 reply: sanitizedResponse,
+                intent: intent,
                 display_images: displayImages,
                 tools_used: toolsSelected,
                 results: toolResults
-            });
+            };
+
+            // ========== FULL SERVER JSON RESPONSE ==========
+            logDebug('SERVER:FINAL_JSON_RESPONSE', finalResponse);
+
+            return res.json(finalResponse);
         }
 
         // Legacy Flow

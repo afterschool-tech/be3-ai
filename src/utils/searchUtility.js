@@ -1,5 +1,5 @@
 const { CLAUSES } = require('../context/clauses');
-const { resolveClauses } = require('./clauseResolver');
+const { resolveClauses } = require('./semanticClauseResolver');
 const { callBackendAPI } = require('./apiClient');
 
 /**
@@ -29,7 +29,10 @@ function constructSemanticSlug(categorySlug, clauses = []) {
  * 4. Product Fetching
  */
 async function performSemanticSearch(query, category, context, callBackendAPI, limit = 5) {
-    if (!category || !category.slug) return null;
+    if (!category || !category.slug) {
+        console.log(`⚠️ [SearchUtil] Skipping semantic search: Category or Slug missing.`);
+        return null;
+    }
 
     try {
         const resolved = await resolveClauses(
