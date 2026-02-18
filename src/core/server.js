@@ -14,7 +14,7 @@ const { isConfirmation, isImplicitReference, extractSuggestion, checkSuggestionA
 const { detectConversationalIntent, isResumeRequest } = require('../middleware/conversationalDetector');
 const { trackRequest, getMetrics, getMetricsSummary } = require('../utils/metrics');
 const { FEATURES, shouldUseToolSystem } = require('../middleware/featureFlags');
-const { injectImages } = require('../utils/imageInjector');
+const { injectImages, extractImages } = require('../utils/imageInjector');
 const { selectTools } = require('./toolSelector');
 const { executeTools } = require('./orchestrator');
 const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
@@ -221,61 +221,8 @@ Respond naturally and warmly to the user's conversational message!`
 }
 
 /**
- * Detect if the user wants to see images
- */
-function detectImageIntent(message, toolResults) {
-    const msg = message.toLowerCase();
-    if (msg.includes('show') || msg.includes('picture') || msg.includes('photo') || msg.includes('image') || msg.includes('look like')) return true;
-    if (msg.includes('tell me more') || msg.includes('details about')) return true;
-    const hasProducts = toolResults.some(r => r.result && (r.result.products || r.result.results));
-    if (hasProducts && (msg.includes('what do you have') || msg.includes('show me'))) return true;
-    return false;
-}
-
-/**
- * Normalize string for comparison
- */
-function normalizeString(str) {
-    if (!str) return '';
-    return str.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/**
- * Extract images of products mentioned in the AI response
- */
-async function extractMentionedProductImages(aiResponse, toolResults, sessionId) {
-    const images = [];
-    const allProducts = [];
-    for (const tr of toolResults) {
-        if (tr.result) {
-            if (tr.result.products || tr.result.results) allProducts.push(...(tr.result.products || tr.result.results));
-            else if (tr.result.product) allProducts.push(tr.result.product);
-            else if (tr.result.id && (tr.result.name || tr.result.title)) allProducts.push(tr.result);
-        }
-    }
-
-    const idMatches = aiResponse.match(/\(#([a-z0-9-]+)\)/gi) || [];
-    const extractedIds = idMatches.map(m => m.replace(/[()#]/g, '').toLowerCase());
-
-    const mentionedProducts = allProducts.filter(p => {
-        const pid = (p.id || '').toLowerCase();
-        if (extractedIds.includes(pid)) return true;
-        const fullName = normalizeString(p.name || p.title || '');
-        return normalizeString(aiResponse).includes(fullName);
-    });
-
-    for (const product of mentionedProducts) {
-        const imageUrl = product.image_url || product.metadata?.image_url;
-        if (imageUrl) {
-            images.push({ url: imageUrl, caption: product.name || product.title, product_id: product.id });
-        }
-    }
-    return images.slice(0, 5);
-}
-
-/**
- * Generate response based on tool results (Unified Be3 Voice)
- */
+     * Generate response based on tool results (Unified Be3 Voice)
+     */
 async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
     const contextSummary = JSON.stringify(getLeanContext());
     const optimizedResults = toolResults.map(tr => {
@@ -300,10 +247,25 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
     });
 
     const resultsSummary = JSON.stringify(optimizedResults, null, 2);
-    const systemPrompt = `You are a super friendly shopping assistant for the Be3 store. ✨👋
-Rules: Only mention products in data. Never hallucinate. 
-Context: ${contextSummary}
-Data: ${resultsSummary}`;
+    const systemPrompt = `You are a super friendly, playful, and LOVING shopping assistant for the Be3 store. ✨👋
+
+PERSONALITY:
+- Vibe: Affectionate, street-smart, and cute! You are a caring friend.
+- Tone: Expressive with natural slang. Use ENDEARING terms naturally.
+- EMOJIS: Use them expressively to describe feelings, products, and reactions. 🤩🔥👜
+
+CRITICAL GROUNDING RULES:
+1. TRUTHFULNESS: Only mention products provided in the "Tool Results" below. 
+2. NO HALLUCINATIONS: If no products are found, admit it warmly and suggest help.
+3. PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
+4. LINKS: Always include the "whatsapp_link" or "checkout_url" for products you recommend.
+5. FORMATTING: Use lists/bullet points. NO markdown tables (poor display on WhatsApp).
+
+STORE CONTEXT:
+${contextSummary}
+
+TOOL RESULTS DATA:
+${resultsSummary}`;
 
     const messages = [
         { role: "system", content: systemPrompt },
@@ -316,10 +278,15 @@ Data: ${resultsSummary}`;
 
     try {
         const response = await queryGroqAI(messages, 1024, 0.4, 1, {}, GROQ_MODEL_ID);
-        return (response && response.trim()) || "I've processed your request.";
+        if (!response || response.trim().length === 0) {
+            const primaryToolResult = toolResults.find(t => t.result && t.result.message);
+            return primaryToolResult ? primaryToolResult.result.message : "I've processed your request successfully.";
+        }
+        return response.trim();
     } catch (error) {
         console.error('[AI] Unified Response Error:', error.message);
-        return "I've processed your request successfully.";
+        const primaryToolResult = toolResults.find(t => t.result && t.result.message);
+        return primaryToolResult ? primaryToolResult.result.message : "I've hit a small snag, but your request went through!";
     }
 }
 
@@ -353,13 +320,14 @@ app.post('/chat', async (req, res) => {
             let toolResults = [];
             if (toolsSelected.length > 0) {
                 toolResults = await executeTools(toolsSelected, session_id);
+                // Inject cached images from Redis into the tool results for display
+                await injectImages(toolResults, stateManager);
             }
 
             const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
-            await injectImages(toolResults, stateManager);
 
-            const shouldSendImages = detectImageIntent(message, toolResults);
-            const imagesToSend = shouldSendImages ? await extractMentionedProductImages(response, toolResults, session_id) : [];
+            // Extract a flat list of images for the bot to send separately
+            const displayImages = extractImages(toolResults);
 
             // Sanitization
             const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
@@ -375,9 +343,9 @@ app.post('/chat', async (req, res) => {
             return res.json({
                 success: true,
                 reply: sanitizedResponse,
+                display_images: displayImages,
                 tools_used: toolsSelected,
-                results: toolResults,
-                display_images: imagesToSend
+                results: toolResults
             });
         }
 

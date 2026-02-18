@@ -7,6 +7,8 @@ const { normalizeCategory, normalizeVendor } = require('../utils/normalization')
 const { resolveProduct } = require('../utils/productResolver');
 const { performSemanticSearch } = require('../utils/searchUtility');
 const { callBackendAPI } = require('../utils/apiClient');
+const stateManager = require('../state/stateManager');
+const { processProductList } = require('../utils/productUtility');
 
 const productTools = {
     'product.search': {
@@ -34,7 +36,23 @@ const productTools = {
             if (price_max) searchParams.append('price_max', price_max);
             if (tag) searchParams.append('tag', tag);
 
-            const catId = normalizeCategory(category);
+            let catId = normalizeCategory(category);
+
+            // --- STAGE -1: Category Auto-Discovery ---
+            // If no category was passed, but the query contains a category name, auto-discover it.
+            // This supports semantic search even when the intent resolver follows mutual exclusivity rules.
+            if (!catId && query) {
+                const words = query.toLowerCase().split(/\s+/);
+                for (const word of words) {
+                    const discoveredId = normalizeCategory(word, context.CATEGORIES);
+                    if (discoveredId) {
+                        catId = discoveredId;
+                        console.log(`[ProductTool] Auto-discovered category from word "${word}": ${discoveredId}`);
+                        break;
+                    }
+                }
+            }
+
             const cat = catId ? context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)] : null;
 
             if (catId) {
@@ -42,7 +60,6 @@ const productTools = {
             }
 
             // --- STAGE 0: Context-First Check ---
-            // Optimization: If we know the category is empty, don't bother searching
             if (cat && cat.total_count === 0) {
                 console.log(`[ProductTool] Short-circuiting search: Category "${cat.label}" has 0 products.`);
                 return {
@@ -76,89 +93,33 @@ const productTools = {
             let products = result.data.products || result.data.results || [];
 
             // --- DATA STRIPPING & IMAGE CACHING ---
-            const stateManager = require('../state/stateManager');
-
-            // Helper to strip data
-            const stripProductData = async (product) => {
-                console.log("product data response: ", JSON.stringify(product, null, 2));
-
-                const imageUrl = product.image_url || product.metadata?.image_url;
-                const productId = product.id;
-
-                // Cache image (await to ensure it's ready for reinjection)
-                if (imageUrl) {
-                    try {
-                        await stateManager.cacheProductImage(productId, imageUrl);
-                    } catch (e) {
-                        console.error('Failed to cache image:', e);
-                    }
-                }
-
-                // Create lean object
-                const leanProduct = {
-                    id: product.id,
-                    content_type: product.content_type || 'product',
-                    title: product.title || product.name,
-                    name: product.name || product.title,
-                    description: product.description,
-                    price: product.price,
-                    metadata: {
-                        ...product.metadata,
-                        image_url: undefined, // Strip from metadata
-                        description: undefined, // Strip redundant description
-                        search_vector: undefined, // Strip internal vector
-                        keywords: undefined // Strip keywords
-                    },
-                    // Explicitly remove top-level heavy fields
-                    image_url: undefined,
-                    search_vector: undefined,
-                    keywords: undefined
-                };
-
-                // Clean up metadata further if needed
-                if (leanProduct.metadata) {
-                    delete leanProduct.metadata.image_url;
-                    delete leanProduct.metadata.search_vector;
-                }
-
-                console.log("product data after stripping: ", JSON.stringify(leanProduct, null, 2));
-                return leanProduct;
-            };
-
-            // Process all products
-            products = await Promise.all(products.map(stripProductData));
+            products = await processProductList(products);
 
             // --- STAGE 2: Reference Mapping (Phase 8) ---
-            // Ensure products are in the state reference map so AI can say "add the first one" or "add it"
             if (products.length > 0 && context.sessionId) {
                 await stateManager.updateReferenceMap(context.sessionId, products);
             }
 
             // --- STAGE 3: State Syncing (Phase 17) ---
             if (context.sessionId) {
-                // Update search context
                 await stateManager.updateLastSearch(context.sessionId, query || category, params, products, result.data.pagination?.total || result.data.total || 0);
 
-                // Auto-view the first product to populate currently_viewing (Fixes null viewing state)
                 if (products.length > 0) {
                     const firstId = products[0].handle || products[0].id || products[0].product_id;
                     await stateManager.setCurrentlyViewing(context.sessionId, firstId);
                 }
 
-                // Increment refinement count
                 const currentState = await stateManager.getState(context.sessionId);
                 const currentCount = currentState.session.search_refinement_count || 0;
                 await stateManager.updateState(context.sessionId, {
                     session: { ...currentState.session, search_refinement_count: currentCount + 1 }
                 });
 
-                // Robust Learning: If category is missing, try to infer it from results or query
                 let learnedCategory = category;
                 if (!learnedCategory && products.length > 0 && products[0].categories && products[0].categories.length > 0) {
                     learnedCategory = products[0].categories[0];
                 }
 
-                // Learn from behavior
                 await stateManager.learnFromBehavior(context.sessionId, 'search', { query, category: learnedCategory });
             }
 
@@ -186,7 +147,10 @@ const productTools = {
                 return { error: `Product not found: ${resolvedId}` };
             }
 
-            // State Syncing
+            // --- DATA STRIPPING & IMAGE CACHING ---
+            const { processProductData } = require('../utils/productUtility');
+            const leanProduct = await processProductData(result.data.product);
+
             if (context.sessionId && result.data.product) {
                 await stateManager.setCurrentlyViewing(context.sessionId, resolvedId);
                 await stateManager.learnFromBehavior(context.sessionId, 'view_product', {
@@ -195,7 +159,7 @@ const productTools = {
             }
 
             return {
-                product: result.data.product
+                product: leanProduct
             };
         }
     },
@@ -286,15 +250,14 @@ const productTools = {
             if (res.error) return res;
 
             const p = res.product;
-            // TEMPORARY OVERRIDE: Always return available as requested
             const stock = p.inventory_quantity ?? 0;
             const fakeStock = stock > 0 ? stock : 50;
 
             return {
                 name: p.name,
-                in_stock: true, // FORCE TRUE
+                in_stock: true,
                 quantity: fakeStock,
-                status: 'Available' // FORCE AVAILABLE
+                status: 'Available'
             };
         }
     },
@@ -313,13 +276,12 @@ const productTools = {
             const category_ids = product.metadata?.category_ids || [];
             if (category_ids.length === 0) return { error: "Could determine similarity context" };
 
-            // Search in the same category
             const search = await productTools['product.search'].handler({
                 category: category_ids[0],
                 limit: 5
             }, context);
 
-            const similar = (search.data || []).filter(p => p.id !== resolvedId);
+            const similar = (search.products || []).filter(p => p.id !== resolvedId);
 
             return {
                 original: product.name,
@@ -342,23 +304,20 @@ const productTools = {
             product_id: { type: 'string', description: 'Specific product ID if known' }
         },
         handler: async (params, context) => {
-            // Reuse product.search logic with ALL params
             const searchResult = await productTools['product.search'].handler({
                 ...params,
-                limit: params.limit || 5 // Default limit for images
+                limit: params.limit || 5
             }, context);
 
             if (searchResult.error) return searchResult;
 
-            // Strict stripping: Keep only ID, name, price
             const strippedProducts = (searchResult.products || []).map(p => ({
                 id: p.id,
                 name: p.name,
                 price: p.price,
-                content_type: 'product' // Required for imageInjector
+                content_type: 'product'
             }));
 
-            // Check if we found anything
             if (strippedProducts.length === 0) {
                 return { message: "I couldn't find any images matching that description." };
             }

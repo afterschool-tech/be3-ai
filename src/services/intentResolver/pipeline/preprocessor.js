@@ -1,0 +1,127 @@
+/**
+ * Pipeline Stage 3: Preprocessor
+ * Text normalization, negation detection, and multi-intent splitting.
+ * 
+ * Imports: conjunctions, negations from config
+ * Inline data: NONE
+ */
+
+const conjunctions = require('../config/conjunctions');
+const negations = require('../config/negations');
+const conjunctionGuards = require('../config/conjunctionGuards');
+
+/**
+ * Normalize text: lowercase, trim, collapse whitespace.
+ * Preserves # for order IDs and $ for prices.
+ */
+function normalize(text) {
+    return text
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ')
+        // Remove punctuation except #, $, -, ', and .
+        .replace(/[^\w\s#$\-'.]/g, '');
+}
+
+/**
+ * Detect if a statement contains a negation before an action verb.
+ * Returns { negated: boolean, cleanText: string }.
+ */
+function detectNegation(statement) {
+    for (const pattern of negations.patterns) {
+        if (pattern.test(statement)) {
+            return { negated: true, cleanText: statement };
+        }
+    }
+    return { negated: false, cleanText: statement };
+}
+
+/**
+ * Check if a conjunction at a given position is guarded by an intent keyword.
+ * "compare iPhone and Galaxy" → "and" is guarded by "compare".
+ * "add iPhone to cart and check order" → "and" is NOT guarded.
+ * "then" acts as a strong sequence separator and is NEVER guarded.
+ */
+function isConjunctionGuarded(text, conjPosition, conjunction) {
+    // "then" and "and then" are strong sequence separators — never guarded
+    if (conjunction.toLowerCase().includes('then')) {
+        return false;
+    }
+
+    const before = text.substring(0, conjPosition).trim();
+
+    for (const guard of conjunctionGuards) {
+        const guardLower = guard.toLowerCase();
+        // Check if the guard word appears in the text before the conjunction
+        if (before.includes(guardLower)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Split a normalized text into sub-statements using conjunctions.
+ * Uses greedy matching (multi-word conjunctions first).
+ * Respects conjunction guards: won't split if a guard keyword precedes the conjunction.
+ * Returns array of statement strings.
+ */
+function splitStatements(text) {
+    let statements = [text];
+
+    // Try each conjunction (already sorted: multi-word first)
+    for (const conj of conjunctions) {
+        const newStatements = [];
+
+        for (const stmt of statements) {
+            // Build a regex that matches the conjunction as a word boundary
+            const escaped = conj.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`\\s+${escaped}\\s+`, 'gi');
+
+            const match = regex.exec(stmt);
+            if (match) {
+                // Check if a guard keyword precedes this conjunction
+                // Pass 'conj' along so we can exempt specific ones like "then"
+                if (isConjunctionGuarded(stmt, match.index, conj)) {
+                    // Guarded: don't split, keep the statement intact
+                    newStatements.push(stmt);
+                } else {
+                    // Not guarded: split normally
+                    regex.lastIndex = 0; // reset regex state
+                    const parts = stmt.split(regex).map(s => s.trim()).filter(s => s.length > 0);
+                    newStatements.push(...parts);
+                }
+            } else {
+                newStatements.push(stmt);
+            }
+        }
+
+        statements = newStatements;
+    }
+
+    return statements;
+}
+
+/**
+ * Main preprocessing pipeline.
+ * Takes normalized, fuzzy-corrected, context-resolved text.
+ * Returns structured output with statements and metadata.
+ */
+function preprocess(text) {
+    const normalized = normalize(text);
+    const rawStatements = splitStatements(normalized);
+
+    const statements = rawStatements.map(stmt => {
+        const { negated, cleanText } = detectNegation(stmt);
+        return { text: cleanText, negated };
+    });
+
+    return {
+        normalized,
+        statements,
+        isMultiIntent: statements.length > 1
+    };
+}
+
+module.exports = { normalize, detectNegation, splitStatements, preprocess };

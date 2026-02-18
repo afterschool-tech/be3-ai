@@ -1,4 +1,6 @@
 const { callBackendAPI } = require('../utils/apiClient');
+const stateManager = require('../state/stateManager');
+const { processProductList } = require('../utils/productUtility');
 
 /**
  * Internal helper to resolve vendor from name or history
@@ -65,9 +67,9 @@ const vendorTools = {
             // Method 1: Tag Match (tag=) - STRICTEST VENDOR FILTER
             const tagResult = await callBackendAPI(`/search/products?tag=${encodeURIComponent(vendor.tag || vendor.business_name)}&per_page=${limit}`);
             if (tagResult.success && tagResult.data.products?.length > 0) {
-                const products = tagResult.data.products;
+                let products = tagResult.data.products;
+                products = await processProductList(products);
                 if (context.sessionId) {
-                    const stateManager = require('../state/stateManager');
                     await stateManager.updateReferenceMap(context.sessionId, products);
                 }
                 return {
@@ -81,9 +83,9 @@ const vendorTools = {
             // Method 2: Keyword Match (q=) - Fallback for loose names
             const keywordResult = await callBackendAPI(`/search?q=${encodeURIComponent(vendor.business_name)}&per_page=${limit}`);
             if (keywordResult.success && (keywordResult.data.products?.length > 0 || keywordResult.data.results?.length > 0)) {
-                const products = keywordResult.data.products || keywordResult.data.results;
+                let products = keywordResult.data.products || keywordResult.data.results;
+                products = await processProductList(products);
                 if (context.sessionId) {
-                    const stateManager = require('../state/stateManager');
                     await stateManager.updateReferenceMap(context.sessionId, products);
                 }
                 return {
@@ -101,9 +103,9 @@ const vendorTools = {
             if (collection) {
                 const collResult = await callBackendAPI(`/search/products?collection=${collection.slug || collection.id}&per_page=${limit}`);
                 if (collResult.success && collResult.data.products?.length > 0) {
-                    const products = collResult.data.products;
+                    let products = collResult.data.products;
+                    products = await processProductList(products);
                     if (context.sessionId) {
-                        const stateManager = require('../state/stateManager');
                         await stateManager.updateReferenceMap(context.sessionId, products);
                     }
                     return {
@@ -118,9 +120,9 @@ const vendorTools = {
             // Method 3: Creator ID (Secondary fallback)
             const creatorResult = await callBackendAPI(`/search/products?created_by=${vendor.id}&per_page=${limit}`);
             if (creatorResult.success && creatorResult.data.products?.length > 0) {
-                const products = creatorResult.data.products;
+                let products = creatorResult.data.products;
+                products = await processProductList(products);
                 if (context.sessionId) {
-                    const stateManager = require('../state/stateManager');
                     await stateManager.updateReferenceMap(context.sessionId, products);
                 }
                 return {

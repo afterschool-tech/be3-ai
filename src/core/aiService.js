@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { logDebug } = require('../utils/debugLogger');
 const { OpenAI } = require("openai");
 
@@ -5,10 +6,20 @@ const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
 const MODEL_ID = "Qwen/Qwen3-Coder-Next";
 const FALLBACK_MODEL_ID = "Qwen/Qwen2.5-72B-Instruct";
 
-const client = new OpenAI({
-    baseURL: "https://router.huggingface.co/v1",
-    apiKey: HF_TOKEN,
-});
+let client = null;
+
+function getClient() {
+    if (client) return client;
+    if (!HF_TOKEN) {
+        console.warn("[AI-HF] HUGGINGFACE_TOKEN is missing. AI features may fail.");
+        return null;
+    }
+    client = new OpenAI({
+        baseURL: "https://router.huggingface.co/v1",
+        apiKey: HF_TOKEN,
+    });
+    return client;
+}
 
 /**
  * Call Hugging Face AI API via OpenAI SDK
@@ -23,7 +34,10 @@ async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2
             // DEBUG LOGGING: REQUEST
             logDebug(`HF REQUEST [${targetModel}] (Attempt ${i + 1})`, messages);
 
-            const completion = await client.chat.completions.create({
+            const aiClient = getClient();
+            if (!aiClient) throw new Error("AI Client not initialized (missing API key)");
+
+            const completion = await aiClient.chat.completions.create({
                 model: targetModel,
                 messages: messages,
                 max_tokens: maxTokens,

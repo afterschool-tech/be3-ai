@@ -7,219 +7,10 @@ const { CATEGORIES, VENDORS, COLLECTIONS } = require('../context/storeContext');
 const { normalizeCategory, normalizeVendor } = require('../utils/normalization');
 const { performSemanticSearch } = require('../utils/searchUtility');
 const { callBackendAPI } = require('../utils/apiClient');
+const stateManager = require('../state/stateManager');
+const { processProductList } = require('../utils/productUtility');
 
 const discoveryTools = {
-    /*
-    'discovery.getTrendingCategories': {
-        description: 'Get trending product CATEGORIES based on inventory volume. (Does NOT return products).',
-        params: {
-            limit: { type: 'number', description: 'Number of categories to return (default 3)' }
-        },
-        handler: async (params, context) => {
-            const limit = params.limit || 3;
-
-            // Logic: Sort categories by total_count (inventory volume)
-            const topCategories = Object.values(context.CATEGORIES)
-                .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'))
-                .sort((a, b) => b.total_count - a.total_count)
-                .slice(0, limit);
-
-            return {
-                message: "Here are some of our most popular categories right now:",
-                trending: topCategories.map(c => ({
-                    label: c.label,
-                    slug: c.slug
-                })),
-                tip: "You can ask for products in any of these categories!"
-            };
-        }
-    },
-    */
-
-    /*
-    'discovery.getTrendingProducts': {
-        description: 'Get actual TRENDING PRODUCTS from popular categories.',
-        params: {
-            query: { type: 'string', description: 'Optional keywords' },
-            price_min: { type: 'number', description: 'Minimum price' },
-            price_max: { type: 'number', description: 'Maximum price' },
-            limit: { type: 'number', description: 'Max results (default 5)' }
-        },
-        handler: async (params, context) => {
-            // 1. Pick a popular category
-            const topCategories = Object.values(context.CATEGORIES)
-                .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'))
-                .sort((a, b) => b.total_count - a.total_count)
-                .slice(0, 10);
-
-            if (topCategories.length > 0) {
-                const randomCat = topCategories[Math.floor(Math.random() * topCategories.length)];
-                console.log(`[Discovery] Trending products will utilize category: ${randomCat.label}`);
-                params.category = randomCat.slug;
-            }
-
-            // 2. Execute exact product.search logic
-            const { query, category, price_min, price_max, limit = 5, sort = 'relevance', tag, attributes = {} } = params;
-
-            const searchParams = new URLSearchParams({
-                per_page: limit,
-                sort: sort
-            });
-
-            if (query) searchParams.append('q', query);
-            if (price_min) searchParams.append('price_min', price_min);
-            if (price_max) searchParams.append('price_max', price_max);
-            if (tag) searchParams.append('tag', tag);
-
-            const catId = normalizeCategory(category);
-            const cat = catId ? context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)] : null;
-
-            if (catId) {
-                searchParams.append('category', cat.slug || catId);
-            }
-
-            // --- STAGE 0: Semantic Search (The "Power" step via Util) ---
-            if (cat) {
-                const semanticResult = await performSemanticSearch(query, cat, context, callBackendAPI, limit);
-                if (semanticResult) return semanticResult;
-            }
-
-            // Add dynamic attributes
-            const safeAttributes = attributes || {};
-            Object.entries(safeAttributes).forEach(([key, val]) => {
-                const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
-                searchParams.append(`attribute.${key}`, finalVal);
-            });
-
-            // Call Legacy Search specialized products endpoint
-            const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
-
-            if (!result.success) {
-                return { error: "Failed to search products", details: result.error };
-            }
-
-            const products = result.data.products || result.data.results || [];
-
-            // --- STAGE 2: Reference Mapping (Phase 8) ---
-            if (products.length > 0 && context.sessionId) {
-                const stateManager = require('../state/stateManager');
-                await stateManager.updateReferenceMap(context.sessionId, products);
-            }
-
-            return {
-                products,
-                total: result.data.pagination?.total || result.data.total || 0,
-                facets: result.data.facets
-            };
-        }
-    },
-    */
-
-    /*
-    'discovery.getSuggestions': {
-        description: 'Get randomized or curated suggestions to help users explore the store. Use this for "What else do you have?" or as a fallback when a search yields no results.',
-        params: {
-            focus: { type: 'string', description: 'Optional focus: "categories", "vendors", or "products"' },
-            category_hint: { type: 'string', description: 'Optional category slug to suggest from' },
-            failing_query: { type: 'string', description: 'Optional query that returned no results' }
-        },
-        handler: async (params, context) => {
-            const { focus = 'categories', category_hint, failing_query } = params;
-            const stateManager = require('../state/stateManager');
-
-            // 1. Transactional Suggestion logic (If search failed)
-            if (failing_query || category_hint) {
-                console.log(`[Discovery] Handling suggestion for ${failing_query || category_hint}`);
-
-                // Find target category
-                let targetCategory = null;
-                if (category_hint) {
-                    targetCategory = Object.values(context.CATEGORIES).find(c => c.slug === category_hint || c.label.toLowerCase() === category_hint.toLowerCase());
-                }
-
-                // If no specific category, or it's empty, find related ones with inventory
-                if (!targetCategory || targetCategory.total_count === 0) {
-                    const inventoriedCategories = Object.values(context.CATEGORIES)
-                        .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'))
-                        .sort(() => 0.5 - Math.random());
-
-                    targetCategory = inventoriedCategories[0];
-                }
-
-                if (targetCategory) {
-                    // Get some products from this category to suggest
-                    const axios = require('axios');
-                    const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
-                    const TENANT_ID = process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713';
-
-                    try {
-                        const searchRes = await axios.get(`${BACKEND_URL}/search/products`, {
-                            params: { category: targetCategory.slug, per_page: 3 },
-                            headers: { 'X-Tenant-ID': TENANT_ID }
-                        });
-
-                        const products = searchRes.data.products || searchRes.data.results || [];
-
-                        // TRACK SUGGESTION IN STATE
-                        if (context.sessionId) {
-                            await stateManager.setLastSuggestion(context.sessionId, {
-                                type: 'product_offer',
-                                intent: 'product.search',
-                                params: { category: targetCategory.slug },
-                                text: `Suggested products from ${targetCategory.label}`,
-                                timestamp: new Date().toISOString()
-                            });
-
-                            // Also update reference map so user can say "the first one"
-                            if (products.length > 0) {
-                                await stateManager.updateReferenceMap(context.sessionId, products);
-                            }
-                        }
-
-                        return {
-                            message: failing_query
-                                ? `I couldn't find exactly "${failing_query}", but you might be interested in our ${targetCategory.label} collection:`
-                                : `Check out these items from our ${targetCategory.label} section:`,
-                            products: products.map(p => ({
-                                id: p.id,
-                                name: p.name,
-                                price: p.price,
-                                image_url: p.image_url
-                            })),
-                            target_category: targetCategory.label,
-                            suggestion_type: 'recovery'
-                        };
-                    } catch (err) {
-                        console.error(`[Discovery] Failed to fetch fallback products: ${err.message}`);
-                    }
-                }
-            }
-
-            // 2. Default Discovery logic
-            if (focus === 'vendors') {
-                const randomVendors = Object.values(context.VENDORS)
-                    .sort(() => 0.5 - Math.random())
-                    .slice(0, 3);
-                return {
-                    message: "Check out these featured shops:",
-                    suggestions: randomVendors.map(v => ({ name: v.name || v.business_name, product_count: v.product_count }))
-                };
-            }
-
-            // Default: Categories
-            const suggestions = Object.values(context.CATEGORIES)
-                .filter(c => c.total_count > 0 && c.parent_id) // Prefer subcategories
-                .sort(() => 0.5 - Math.random())
-                .slice(0, 3);
-
-            return {
-                message: "Not sure where to start? Explore these sections:",
-                suggestions: suggestions.map(c => ({ label: c.label, slug: c.slug }))
-            };
-        }
-    },
-    */
-
     'discovery.ensureSuggestions': {
         description: 'Sentinel tool that shadows product searches. It verifies results and autonomously infers alternative categories if search fails or returns irrelevant items.',
         params: {
@@ -227,7 +18,6 @@ const discoveryTools = {
         },
         handler: async (params, context, accumulatedResults = []) => {
             const { search_intent } = params;
-            const stateManager = require('../state/stateManager');
             const { queryAI } = require('../core/aiService');
             const axios = require('axios');
 
@@ -238,11 +28,10 @@ const discoveryTools = {
 
             console.log(`[Sentinel] Shadowing search for: "${search_intent}". Found ${searchProducts.length} results.`);
 
-            // 2. AI Verification: Are these results actually relevant?
+            // 2. AI Verification
             let needsRecovery = searchProducts.length === 0;
 
             if (!needsRecovery && searchProducts.length > 0) {
-                // Fast-path: If the query is literally inside any result name, it's a match.
                 const lowerQuery = search_intent.toLowerCase();
                 const isExactMatch = searchProducts.some(p =>
                     p.name.toLowerCase().includes(lowerQuery) ||
@@ -263,8 +52,8 @@ Reply "YES" if:
 3. The result is a highly relevant alternative that matches the specific intent.
 
 Reply "NO" ONLY if:
-1. The results are completely unrelated (e.g. searching for "hoverboard" and getting "keyboards").
-2. The results are "fuzzy" distractions that don't match the specific model/item requested (e.g. searching for "iPhone 7" and ONLY finding "iPhone 13").
+1. The results are completely unrelated.
+2. The results are "fuzzy" distractions that don't match the specific model/item requested.
 
 Reply ONLY with "YES" or "NO". No other text.`;
 
@@ -284,7 +73,7 @@ Reply ONLY with "YES" or "NO". No other text.`;
                 return { status: "verified", message: "Search results are relevant to intent." };
             }
 
-            // 3. Recovery: Autonomous Category Inference
+            // 3. Recovery
             console.log(`[Sentinel] Entering Recovery Mode for intent: "${search_intent}"`);
 
             const categoryInventory = Object.values(context.CATEGORIES)
@@ -306,7 +95,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
                 console.log(`[Sentinel] Inferred fallback category: ${suggestedCategorySlug}`);
             } catch (e) {
                 console.error('[Sentinel] Inference failed:', e.message);
-                suggestedCategorySlug = categoryInventory[0]?.slug; // Fallback to first available
+                suggestedCategorySlug = categoryInventory[0]?.slug;
             }
 
             const targetCategory = context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].slug === suggestedCategorySlug)];
@@ -321,9 +110,9 @@ Reply ONLY with the "slug" of the category. No other text.`;
                         headers: { 'X-Tenant-ID': TENANT_ID }
                     });
 
-                    const products = searchRes.data.products || searchRes.data.results || [];
+                    let products = searchRes.data.products || searchRes.data.results || [];
+                    products = await processProductList(products);
 
-                    // TRACK SUGGESTION IN STATE
                     if (context.sessionId) {
                         await stateManager.setLastSuggestion(context.sessionId, {
                             type: 'product_offer',
@@ -333,7 +122,6 @@ Reply ONLY with the "slug" of the category. No other text.`;
                             timestamp: new Date().toISOString()
                         });
 
-                        // Update reference map
                         if (products.length > 0) {
                             await stateManager.updateReferenceMap(context.sessionId, products);
                         }
@@ -341,12 +129,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
 
                     return {
                         message: `I couldn't find exactly "${search_intent}", but check out these great options from our ${targetCategory.label} collection:`,
-                        products: products.map(p => ({
-                            id: p.id,
-                            name: p.name,
-                            price: p.price,
-                            image_url: p.image_url
-                        })),
+                        products: products,
                         target_category: targetCategory.label,
                         suggestion_type: 'recovery',
                         recovery_reason: searchProducts.length > 0 ? 'irrelevant_results' : 'no_results'
@@ -359,29 +142,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
 
             return { message: "No suggestions found." };
         }
-    },
-
-    /*
-    'discovery.getPersonalized': {
-        description: 'Get personalized recommendations based on the current session history.',
-        params: {},
-        handler: async (params, context) => {
-            // This tool ideally reads from StateManager, but context.sessionId is passed.
-            // For now, we utilize the 'product_context' if available in the broader context 
-            // sequence (if we had a way to pass state here).
-
-            // Fallback: Use highly populated child categories related to top-level ones.
-            return {
-                message: "Based on store highlights, you might like these:",
-                recommendations: [
-                    { label: "New Arrivals", description: "Our latest additions" },
-                    { label: "Best Sellers", description: "Most popular items this week" }
-                ],
-                action: "Would you like to see products from any of these?"
-            };
-        }
     }
-    */
 };
 
 module.exports = discoveryTools;

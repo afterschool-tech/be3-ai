@@ -59,4 +59,35 @@ async function injectImages(data, stateManager) {
     }
 }
 
-module.exports = { injectImages };
+/**
+ * Flat extractor for unique image URLs from product data
+ */
+function extractImages(data) {
+    const images = new Set();
+
+    const traverse = (obj, depth = 0) => {
+        if (depth > 5 || !obj || typeof obj !== 'object') return;
+
+        if (Array.isArray(obj)) {
+            obj.forEach(item => traverse(item, depth + 1));
+        } else {
+            // Check if this is a product with an image
+            if (obj.image_url) {
+                images.add(obj.image_url);
+            }
+            if (obj.metadata && obj.metadata.image_url) {
+                images.add(obj.metadata.image_url);
+            }
+
+            // Continue traversal
+            Object.values(obj).forEach(val => {
+                if (typeof val === 'object') traverse(val, depth + 1);
+            });
+        }
+    };
+
+    traverse(data);
+    return Array.from(images);
+}
+
+module.exports = { injectImages, extractImages };

@@ -4,6 +4,8 @@
  */
 
 const axios = require('axios');
+const stateManager = require('../state/stateManager');
+const { resolveProduct } = require('../utils/productResolver');
 
 // Configuration
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
@@ -63,7 +65,6 @@ const cartTools = {
             };
 
             // Sync to State
-            const stateManager = require('../state/stateManager');
             await stateManager.updateCart(sessionId, cartSummary);
 
             return {
@@ -92,7 +93,6 @@ const cartTools = {
             if (!identifier) return { error: "Product ID or name is required" };
 
             // --- STAGE 1: Product Resolution (Phase 8) ---
-            const { resolveProduct } = require('../utils/productResolver');
             const product_id = await resolveProduct(identifier, context);
 
             if (!product_id) return { error: `Could not find product: ${identifier}` };
@@ -119,7 +119,6 @@ const cartTools = {
             if (!result.success) return { error: "Failed to add to cart", details: result.error };
 
             // Sync to State
-            const stateManager = require('../state/stateManager');
             const cartUpdate = {
                 item_count: result.data.cart?.item_count || 1,
                 total: result.data.cart?.total || product.price
@@ -150,21 +149,59 @@ const cartTools = {
     },
 
     'cart.remove': {
-        description: 'Remove an item from the shopping cart',
+        description: 'Remove an item from the shopping cart. Supports removing by product name/description.',
         params: {
-            // Supports removing by cart item ID or product ID if needed, 
-            // but usually AI passes product ID or name logic
-            cart_item_id: { type: 'string', description: 'ID of the item in the cart' }
+            cart_item_id: { type: 'string', description: 'ID of the item in the cart (optional if product_id is provided)' },
+            product_id: { type: 'string', description: 'Product ID or Name to remove (resolved from context)' }
         },
         handler: async (params, context) => {
-            const { cart_item_id } = params;
-            if (!cart_item_id) return { error: "Cart Item ID required" };
+            let { cart_item_id, product_id } = params;
+            const { sessionId } = context;
+
+            // if product_id is provided (likely from AI), resolve it to a cart_item_id
+            if (!cart_item_id && product_id) {
+                // 1. Get current cart
+                const cartRes = await callBackendAPI(`/cart?session_id=${sessionId}`);
+                if (!cartRes.success) return { error: "Failed to retrieve cart for removal", details: cartRes.error };
+
+                const items = cartRes.data.items || [];
+                if (items.length === 0) return { error: "Cart is empty." };
+
+                // 2. Resolve product_id (it might be "iphone" or "it")
+                const resolvedProductId = await resolveProduct(product_id, context);
+
+                if (resolvedProductId) {
+                    // Try to find matching item in cart
+                    const match = items.find(i => i.product_id === resolvedProductId || i.id === resolvedProductId);
+                    if (match) {
+                        cart_item_id = match.id; // Correct cart item ID
+                        console.log(`[CartTool] Resolved "${product_id}" to cart item ${cart_item_id}`);
+                    }
+                }
+
+                // Fallback: Fuzzy match name if ID match failed
+                if (!cart_item_id) {
+                    const lowerQuery = product_id.toLowerCase();
+                    const fuzzyMatch = items.find(i => i.product_name.toLowerCase().includes(lowerQuery));
+                    if (fuzzyMatch) {
+                        cart_item_id = fuzzyMatch.id;
+                    }
+                }
+            }
+
+            if (!cart_item_id) return { error: "Could not find that item in your cart." };
 
             const result = await callBackendAPI(`/cart/items/${cart_item_id}`, {
                 method: 'DELETE'
             });
 
             if (!result.success) return { error: "Failed to remove item", details: result.error };
+
+            // Update State
+            await stateManager.updateCart(sessionId, {
+                item_count: result.data.cart?.item_count || 0,
+                total: result.data.cart?.total || 0
+            });
 
             return { success: true, message: "Item removed from cart" };
         }

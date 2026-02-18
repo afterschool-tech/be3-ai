@@ -8,10 +8,13 @@ const { CATEGORIES, VENDORS } = require('../context/storeContext');
 /**
  * Normalizes a category string (label, slug, or breadcrumb) to a valid Category ID.
  * @param {string} cat - The input category string.
+ * @param {Object} [context] - Optional categories context.
+ * @param {boolean} [exactMatchOnly=false] - If true, only returns IDs for exact label/slug matches.
  * @returns {string|null} - The Category UUID or null.
  */
-function normalizeCategory(cat) {
+function normalizeCategory(cat, context = null, exactMatchOnly = false) {
     if (!cat) return null;
+    const cats = context || CATEGORIES;
     let catLower = cat.trim().toLowerCase();
 
     // 1. Handle breadcrumbs like "Smartphones & Tablets > Smartphones"
@@ -21,15 +24,14 @@ function normalizeCategory(cat) {
     }
 
     // 2. Direct match with key (if input was already a normalized key)
-    if (CATEGORIES[catLower]) return CATEGORIES[catLower].id;
+    if (cats[catLower]) return cats[catLower].id;
 
     // 3. Find by label, slug, or partial label match
-    const match = Object.values(CATEGORIES).find(c =>
+    const match = Object.values(cats).find(c =>
         c.id === catLower || // Already an ID
         c.slug === catLower ||
         c.label.toLowerCase() === catLower ||
-        catLower.includes(c.label.toLowerCase()) ||
-        c.label.toLowerCase().includes(catLower)
+        (!exactMatchOnly && (catLower.includes(c.label.toLowerCase()) || c.label.toLowerCase().includes(catLower)))
     );
 
     return match ? match.id : null;
@@ -38,10 +40,13 @@ function normalizeCategory(cat) {
 /**
  * Normalizes a vendor string to the canonical business name.
  * Now supports history-based resolution for "their" or "this vendor".
+ * @param {string} vendor - Input vendor string.
+ * @param {Array} history - Interaction history.
+ * @param {Object} [context] - Optional vendors context.
  */
-function normalizeVendor(vendor, history = []) {
+function normalizeVendor(vendor, history = [], context = null) {
     if (!vendor) return null;
-    const vendors = Object.values(VENDORS);
+    const vendors = Object.values(context || VENDORS);
     const vendorLower = vendor.trim().toLowerCase();
 
     // 1. Resolve from history (e.g. "their", "this vendor")
