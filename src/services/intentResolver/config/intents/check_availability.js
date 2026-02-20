@@ -11,8 +11,8 @@ module.exports = {
     ],
 
     synonyms: [
-        'do you have', 'is it available', 'is it in stock',
-        'can i get', 'got any', 'is there', 'have you got',
+        'is it available', 'is it in stock',
+        'is there', 'have you got',
         'any left', 'still available', 'still in stock',
         'out of stock', 'sold out', 'back in stock',
         'check stock', 'check availability'
@@ -22,8 +22,12 @@ module.exports = {
         products: { type: 'list', required: false, description: 'List of product names ONLY (e.g. ["iphone 12"]). Do NOT include availability verbs or sentences.' },
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
         query: { type: 'string', required: false, description: 'Single product query (fallback)' },
-        vendor: { type: 'string', required: false, description: 'Vendor filter' }
+        vendor: { type: 'string', required: false, description: 'Vendor filter' },
+        clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
+        attributes: { type: 'dict', required: false, description: 'Semantic attributes' }
     },
+
+    slotTags: ['[product]', '[clause]', '[vendor]'],
 
     toolName: 'product.checkAvailability',
 

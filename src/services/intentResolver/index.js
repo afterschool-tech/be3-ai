@@ -1,15 +1,17 @@
 /**
  * Hybrid Intent Resolver — Pipeline Orchestrator
  * 
- * Wires together all 8 pipeline stages in sequence:
- *   1. fuzzyMatcher   — typo correction
- *   2. contextResolver — pronoun/ref resolution from state
- *   3. preprocessor    — normalize + negate + split
- *   4. candidateDetector — keyword matching
- *   5. parameterExtractor — deterministic + AI
+ * Wires together all pipeline stages in sequence:
+ *   1. fuzzyMatcher     — typo correction
+ *   2. contextResolver  — pronoun/ref resolution from state
+ *   3. preprocessor     — normalize + negate + split
+ *   4a. entityExtractor — typed entity extraction (vendors, categories, brands, actions)
+ *   4b. schemaResolver  — schema-fit intent matching + IDF confirmation
+ *   5. parameterExtractor — fill remaining params (deterministic + AI)
  *   6. parameterBleeder — cross-intent param inheritance
- *   7. intentScorer   — dynamic shared-parameter weighting
- *   8. toolMapper     — intent → tool call
+ *   7. intentPorter     — dynamic buy-vs-search pivoting
+ *   8. parameterNormalizer — vendor/category ID normalization
+ *   9. toolMapper       — intent → tool call
  * 
  * Signature: resolveAndMap(userMessage, state, aiQueryFn, storeContext)
  * 
@@ -20,15 +22,19 @@
 const fuzzyMatcher = require('./pipeline/fuzzyMatcher');
 const contextResolver = require('./pipeline/contextResolver');
 const preprocessor = require('./pipeline/preprocessor');
-const candidateDetector = require('./pipeline/candidateDetector');
+const { extractEntities } = require('./pipeline/entityExtractor');
+const { resolveIntent } = require('./pipeline/schemaResolver');
 const parameterExtractor = require('./pipeline/parameterExtractor');
 const parameterBleeder = require('./pipeline/parameterBleeder');
 const parameterNormalizer = require('./pipeline/parameterNormalizer');
-const intentScorer = require('./pipeline/intentScorer');
 const intentPorter = require('./pipeline/intentPorter');
 const toolMapper = require('./pipeline/toolMapper');
 const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
 const { logDebug } = require('../../utils/debugLogger');
+const intentRegistry = require('./config/intentRegistry');
+
+// Build IDF map once at module load
+const idfMap = intentRegistry.buildIdfMap();
 
 /**
  * Main entry point: resolve user message into tool calls.
@@ -62,40 +68,121 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
     const resolvedStatements = [];
 
+    // Intra-query coreference: track entities from previous statements
+    // for pronoun resolution within the same multi-statement query
+    let prevStatementEntities = []; // entities from the last processed statement
+    let prevStatementResiduals = []; // residual words (likely product names) from last statement
+
+    // Pronouns that can refer to entities from previous statement
+    const SINGULAR_PRONOUNS = new Set(['it', 'this', 'that', 'the one', 'the product']);
+    const PLURAL_PRONOUNS = new Set(['them', 'they', 'those', 'these', 'the products', 'all of them', 'both']);
+
     for (let i = 0; i < statements.length; i++) {
         const statement = statements[i];
-        const cleanedText = cleanText(statement.text);
+        let textForExtraction = statement.text;
 
-        logDebug(`PIPELINE:STAGE4_CANDIDATES [Statement ${i + 1}/${statements.length}]`, {
-            originalText: statement.text,
-            cleanedText,
-            negated: statement.negated
+        // ── Stage 3b: Intra-Query Coreference Resolution ──
+        // Only for multi-statement queries (i > 0): replace pronouns using
+        // entities from the PREVIOUS statement in the same query.
+        // Single statements are always resolved from state (Stage 2 already did that).
+        if (isMultiIntent && i > 0 && prevStatementEntities.length > 0) {
+            const lowerText = textForExtraction.toLowerCase();
+
+            // Collect product-like names from previous statement entities
+            const prevProductNames = [];
+            const prevVendorNames = [];
+            for (const e of prevStatementEntities) {
+                if (e.type === 'vendor') prevVendorNames.push(e.value);
+                else if (e.type === 'category') prevProductNames.push(e.value);
+                else if (e.type === 'brand') prevProductNames.push(e.value);
+            }
+            // Residual words from prev statement are also likely product names
+            if (prevStatementResiduals && prevStatementResiduals.length > 0) {
+                prevProductNames.push(prevStatementResiduals.join(' '));
+            }
+
+            const allPrevNames = [...prevProductNames];
+            const singularRef = allPrevNames.length > 0 ? allPrevNames[allPrevNames.length - 1] : null;
+            const pluralRef = allPrevNames.length > 0 ? allPrevNames.join(' and ') : null;
+
+            // Replace pronouns only if they weren't already resolved by Stage 2
+            // (Stage 2 resolves from state reference_map; we check if the pronoun
+            // is still present in the text — if so, state didn't resolve it)
+            if (singularRef) {
+                for (const pronoun of SINGULAR_PRONOUNS) {
+                    const regex = new RegExp(`\\b${pronoun}\\b`, 'gi');
+                    if (regex.test(lowerText)) {
+                        textForExtraction = textForExtraction.replace(regex, singularRef);
+                    }
+                }
+            }
+            if (pluralRef) {
+                for (const pronoun of PLURAL_PRONOUNS) {
+                    const regex = new RegExp(`\\b${pronoun}\\b`, 'gi');
+                    if (regex.test(lowerText)) {
+                        textForExtraction = textForExtraction.replace(regex, pluralRef);
+                    }
+                }
+            }
+
+            if (textForExtraction !== statement.text) {
+                logDebug(`PIPELINE:STAGE3B_COREF [Statement ${i + 1}]`, {
+                    original: statement.text,
+                    resolved: textForExtraction,
+                    prevEntities: prevStatementEntities.map(e => e.type + ':' + (e.value || e.verb))
+                });
+            }
+        }
+
+        const cleanedText = cleanText(textForExtraction);
+
+        // Stage 4a: Entity Extraction
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap);
+
+        logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
+            text: cleanedText,
+            entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb, idf: e.idf })),
+            residualWords: extractionResult.residualWords
         });
 
-        // Stage 4: Candidate detection (Deterministic)
-        const candidates = candidateDetector.detectCandidates({
-            ...statement,
-            text: cleanedText
-        });
-
-        logDebug(`PIPELINE:STAGE4_CANDIDATES_RESULT [Statement ${i + 1}]`, {
-            candidateCount: candidates.length,
-            candidates: candidates.map(c => ({
+        // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
+        const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
+        logDebug(`PIPELINE:STAGE4B_SCHEMA [Statement ${i + 1}]`, {
+            winner: resolution.winner ? {
+                intent: resolution.winner.intentName,
+                score: resolution.winner.score,
+                matchedKeywords: resolution.winner.matchedKeywords,
+                matchedParams: resolution.winner.matchedParams
+            } : null,
+            topCandidates: resolution.candidates.slice(0, 3).map(c => ({
                 intent: c.intentName,
-                score: c.score,
-                matchedKeywords: c.matchedKeywords
-            }))
+                score: c.score.toFixed(2)
+            })),
+            fallbackUsed: resolution.fallbackUsed
         });
 
-        if (candidates.length === 0) {
-            logDebug(`PIPELINE:STAGE4_NO_MATCH [Statement ${i + 1}]`, {
+        // Always update coreference trackers — previous statement entities
+        // are valid antecedents even if no intent winner was found
+        prevStatementEntities = extractionResult.entities;
+        prevStatementResiduals = extractionResult.residualWords;
+
+        if (!resolution.winner) {
+            logDebug(`PIPELINE:STAGE4B_NO_MATCH [Statement ${i + 1}]`, {
                 text: cleanedText,
-                action: 'Skipping — no candidates detected'
+                action: 'Skipping — no intent resolved'
             });
             continue;
         }
 
+        // Build lightweight candidates array for parameterExtractor compatibility
+        const candidates = resolution.candidates.map(c => ({
+            intentName: c.intentName,
+            matchedKeywords: c.matchedKeywords,
+            keywordScore: c.score
+        }));
+
         // Stage 5: Parameter extraction (AI + Deterministic)
+        // Uses the resolved candidates to fill remaining params
         const extractedParams = await parameterExtractor.extractParameters(
             statement.text, candidates, aiQueryFn, storeContext, resolutions
         );
@@ -105,27 +192,29 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             extractedParams
         });
 
-        // Stage 7: Score and pick winner (with Semantic Boosting)
-        const winner = intentScorer.scoreIntents(candidates, extractedParams, state, cleanedText);
-        logDebug(`PIPELINE:STAGE7_SCORING [Statement ${i + 1}]`, {
-            winner: winner ? {
-                intent: winner.intentName,
-                score: winner.score,
-                parameters: winner.parameters,
-                matchedKeywords: winner.matchedKeywords
-            } : null
-        });
+        // Merge schema-matched params with extractor params
+        // Schema params take precedence for entities we already identified
+        const mergedParams = { ...extractedParams, ...resolution.winner.matchedParams };
 
-        if (winner) {
-            resolvedStatements.push({
-                intentName: winner.intentName,
-                score: winner.score,
-                parameters: winner.parameters,
-                extractedParams,
-                matchedKeywords: winner.matchedKeywords,
-                invertedFrom: winner.invertedFrom
-            });
+        // Handle negation: invert intent if applicable
+        let resolvedIntentName = resolution.winner.intentName;
+        let invertedFrom = null;
+        if (statement.negated) {
+            const intent = intentRegistry.get(resolvedIntentName);
+            if (intent && intent.invertTo) {
+                invertedFrom = resolvedIntentName;
+                resolvedIntentName = intent.invertTo;
+            }
         }
+
+        resolvedStatements.push({
+            intentName: resolvedIntentName,
+            score: resolution.winner.score,
+            parameters: mergedParams,
+            extractedParams,
+            matchedKeywords: resolution.winner.matchedKeywords,
+            invertedFrom
+        });
     }
 
     // --- RULE 8: CLARIFICATION FALLBACK ---

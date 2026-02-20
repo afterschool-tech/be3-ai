@@ -1,0 +1,149 @@
+﻿­ƒôí [SemanticMatcher:Intents] Index built for 24 clusters.
+=== PHASE 18: STRUCTURAL EXTRACTION FINAL VERIFICATION ===
+
+Testing: Search: Cheap phones... [IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.33, Total: 1.33 Params: category Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.25, Total: -10.75 Params: clause_words Keywords: [semantic]
+[IntentScorer] Candidate: view_cart, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 2.25, Total: 2.25 Params: products,product_name,category,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_search, BaseScore: 3.25, Total: 3.25 Params: products,product_name,category,price_max,clause_words Keywords: [show me]
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: add_to_cart, BaseScore: 1.92, Total: 1.92 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_info missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_info, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+Ô£à
+Testing: Search: Specific product with clause... [IntentScorer] Contract Penalty: cancel_order missing/invalid required "order_number" ÔåÆ -12
+[IntentScorer] Candidate: cancel_order, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: add_to_cart, BaseScore: 1.51, Total: 1.51 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: remove_from_cart, BaseScore: 1.14, Total: 1.14 Params: products Keywords: [semantic]
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: get_advice, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: update_cart_quantity missing/invalid required "quantity" ÔåÆ -12
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 1.31, Total: -10.69 Params: products,product_name Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.20, Total: -10.80 Params: clause_words Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: check_availability, BaseScore: 1.51, Total: 1.51 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_info missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_info, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.17, Total: 1.17 Params: product_name Keywords: [semantic]
+[IntentScorer] Candidate: view_cart, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: order_status, BaseScore: 1.14, Total: 1.14 Params: products Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 1.51, Total: 1.51 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: product_search, BaseScore: 2.51, Total: 2.51 Params: products,product_name,price_max,clause_words Keywords: [want]
+Ô£à
+Testing: Search: With Brand Clause (Apple)... [IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.20, Total: -10.80 Params: vendor Keywords: [semantic]
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.45, Total: 1.45 Params: product_name,vendor Keywords: [semantic]
+[IntentScorer] Candidate: check_availability, BaseScore: 1.95, Total: 1.95 Params: products,product_name,vendor,clause_words Keywords: [semantic]
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: get_advice, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: order_status, BaseScore: 1.25, Total: 1.25 Params: products Keywords: [semantic]
+[IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 1.75, Total: 1.75 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 5.45, Total: -6.55 Params: vendor,clause_words Keywords: [from]
+[IntentScorer] Candidate: product_search, BaseScore: 1.95, Total: 1.95 Params: products,product_name,vendor,clause_words Keywords: [find]
+ÔØî
+   Input:    "find headphones from apple"
+   Result:   {
+  "intent": "check_availability",
+  "params": {
+    "products": [
+      "headphones apple",
+      "headphones"
+    ],
+    "product_name": "headphones",
+    "vendor": null,
+    "clause_words": [
+      {
+        "word": "apple",
+        "clauseId": "apple_product"
+      }
+    ],
+    "attributes": {
+      "brand": "apple"
+    }
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "product_name": "headphones",
+    "attributes": {
+      "brand": "apple"
+    }
+  }
+}
+   Reason:   Expected intent product_search, got check_availability. 
+Testing: Vendor: Official Tenant lookup (Bola Foods)... [IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: view_cart, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 1.58, Total: 1.58 Params: products,product_name Keywords: [semantic]
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_search, BaseScore: 1.83, Total: 1.83 Params: products,product_name,vendor Keywords: [show me]
+[IntentScorer] Candidate: order_status, BaseScore: 1.25, Total: 1.25 Params: products Keywords: [semantic]
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: add_to_cart, BaseScore: 1.83, Total: 1.83 Params: products,product_name,vendor Keywords: [semantic]
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: vendor_info, BaseScore: 1.25, Total: 1.25 Params: vendor Keywords: [semantic]
+[IntentScorer] Candidate: vendor_products, BaseScore: 5.25, Total: 5.25 Params: vendor Keywords: [from]
+Ô£à
+Testing: Cart: Quantity extraction... [IntentScorer] Candidate: remove_from_cart, BaseScore: 1.67, Total: 1.67 Params: products,quantity Keywords: [semantic]
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 2.17, Total: 2.17 Params: products,product_name,quantity Keywords: [semantic]
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: end_conversation, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: add_to_cart, BaseScore: 11.17, Total: 11.17 Params: products,product_name,quantity Keywords: [add,cart]
+[IntentScorer] Contract Penalty: cancel_order missing/invalid required "order_number" ÔåÆ -12
+[IntentScorer] Candidate: cancel_order, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: view_cart, BaseScore: 5.00, Total: 5.00 Params:  Keywords: [cart]
+Ô£à
+Testing: Compare: Two multi-word products... [IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 6.00, Total: 6.00 Params: products Keywords: [comparison]
+Ô£à
+Testing: Availability: Clause + Product... [IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.25, Total: -10.75 Params: clause_words Keywords: [semantic]
+[IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.00, Total: -11.00 Params:  Keywords: [semantic]
+[IntentScorer] Contract Penalty: update_cart_quantity missing/invalid required "quantity" ÔåÆ -12
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 1.45, Total: -10.55 Params: products,product_name Keywords: [semantic]
+[IntentScorer] Candidate: product_search, BaseScore: 1.70, Total: 1.70 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: end_conversation, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: product_compare, BaseScore: 1.70, Total: 1.70 Params: products,product_name,clause_words Keywords: [semantic]
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.20, Total: 1.20 Params: product_name Keywords: [semantic]
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00 Params:  Keywords: [semantic]
+[IntentScorer] Candidate: check_availability, BaseScore: 5.70, Total: 5.70 Params: products,product_name,clause_words Keywords: [available]
+Ô£à
+
+Results: 6 passed, 1 failed out of 7

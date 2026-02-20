@@ -23,6 +23,8 @@ module.exports = {
         quantity: { type: 'int', required: false, default: null, description: 'Quantity to remove (null = remove all)' }
     },
 
+    slotTags: ['[product]', '[quantity]'],
+
     toolName: 'cart.remove',
 
     paramMap: {

@@ -1,0 +1,184 @@
+﻿­ƒôí [SemanticMatcher:Intents] Index built for 24 clusters.
+=== PHASE 18: STRUCTURAL EXTRACTION FINAL VERIFICATION ===
+
+Testing: Search: Cheap phones... [ParamExtractor] Clause-aware strip: clauses=["cheap"], product="undefined"
+[IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.33, Total: 1.33
+[IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.33, Total: -10.67
+[IntentScorer] Candidate: view_cart, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_compare, BaseScore: 2.50, Total: 2.50
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_search, BaseScore: 2.67, Total: 2.67
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: add_to_cart, BaseScore: 2.17, Total: 2.17
+[IntentScorer] Contract Penalty: vendor_info missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_info, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00
+ÔØî
+   Input:    "show me cheap phones"
+   Result:   {
+  "intent": "product_search",
+  "params": {
+    "product_name": "phones",
+    "category": "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+    "price_max": 200
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "category": "smartphones_&_tablets",
+    "clause_words": [
+      {
+        "word": "cheap",
+        "clauseId": "affordable"
+      }
+    ]
+  }
+}
+Testing: Search: Specific product with clause... [ParamExtractor] Clause-aware strip: clauses=["affordable"], product="iphone 13"
+[IntentScorer] Contract Penalty: cancel_order missing required "order_number" ÔåÆ -12
+[IntentScorer] Candidate: cancel_order, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: remove_from_cart, BaseScore: 1.17, Total: 1.17
+[IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: get_advice, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Contract Penalty: update_cart_quantity missing required "quantity" ÔåÆ -12
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 1.33, Total: -10.67
+[IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.25, Total: -10.75
+[IntentScorer] Contract Penalty: vendor_contact missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: check_availability, BaseScore: 1.58, Total: 1.58
+[IntentScorer] Contract Penalty: vendor_info missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_info, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: add_to_cart, BaseScore: 6.58, Total: 4.58
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.17, Total: 1.17
+[IntentScorer] Candidate: view_cart, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: order_status, BaseScore: 1.17, Total: 1.17
+[IntentScorer] Candidate: product_compare, BaseScore: 1.58, Total: 1.58
+[IntentScorer] Candidate: product_search, BaseScore: 2.17, Total: 2.17
+ÔØî
+   Input:    "i want affordable iphone 13"
+   Result:   {
+  "intent": "add_to_cart",
+  "params": {
+    "products": [
+      "affordable iphone 13"
+    ],
+    "product_name": "iphone 13",
+    "clause_words": [
+      {
+        "word": "affordable",
+        "clauseId": "affordable"
+      }
+    ],
+    "attributes": {
+      "price tier": "affordable"
+    }
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "product_name": "iphone 13",
+    "price_max": 200
+  }
+}
+Testing: Cart: Quantity extraction... [IntentScorer] Candidate: remove_from_cart, BaseScore: 1.67, Total: 1.67
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 2.17, Total: 2.17
+[IntentScorer] Candidate: start_checkout, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: end_conversation, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: add_to_cart, BaseScore: 11.17, Total: 11.17
+[IntentScorer] Contract Penalty: cancel_order missing required "order_number" ÔåÆ -12
+[IntentScorer] Candidate: cancel_order, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: view_cart, BaseScore: 5.00, Total: 5.00
+ÔØî
+   Input:    "add 3 bottles of water to cart"
+   Result:   {
+  "intent": "add_to_cart",
+  "params": {
+    "products": [
+      "bottles water"
+    ],
+    "product_name": "bottles water",
+    "quantity": 3
+  }
+}
+   Expected: {
+  "intent": "add_to_cart",
+  "params": {
+    "product_name": "bottles of water",
+    "quantity": 3
+  }
+}
+Testing: Compare: Two multi-word products... [IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_compare, BaseScore: 6.00, Total: 6.00
+Ô£à
+Testing: Vendor Search: Standard... [ParamExtractor] Clause-aware strip: clauses=["apple"], product="headphones by"
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Contract Penalty: vendor_contact missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.33, Total: -10.67
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.25, Total: 1.25
+[IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+[IntentScorer] Candidate: browse_collection, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Candidate: check_availability, BaseScore: 1.92, Total: 1.92
+[IntentScorer] Candidate: get_advice, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: discovery_sentinel, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: order_status, BaseScore: 1.33, Total: 1.33
+[IntentScorer] Candidate: list_orders, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_compare, BaseScore: 1.92, Total: 1.92
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: give_feedback, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_search, BaseScore: 5.25, Total: 5.25
+ÔØî
+   Input:    "find headphones by apple"
+   Result:   {
+  "intent": "product_search",
+  "params": {
+    "product_name": "headphones by"
+  }
+}
+   Expected: {
+  "intent": "vendor_products",
+  "params": {
+    "product_name": "headphones",
+    "vendor": "apple"
+  }
+}
+Testing: Availability: Clause + Product... [ParamExtractor] Clause-aware strip: clauses=["blue"], product="laptop"
+[IntentScorer] Candidate: list_vendors, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_products, BaseScore: 1.33, Total: -10.67
+[IntentScorer] Contract Penalty: vendor_contact missing required "vendor" ÔåÆ -12
+[IntentScorer] Candidate: vendor_contact, BaseScore: 1.00, Total: -11.00
+[IntentScorer] Contract Penalty: update_cart_quantity missing required "quantity" ÔåÆ -12
+[IntentScorer] Candidate: update_cart_quantity, BaseScore: 1.53, Total: -10.47
+[IntentScorer] Candidate: product_search, BaseScore: 1.20, Total: 1.20
+[IntentScorer] Candidate: set_delivery, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: get_help, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: end_conversation, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: product_compare, BaseScore: 1.87, Total: 1.87
+[IntentScorer] Candidate: vendor_identity, BaseScore: 1.20, Total: 1.20
+[IntentScorer] Candidate: confirm_order, BaseScore: 1.00, Total: 1.00
+[IntentScorer] Candidate: check_availability, BaseScore: 5.87, Total: 5.87
+Ô£à
+
+Results: 2 passed, 4 failed out of 6

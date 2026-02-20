@@ -8,6 +8,31 @@
 
 const intentRegistry = require('../config/intentRegistry');
 const { normalizeCategory } = require('../../../utils/normalization');
+const { CLAUSES } = require('../../../context/clauses');
+const structuralMatcher = require('../semanticLab/structural/utils/StructuralMatcher');
+
+// ── Build a flat lookup of all clause trigger words (deterministic, no AI) ──
+const clauseWordSet = new Set();
+const clauseWordToId = new Map();
+for (const [clauseId, clause] of Object.entries(CLAUSES)) {
+    // Add the clause label words (e.g., "affordable" → "affordable")
+    const labelWords = clause.label.toLowerCase().split(/\s+/);
+    labelWords.forEach(w => { clauseWordSet.add(w); clauseWordToId.set(w, clauseId); });
+    // Add the matches keywords (e.g., "budget", "midrange")
+    (clause.matches || []).forEach(m => {
+        const mLower = m.toLowerCase();
+        clauseWordSet.add(mLower);
+        clauseWordToId.set(mLower, clauseId);
+    });
+    // Add display prefix/suffix words (e.g., "cheap", "expensive")
+    const displayWords = `${clause.display?.prefix || ''} ${clause.display?.suffix || ''}`.toLowerCase().split(/\s+/).filter(Boolean);
+    displayWords.forEach(w => { clauseWordSet.add(w); clauseWordToId.set(w, clauseId); });
+}
+// Remove overly generic words that would cause false positives
+['by', 'for', 'the', 'a', 'and', 'of', 'in', 'men', 'ladies', 'gaming', 'high', 'small', 'color'].forEach(w => {
+    clauseWordSet.delete(w);
+    clauseWordToId.delete(w);
+});
 
 /**
  * Deterministic extraction patterns.
@@ -48,7 +73,9 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     }
 
     // --- SHARED EXCLUDE SET FOR CLEANING ---
-    const excludeSet = new Set(['show', 'me', 'i', 'need', 'want', 'cheap', 'expensive', 'premium', 'under', 'for', 'the', 'a', 'any', 'some', 'compare', 'difference', 'between', 'versus', 'vs', 'v/s', 'and', 'with', 'what', 'is', 'it', 'tell', 'about', 'of', 'those', 'these', 'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm", 'to']);
+    // NOTE: clause-like words (cheap, expensive, premium, budget, affordable) are intentionally
+    // excluded from this set — they are handled by clause-aware stripping in Section 5.
+    const excludeSet = new Set(['show', 'me', 'i', 'need', 'want', 'under', 'for', 'the', 'a', 'an', 'any', 'some', 'compare', 'difference', 'between', 'versus', 'vs', 'v/s', 'and', 'with', 'what', 'is', 'it', 'tell', 'about', 'by', 'those', 'these', 'this', 'that', 'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm", 'to', 'its', 'my', 'your']);
 
     // Add deterministic parameter values to excludeSet to prevent them leaking into product_name
     if (extracted.quantity) excludeSet.add(extracted.quantity.toString());
@@ -137,12 +164,167 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         categoryWords.forEach(w => excludeSet.add(w));
 
         const productWords = words.filter(w => !excludeSet.has(w) && w.length > 0);
-        if (productWords.length > 0) {
-            extracted.product_name = productWords.join(' ');
+        const { productName, clauses } = performClauseStripping(productWords);
+
+        if (productName) {
+            extracted.product_name = productName;
+        }
+
+        if (clauses.length > 0) {
+            extracted.clause_words = clauses;
         }
     }
 
     return extracted;
+}
+
+/**
+ * Helper to identify and strip clauses from a list of words.
+ */
+function performClauseStripping(words) {
+    const detectedClauses = [];
+    const cleanWords = [];
+
+    for (const word of words) {
+        const clauseId = clauseWordToId.get(word.toLowerCase());
+        if (clauseId) {
+            detectedClauses.push({ word, clauseId });
+        } else {
+            cleanWords.push(word);
+        }
+    }
+
+    return {
+        productName: cleanWords.length > 0 ? cleanWords.join(' ') : undefined,
+        clauses: detectedClauses
+    };
+}
+
+/**
+ * ── Stage 5a: Structural Alignment ──
+ * Uses positional templates and structural index to extract clean parameters.
+ * Implements "Entity Consolidation": if a word in a [clause] slot is not a 
+ * valid clause, it is merged into the adjacent [product] slot.
+ */
+function extractStructural(text, candidates = []) {
+    const structuralResult = {};
+    const candidateNames = candidates.map(c => c.intentName);
+    const matches = structuralMatcher.findMatches(text, candidateNames);
+
+    if (matches.length === 0) return structuralResult;
+
+    // Pick the best match (already sorted by confidence)
+    const best = matches[0];
+    if (best.confidence < 0.15) return structuralResult; // Slightly more permissive but still anchored
+
+    const fillers = ['the', 'a', 'an', 'some', 'my', 'your', 'those', 'these', 'this', 'that', 'with', 'to', 'for', 'in', 'at'];
+    const cleanGroups = {};
+
+    // 1. Initial cleanup of all groups
+    for (const [key, value] of Object.entries(best.groups)) {
+        if (!value) continue;
+        let clean = value.trim();
+        const words = clean.split(/\s+/);
+        while (words.length > 0 && fillers.includes(words[0].toLowerCase())) words.shift();
+        while (words.length > 0 && fillers.includes(words[words.length - 1].toLowerCase())) words.pop();
+        clean = words.join(' ');
+        if (clean) cleanGroups[key] = clean;
+    }
+
+    // 2. Entity Consolidation & Validation
+    // We handle indices 1 to 5 (e.g. product_name, product_name_2, etc.)
+    const consolidatedProducts = [];
+    const validDetectedClauses = [];
+
+    for (let i = 1; i <= 5; i++) {
+        const suffix = i === 1 ? '' : `_${i}`;
+        const prodKey = `product_name${suffix}`;
+        const clauseKey = `clause_words${suffix}`;
+
+        let productValue = cleanGroups[prodKey];
+        const clauseValue = cleanGroups[clauseKey];
+
+        if (clauseValue) {
+            const cWords = clauseValue.toLowerCase().split(/\s+/);
+            const foundClauses = [];
+            let invalidWordFound = false;
+
+            for (const w of cWords) {
+                const clauseId = clauseWordToId.get(w);
+                if (clauseId) {
+                    foundClauses.push({ word: w, clauseId });
+                } else {
+                    invalidWordFound = true;
+                }
+            }
+
+            if (foundClauses.length > 0 && !invalidWordFound) {
+                // It's a genuine clause slot
+                validDetectedClauses.push(...foundClauses);
+            } else if (productValue) {
+                // Invalid or partial clause - consolidate into product name
+                productValue = `${clauseValue} ${productValue}`;
+            } else if (!productValue) {
+                // No product name to merge into? Use original if it's not a filler
+                productValue = clauseValue;
+            }
+        }
+
+        if (productValue) {
+            consolidatedProducts.push(productValue);
+            if (i === 1) structuralResult.product_name = productValue;
+        }
+    }
+
+    if (consolidatedProducts.length > 0) {
+        structuralResult.products = consolidatedProducts;
+    }
+    if (validDetectedClauses.length > 0) {
+        structuralResult.clause_words = validDetectedClauses;
+    }
+
+    // 3. Other fields (quantity, vendor, etc.)
+    if (cleanGroups.quantity) {
+        const qty = parseInt(cleanGroups.quantity);
+        if (!isNaN(qty)) structuralResult.quantity = qty;
+    }
+    if (cleanGroups.vendor) structuralResult.vendor = cleanGroups.vendor;
+    if (cleanGroups.category) structuralResult.category = cleanGroups.category;
+    if (cleanGroups.price_max) structuralResult.price_max = parseFloat(cleanGroups.price_max);
+
+    structuralResult._structuralTemplate = best.template;
+    structuralResult._structuralConfidence = best.confidence;
+
+    // 4. Final Polish: Run clause stripping on consolidated products 
+    // to handle mis-aligned structural matches (e.g. "blue headset" as product)
+    if (structuralResult.products) {
+        const secondaryClauses = [];
+        const polishedProducts = structuralResult.products.map(p => {
+            const words = p.split(/\s+/);
+            const { productName, clauses } = performClauseStripping(words);
+            if (clauses.length > 0) secondaryClauses.push(...clauses);
+            return productName;
+        }).filter(Boolean);
+
+        if (polishedProducts.length > 0) {
+            structuralResult.products = polishedProducts;
+            structuralResult.product_name = polishedProducts[0];
+        }
+
+        if (secondaryClauses.length > 0) {
+            if (!structuralResult.clause_words) structuralResult.clause_words = [];
+            structuralResult.clause_words.push(...secondaryClauses);
+            // Deduplicate clauses by ID
+            const seen = new Set();
+            structuralResult.clause_words = structuralResult.clause_words.filter(c => {
+                if (seen.has(c.clauseId)) return false;
+                seen.add(c.clauseId);
+                return true;
+            });
+        }
+    }
+
+    return structuralResult;
 }
 
 /**
@@ -206,14 +388,30 @@ Return a JSON object with parameter names as keys. Use null for parameters that 
  */
 async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = []) {
     const schema = buildParameterSchema(candidates);
+
+    // 1. Run Structural Extraction first (Positional Intuition)
+    const structural = extractStructural(text, candidates);
+
+    // 2. Run Deterministic Fallback (Keyword/Category Stripping)
     const deterministic = extractDeterministic(text, candidates, storeContext, resolutions);
+
+    // Merge base results (structural + deterministic) with array awareness
+    const combinedBase = { ...deterministic, ...structural };
+
+    // Concatenate arrays instead of clobbering
+    if (deterministic.clause_words || structural.clause_words) {
+        combinedBase.clause_words = [...(deterministic.clause_words || []), ...(structural.clause_words || [])];
+    }
+    if (deterministic.products || structural.products) {
+        combinedBase.products = Array.from(new Set([...(deterministic.products || []), ...(structural.products || [])]));
+    }
 
     // Check which params still need AI
     const missingParams = {};
     const excludeWordsSet = new Set();
-
+    // ... rest of logic stays same ...
     for (const [name, def] of Object.entries(schema)) {
-        if (deterministic[name] === undefined) {
+        if (combinedBase[name] === undefined) {
             missingParams[name] = def;
         }
     }
@@ -240,8 +438,8 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         }
     }
 
-    // Merge: deterministic takes priority over AI
-    const merged = { ...aiExtracted, ...deterministic };
+    // Merge: base (deterministic + structural) takes priority over AI
+    const merged = { ...aiExtracted, ...combinedBase };
 
     return merged;
 }

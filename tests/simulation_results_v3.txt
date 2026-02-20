@@ -1,0 +1,73 @@
+﻿­ƒôí [SemanticMatcher:Intents] Index built for 24 clusters.
+=== PHASE 18: STRUCTURAL EXTRACTION FINAL VERIFICATION ===
+
+Testing: Search: Cheap phones... [IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_info missing required "vendor" ÔåÆ -12
+ÔØî
+   Input:    "show me cheap phones"
+   Result:   {
+  "intent": "product_search",
+  "params": {
+    "product_name": "phones",
+    "category": "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+    "price_max": 200
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "product_name": "phones",
+    "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+  }
+}
+Testing: Search: Specific product with clause... [IntentScorer] Contract Penalty: cancel_order missing required "order_number" ÔåÆ -12
+[IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+[IntentScorer] Contract Penalty: update_cart_quantity missing required "quantity" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_contact missing required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_info missing required "vendor" ÔåÆ -12
+Ô£à
+Testing: Cart: Quantity extraction... [IntentScorer] Contract Penalty: cancel_order missing required "order_number" ÔåÆ -12
+ÔØî
+   Input:    "add 3 bottles of water to cart"
+   Result:   {
+  "intent": "add_to_cart",
+  "params": {
+    "products": [
+      "bottles water"
+    ],
+    "product_name": "bottles water",
+    "quantity": 3
+  }
+}
+   Expected: {
+  "intent": "add_to_cart",
+  "params": {
+    "product_name": "bottles of water",
+    "quantity": 3
+  }
+}
+Testing: Compare: Two multi-word products... Ô£à
+Testing: Vendor Search: Standard... [IntentScorer] Contract Penalty: browse_collection missing required "collection_slug" ÔåÆ -12
+ÔØî
+   Input:    "find headphones from apple"
+   Result:   {
+  "intent": "product_search",
+  "params": {
+    "product_name": "headphones",
+    "vendor": "apple"
+  }
+}
+   Expected: {
+  "intent": "vendor_products",
+  "params": {
+    "vendor": "apple"
+  }
+}
+Testing: Availability: Clause + Product... [IntentScorer] Contract Penalty: vendor_products missing required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_contact missing required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: update_cart_quantity missing required "quantity" ÔåÆ -12
+Ô£à
+
+Results: 3 passed, 3 failed out of 6

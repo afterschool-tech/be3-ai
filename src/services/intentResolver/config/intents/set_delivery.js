@@ -7,7 +7,7 @@ module.exports = {
     name: 'set_delivery',
 
     keywords: [
-        'delivery', 'shipping', 'express', 'standard', 'address', 'location', 'delivered', 'office', 'home'
+        'delivery', 'shipping', 'express', 'standard', 'address', 'location', 'delivered'
     ],
 
     synonyms: [

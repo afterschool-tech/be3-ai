@@ -21,6 +21,8 @@ module.exports = {
         order_number: { type: 'string', required: true, description: 'Order number or ID to cancel' }
     },
 
+    slotTags: ['[order_id]'],
+
     toolName: 'order.cancel',
 
     paramMap: {

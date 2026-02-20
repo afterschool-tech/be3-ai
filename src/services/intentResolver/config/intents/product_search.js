@@ -7,30 +7,35 @@ module.exports = {
     name: 'product_search',
 
     keywords: [
-        'search', 'find', 'look', 'browse', 'explore', 'discover'
+        'search', 'explore', 'discover', 'find', 'show'
     ],
 
     synonyms: [
-        'show me', 'let me see', 'i want to see', 'looking for',
+        'look', 'browse', 'show me', 'let me see', 'i want to see', 'looking for',
         'do you have', 'what do you have', 'any', 'got any',
         'help me find', 'where can i find',
         'display', 'view', 'buy', 'want', 'get', 'need'
     ],
 
     parameters: {
-        product_name: { type: 'string', required: true, description: 'Extracted product name or keywords ONLY (e.g. "iphone 12"). Do NOT include full sentences or filler words.' },
+        products: { type: 'list', required: false, description: 'List of product names' },
+        product_name: { type: 'string', required: false, description: 'Extracted product name or keywords ONLY' },
         category: { type: 'string', required: false, description: 'Category filter' },
         vendor: { type: 'string', required: false, description: 'Vendor/brand filter' },
         price_min: { type: 'number', required: false, description: 'Minimum price' },
         price_max: { type: 'number', required: false, description: 'Maximum price' },
-        sort: { type: 'string', required: false, description: 'Sort order (low-to-high, high-to-low, newest)' },
+        sort: { type: 'string', required: false, description: 'Sort order' },
         limit: { type: 'int', required: false, default: 5, description: 'Number of results' },
+        clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' }
     },
+
+    slotTags: ['[clause]', '[product]', '[category]', '[vendor]', '[price]'],
 
     toolName: 'product.search',
 
     paramMap: {
+        products: { target: 'query', expand: false },
         product_name: 'query',
         category: 'category',
         vendor: 'tag',
@@ -41,7 +46,7 @@ module.exports = {
         attributes: 'attributes'
     },
 
-    minProducts: 0,
+    minProducts: 1,
     maxProducts: null,
     invertTo: null
 };

@@ -23,6 +23,8 @@ module.exports = {
         vendor: { type: 'string', required: false, description: 'Vendor name to check against (optional)' }
     },
 
+    slotTags: ['[product]', '[vendor]'],
+
     toolName: 'vendor.checkIdentity',
 
     paramMap: {

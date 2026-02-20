@@ -1,4 +1,4 @@
-console.log('💎 REPL ID: ALPHA-9-SEC');
+console.log('💎 REPL ID: ALPHA-10-SEC');
 const path = require('path');
 const fs = require('fs');
 const LOG_FILE = path.join(__dirname, '../debug_trace.log');
@@ -9,6 +9,7 @@ const { resolveAndMap } = require('../src/services/intentResolver');
 const stateManager = require('../src/state/stateManager');
 const { executeTools } = require('../src/core/orchestrator');
 const storeContext = require('../src/context/storeContext');
+const { CLAUSES } = require('../src/context/clauses');
 
 // ═══════════════════════════════════════════════════
 //  Constants & Config
@@ -17,102 +18,118 @@ const TEST_SESSION_ID = 'repl_test_session';
 let verbose = false;
 
 // ═══════════════════════════════════════════════════
-//  Mock AI (Deterministic Extraction - NO API KEY)
+//  Mock AI (Context-Aware Deterministic Extraction)
 // ═══════════════════════════════════════════════════
-// Refined filler list using both manual list and linguistic markers
-const { cleanText, stripSocialNoise, cleanQuery } = require('../src/services/intentResolver/pipeline/nlpCleaner');
-
-function cleanMessageForExtraction(text) {
-    if (!text) return "";
-
-    // 1. Core NLP cleanup (Strips pronouns, conjunctions, prepositions)
-    const cleaned = cleanQuery(text);
-
-    // 2. Manual filler list for specific desire verbs and noise
-    const fillers = [
-        'need', 'want', 'buy', 'purchase', 'get', 'order', 'show', 'view', 'see', 'can',
-        'you', 'your', 'me', 'my', 'i', 'the', 'a', 'an', 'some', 'any',
-        'love', 'like', 'hate', 'really', 'seriously', 'actually', 'just',
-        'please', 'thanks', 'thank you', 'how', 'what', 'where', 'when'
-    ];
-
-    let words = cleaned.split(/\s+/);
-    words = words.filter(w => !fillers.includes(w));
-
-    return words.join(' ');
-}
+const { cleanQuery } = require('../src/services/intentResolver/pipeline/nlpCleaner');
 
 /**
  * Simulates AI parameter extraction using deterministic logic.
- * This keeps the REPL fast and offline-capable.
+ * IMPORTANT: Extracts only the quoted user message from the prompt,
+ * NOT the full prompt text (which contains parameter descriptions
+ * with example values that would cause false matches).
  */
 async function mockAiQuery(messages) {
     const userMsg = messages.find(m => m.role === 'user')?.content || '';
-    // Handle the case where the message might be a prompt structure or a raw string
-    const textMatch = userMsg.match(/\"(.*?)\"/);
-    const text = (textMatch ? textMatch[1] : userMsg).toLowerCase();
 
-    const products = [];
-    const knownProducts = [
-        'iphone 12', 'iphone 14', 'iphone 13', 'iphone xs max',
-        'galaxy s23', 'galaxy s24', 'infinix hot 30 i', 'macbook pro',
-        'samsung a54', 'tecno spark 10', 'xiaomi redmi note 12',
-        'surround sound headset', 'iphone6', 'infinix hot 30', 'sugar'
-    ];
+    // Extract ONLY the quoted user message from the extraction prompt.
+    // The prompt format is: Extract parameters from this message:\n"actual user text"\n...
+    // We must NOT match against parameter descriptions (they contain example values).
+    const quotedMatch = userMsg.match(/"([^"]+)"/);
+    const text = quotedMatch ? quotedMatch[1].toLowerCase() : userMsg.toLowerCase();
 
-    // Check for exact known product phrases first
-    for (const product of knownProducts) {
-        if (text.includes(product)) {
-            products.push(product);
+    const extracted = {
+        products: null,
+        product_name: null,
+        category: null,
+        vendor: null,
+        attributes: null,
+        clause_words: null,
+        quantity: null,
+        order_id: null
+    };
+
+    // 1. Detect Category from Context
+    for (const [id, cat] of Object.entries(storeContext.CATEGORIES)) {
+        if (text.includes(cat.label.toLowerCase())) {
+            extracted.category = id;
+            break;
         }
     }
 
-    // Simulate attribute extraction
-    const attributes = {};
-    const colors = ['red', 'blue', 'green', 'black', 'white', 'gold', 'silver'];
-    const sizes = ['small', 'medium', 'large', 'xl', '64gb', '128gb', '256gb', '512gb', '12', '13', '14'];
-
-    for (const c of colors) {
-        if (text.includes(c)) attributes.color = c;
-    }
-    for (const s of sizes) {
-        if (text.includes(s) && !products.some(p => p.includes(s))) {
-            attributes.size = s;
+    // 2. Detect Vendor from Context (Only Official Tenants)
+    for (const [id, v] of Object.entries(storeContext.VENDORS)) {
+        if (text.includes(v.business_name.toLowerCase()) || (v.tag && text.includes(v.tag.toLowerCase()))) {
+            extracted.vendor = id;
+            break;
         }
     }
 
-    // Strip common "verb" fillers to simulate precise extraction
-    let query = cleanMessageForExtraction(text);
-
-    const finalQuery = query.trim() || null;
-
-    // If we have a query but no known products match, treat the whole query as the product
-    // e.g. "iphone 17" -> finalQuery: "iphone 17", products: ["iphone 17"]
-    let finalProducts = products.length > 0 ? products : (finalQuery ? [finalQuery] : null);
-
-    const inferredCategory = text.includes('phone') ? 'phones' : (text.includes('laptop') ? 'laptops' : null);
-
-    // Mutual Exclusivity: Only provide category if no specific query exists, and vice-versa
-    let finalCategory = null;
-    let finalQueryVal = finalQuery;
-
-    if (finalQuery && finalQuery !== inferredCategory) {
-        // We have a specific query that isn't just the category name
-        finalCategory = null;
-    } else if (inferredCategory) {
-        // We have a category, and query is either null or same as category
-        finalCategory = inferredCategory;
-        finalQueryVal = null; // Leave out query when we have category
+    // 3. Detect Brand/Attributes from Context
+    const attrs = {};
+    const brandAttr = storeContext.ATTRIBUTES.brand;
+    if (brandAttr) {
+        brandAttr.predefined_values.forEach(v => {
+            if (text.includes(v.label.toLowerCase())) attrs.brand = v.value;
+        });
     }
 
-    return JSON.stringify({
-        products: finalProducts,
-        product_name: finalQueryVal,
-        query: finalQueryVal,
-        category: finalCategory,
-        vendor: text.includes('apple') ? 'apple' : (text.includes('samsung') ? 'samsung' : null),
-        attributes: Object.keys(attributes).length > 0 ? attributes : null
-    });
+    // Generic Color/Size detection (for testing)
+    const commonColors = ['red', 'blue', 'green', 'black', 'white', 'gold', 'silver'];
+    commonColors.forEach(c => { if (text.includes(c)) attrs.color = c; });
+
+    if (Object.keys(attrs).length > 0) extracted.attributes = attrs;
+
+    // 4. Detect Clauses from Context — only match whole words to avoid substrings
+    const clauseWords = [];
+    for (const [id, clause] of Object.entries(CLAUSES)) {
+        const matches = [clause.label, ...(clause.matches || [])];
+        matches.forEach(m => {
+            const regex = new RegExp(`\\b${m.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+            if (regex.test(text)) {
+                clauseWords.push({ word: m, clauseId: id });
+            }
+        });
+    }
+    if (clauseWords.length > 0) extracted.clause_words = clauseWords;
+
+    // 5. Quantity & Order ID
+    const qtyMatch = text.match(/\b(\d+)\s+(?:item|product|unit|bottle|pcs)\b/);
+    if (qtyMatch) extracted.quantity = parseInt(qtyMatch[1]);
+
+    const orderMatch = text.match(/order\s*#?\s*([a-z0-9]{6,10})/);
+    if (orderMatch) extracted.order_id = orderMatch[1];
+
+    // 6. Product Name: extract leftover words after stripping known entities
+    // (instead of hardcoded product list that doesn't scale)
+    const stopWords = new Set(['i', 'me', 'my', 'the', 'a', 'an', 'to', 'in', 'for',
+        'show', 'need', 'want', 'add', 'buy', 'get', 'find', 'search', 'remove',
+        'from', 'cart', 'order', 'please', 'hi', 'hello', 'hey', 'and', 'also',
+        'with', 'some', 'any', 'of', 'do', 'you', 'have', 'what', 'is', 'it',
+        'can', 'could', 'would', 'about', 'tell', 'contact', 'products', 'track',
+        'status', 'cancel', 'update', 'change', 'set', 'compare', 'list', 'check']);
+    const words = text.split(/\s+/).filter(w =>
+        w.length > 1 && !stopWords.has(w) && !/^\d+$/.test(w)
+    );
+    // Remove category, vendor, and clause words already detected
+    const detectedWords = new Set();
+    if (extracted.category) {
+        const cat = storeContext.CATEGORIES[extracted.category];
+        if (cat) cat.label.toLowerCase().split(/\s+/).forEach(w => detectedWords.add(w));
+    }
+    if (extracted.vendor) {
+        const v = storeContext.VENDORS[extracted.vendor];
+        if (v) v.business_name.toLowerCase().split(/\s+/).forEach(w => detectedWords.add(w));
+    }
+    clauseWords.forEach(cw => cw.word.toLowerCase().split(/\s+/).forEach(w => detectedWords.add(w)));
+
+    const productWords = words.filter(w => !detectedWords.has(w));
+    if (productWords.length > 0) {
+        const productName = productWords.join(' ');
+        extracted.product_name = productName;
+        extracted.products = [productName];
+    }
+
+    return JSON.stringify(extracted);
 }
 
 // ═══════════════════════════════════════════════════
@@ -139,7 +156,7 @@ function printResult(result, executionResults = []) {
         console.log(`${C.dim}  Original:  ${C.reset}${result.corrections.original}`);
         console.log(`${C.dim}  Fuzzy:     ${C.reset}${result.corrections.afterFuzzy}`);
         console.log(`${C.dim}  Context:   ${C.reset}${result.corrections.afterContext}`);
-        if (result.resolutions.length > 0) {
+        if (result.resolutions && result.resolutions.length > 0) {
             console.log(`${C.dim}  Resolved:  ${C.reset}${result.resolutions.map(r => `"${r.original}" → "${r.resolved}"`).join(', ')}`);
         }
     }
@@ -153,10 +170,15 @@ function printResult(result, executionResults = []) {
             const label = result.isMultiIntent ? `  Intent ${i + 1}` : '  Intent';
             console.log(`${C.cyan}${C.bold}${label}: ${intent.intentName}${C.reset} ${C.dim}(score: ${intent.score?.toFixed(2) || 'N/A'})${C.reset}`);
 
+            // Structural Diagnostic
+            if (intent.parameters?._structuralTemplate) {
+                console.log(`${C.magenta}${C.dim}    [Structural Match] ${intent.parameters._structuralTemplate}${C.reset}`);
+            }
+
             // Show extracted params
             if (intent.parameters && Object.keys(intent.parameters).length > 0) {
                 const paramStr = Object.entries(intent.parameters)
-                    .filter(([, v]) => v !== null && v !== undefined)
+                    .filter(([k, v]) => v !== null && v !== undefined && !k.startsWith('_'))
                     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
                     .join(', ');
                 if (paramStr) {
@@ -178,7 +200,6 @@ function printResult(result, executionResults = []) {
                 console.log(`    ${C.white}${er.result.message}${C.reset}`);
             }
 
-            // If search result, show count
             if (er.result && (er.result.products || er.result.results)) {
                 const prods = er.result.products || er.result.results;
                 const count = prods.length;
@@ -209,11 +230,7 @@ async function printState() {
 
 async function initializeSession() {
     console.log(`${C.dim}Initializing REPL session...${C.reset}`);
-    // Start fresh
     await stateManager.clearState(TEST_SESSION_ID);
-
-    // Seed with a mock interaction if needed (optional)
-    // await stateManager.updateState(TEST_SESSION_ID, { ... });
 }
 
 // ═══════════════════════════════════════════════════
@@ -222,7 +239,7 @@ async function initializeSession() {
 async function main() {
     console.log(`
 ${C.bold}${C.cyan}╔═══════════════════════════════════════════════╗
-║     Hybrid Intent Resolver — Offline Tool REPL ║
+║     Hybrid Intent Resolver — Phase 18 REPL     ║
 ╚═══════════════════════════════════════════════╝${C.reset}
 `);
 
@@ -256,17 +273,16 @@ ${C.bold}${C.cyan}╔═══════════════════�
             rl.prompt(); return;
         }
 
-        // Resolve & Execute
         try {
             const start = Date.now();
             const state = await stateManager.getState(TEST_SESSION_ID);
 
-            // 1. Resolve (using the DETREMINISTIC logic the user loves)
-            const result = await resolveAndMap(input, state, mockAiQuery, storeContext);
+            // Zero AI: deterministic + structural extraction only, no AI fallback
+            const result = await resolveAndMap(input, state, null, storeContext);
 
-            // 2. Execute Tools (REAL tools via orchestrator)
             let executionResults = [];
             if (result.tools.length > 0) {
+                // Mute tool execution for pure intent testing if needed, but keeping for now
                 executionResults = await executeTools(result.tools, TEST_SESSION_ID);
             }
 

@@ -76,4 +76,50 @@ function getAllKeywords() {
     return Array.from(keywords);
 }
 
-module.exports = { getAll, get, getNames, buildKeywordMap, getAllKeywords };
+/**
+ * Build IDF (Inverse Document Frequency) map for all keywords across intents.
+ * Words that appear in fewer intents get higher IDF → stronger signal.
+ * 
+ * IDF(word) = log(totalIntents / intentsContainingWord)
+ * 
+ * Cached at startup. Used by entityExtractor and schemaResolver.
+ */
+let _idfMapCache = null;
+function buildIdfMap() {
+    if (_idfMapCache) return _idfMapCache;
+
+    const totalIntents = Object.keys(intents).length;
+    const wordToIntentCount = {}; // word → number of intents it appears in
+    const wordToIntents = {};     // word → Set of intent names
+
+    for (const [name, intent] of Object.entries(intents)) {
+        const allWords = new Set();
+        (intent.keywords || []).forEach(kw => {
+            kw.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
+        });
+        (intent.synonyms || []).forEach(syn => {
+            syn.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
+        });
+
+        for (const word of allWords) {
+            if (!wordToIntentCount[word]) {
+                wordToIntentCount[word] = 0;
+                wordToIntents[word] = new Set();
+            }
+            wordToIntentCount[word]++;
+            wordToIntents[word].add(name);
+        }
+    }
+
+    const idfMap = {};
+    for (const [word, count] of Object.entries(wordToIntentCount)) {
+        idfMap[word] = Math.log(totalIntents / count);
+        // Also store which intents this word appears in (useful for schema matching)
+        idfMap[`__intents__${word}`] = Array.from(wordToIntents[word]);
+    }
+
+    _idfMapCache = idfMap;
+    return idfMap;
+}
+
+module.exports = { getAll, get, getNames, buildKeywordMap, getAllKeywords, buildIdfMap };

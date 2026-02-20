@@ -22,6 +22,8 @@ module.exports = {
         vendor: { type: 'string', required: true, description: 'Vendor name or identifier' }
     },
 
+    slotTags: ['[vendor]'],
+
     toolName: 'vendor.getInfo',
 
     paramMap: {

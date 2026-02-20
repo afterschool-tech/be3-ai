@@ -24,8 +24,11 @@ module.exports = {
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
         query: { type: 'string', required: false, description: 'Single product query (fallback)' },
         category: { type: 'string', required: false, description: 'Category context' },
-        attributes: { type: 'dict', required: false, description: 'Specific attributes to compare' }
+        attributes: { type: 'dict', required: false, description: 'Specific attributes to compare' },
+        clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' }
     },
+
+    slotTags: ['[product]', '[product]', '[clause]', '[category]'],
 
     toolName: 'product.compare',
 

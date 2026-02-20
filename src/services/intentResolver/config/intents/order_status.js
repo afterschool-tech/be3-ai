@@ -11,7 +11,7 @@ module.exports = {
     ],
 
     synonyms: [
-        'order', 'delivery',
+        'track', 'tracking',
         'where is my order', "where's my order", 'track my order',
         'order status', 'order tracking', 'shipment',
         'shipped', 'arrived', 'when will', 'eta',
@@ -23,6 +23,8 @@ module.exports = {
         order_id: { type: 'string', required: false, description: 'Order ID or tracking number (if provided)' },
         products: { type: 'list', required: false, description: 'Product reference for context' }
     },
+
+    slotTags: ['[order_id]', '[product]'],
 
     toolName: 'order.track',
 

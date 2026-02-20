@@ -7,7 +7,8 @@ module.exports = {
     name: 'vendor_contact',
 
     keywords: [
-        'contact', 'message', 'whatsapp', 'reach', 'talk', 'vendor', 'seller'
+        'contact', 'message', 'whatsapp', 'reach', 'talk', 'vendor', 'seller',
+        'email', 'phone', 'support', 'help', 'address', 'location', 'number'
     ],
 
     synonyms: [
@@ -20,6 +21,8 @@ module.exports = {
     parameters: {
         vendor: { type: 'string', required: true, description: 'Vendor name or identifier' }
     },
+
+    slotTags: ['[vendor]'],
 
     toolName: 'vendor.getContactLink',
 

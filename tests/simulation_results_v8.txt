@@ -1,0 +1,78 @@
+﻿­ƒôí [SemanticMatcher:Intents] Index built for 24 clusters.
+=== PHASE 18: STRUCTURAL EXTRACTION FINAL VERIFICATION ===
+
+Testing: Search: Cheap phones... [IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_info missing/invalid required "vendor" ÔåÆ -12
+Ô£à
+Testing: Search: Specific product with clause... [IntentScorer] Contract Penalty: cancel_order missing/invalid required "order_number" ÔåÆ -12
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Contract Penalty: update_cart_quantity missing/invalid required "quantity" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_info missing/invalid required "vendor" ÔåÆ -12
+ÔØî
+   Input:    "i want affordable iphone 13"
+   Result:   {
+  "intent": "product_search",
+  "params": {
+    "product_name": "iphone 13",
+    "price_max": 200
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "product_name": "iphone 13",
+    "attributes": {
+      "price tier": "affordable"
+    }
+  }
+}
+   Reason:   Param attributes: Expected {"price tier":"affordable"}, got undefined. 
+Testing: Search: With Brand Clause (Apple)... [IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+ÔØî
+   Input:    "find headphones from apple"
+   Result:   {
+  "intent": "check_availability",
+  "params": {
+    "products": [
+      "headphones apple",
+      "headphones"
+    ],
+    "product_name": "headphones",
+    "vendor": null,
+    "clause_words": [
+      {
+        "word": "apple",
+        "clauseId": "apple_product"
+      }
+    ],
+    "attributes": {
+      "brand": "apple"
+    }
+  }
+}
+   Expected: {
+  "intent": "product_search",
+  "params": {
+    "product_name": "headphones",
+    "attributes": {
+      "brand": "apple"
+    }
+  }
+}
+   Reason:   Expected intent product_search, got check_availability. 
+Testing: Vendor: Official Tenant lookup (Bola Foods)... [IntentScorer] Contract Penalty: browse_collection missing/invalid required "collection_slug" ÔåÆ -12
+Ô£à
+Testing: Cart: Quantity extraction... [IntentScorer] Contract Penalty: cancel_order missing/invalid required "order_number" ÔåÆ -12
+Ô£à
+Testing: Compare: Two multi-word products... Ô£à
+Testing: Availability: Clause + Product... [IntentScorer] Contract Penalty: vendor_products missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: vendor_contact missing/invalid required "vendor" ÔåÆ -12
+[IntentScorer] Contract Penalty: update_cart_quantity missing/invalid required "quantity" ÔåÆ -12
+Ô£à
+
+Results: 5 passed, 2 failed out of 7
