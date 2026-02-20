@@ -48,7 +48,13 @@ const cartTools = {
 
             const { cart, items, vendorGroups } = result.data;
             if (!items || items.length === 0) {
-                return { message: "Your cart is empty.", items: [], total: 0 };
+                return {
+                    success: true,
+                    message: "Your cart is empty.",
+                    items: [],
+                    total: 0,
+                    item_count: 0
+                };
             }
 
             const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -67,7 +73,12 @@ const cartTools = {
             // Sync to State
             await stateManager.updateCart(sessionId, cartSummary);
 
+            const itemWord = items.length === 1 ? 'item' : 'items';
+            const message = `Your cart has ${items.length} ${itemWord}. Total: $${total.toFixed(2)}.`;
+
             return {
+                success: true,
+                message,
                 ...cartSummary,
                 vendor_groups: vendorGroups.map(vg => ({
                     vendor_id: vg.vendorId,
@@ -90,19 +101,23 @@ const cartTools = {
             const { product_id: identifier, quantity = 1 } = params;
             const { sessionId } = context;
 
-            if (!identifier) return { error: "Product ID or name is required" };
+            if (!identifier) {
+                return { success: false, error: "I need to know which product to add. Try saying the product name or \"the first one\" from your last search." };
+            }
 
             // --- STAGE 1: Product Resolution (Phase 8) ---
             const product_id = await resolveProduct(identifier, context);
 
-            if (!product_id) return { error: `Could not find product: ${identifier}` };
+            if (!product_id) {
+                return { success: false, error: `I couldn't find a product matching "${identifier}". Check the name or say "the first one" / "the second one" after a search.` };
+            }
 
             console.log(`[CartTool] cart.add using resolved ID: ${product_id} (from "${identifier}")`);
 
-            // Get product price first (simplified logic)
-            // In a real scenario, the backend endpoint usually handles price lookup or validation
             const productRes = await callBackendAPI(`/products/storefront/products/${product_id}`);
-            if (!productRes.success) return { error: `Product not found: ${product_id}` };
+            if (!productRes.success) {
+                return { success: false, error: "That product isn't available right now. Try another or check back later." };
+            }
 
             const product = productRes.data.product;
 
@@ -116,7 +131,9 @@ const cartTools = {
                 }
             });
 
-            if (!result.success) return { error: "Failed to add to cart", details: result.error };
+            if (!result.success) {
+                return { success: false, error: "I couldn't add it to your cart. Please try again.", details: result.error };
+            }
 
             // Sync to State
             const cartUpdate = {
@@ -140,9 +157,13 @@ const cartTools = {
                 });
             }
 
+            const name = product.name || 'Item';
+            const qtyText = quantity > 1 ? `${quantity} × ${name}` : name;
             return {
                 success: true,
-                message: `Added ${quantity} x ${product.name} to cart`,
+                message: `Added ${qtyText} to your cart.`,
+                product_name: name,
+                quantity,
                 cart_summary: result.data.cart
             };
         }
@@ -158,75 +179,128 @@ const cartTools = {
             let { cart_item_id, product_id } = params;
             const { sessionId } = context;
 
-            // if product_id is provided (likely from AI), resolve it to a cart_item_id
+            // if product_id is provided, resolve it to a cart_item_id (or use directly if it's already a cart item id)
+            let removedItemName = null;
             if (!cart_item_id && product_id) {
-                // 1. Get current cart
                 const cartRes = await callBackendAPI(`/cart?session_id=${sessionId}`);
-                if (!cartRes.success) return { error: "Failed to retrieve cart for removal", details: cartRes.error };
-
-                const items = cartRes.data.items || [];
-                if (items.length === 0) return { error: "Cart is empty." };
-
-                // 2. Resolve product_id (it might be "iphone" or "it")
-                const resolvedProductId = await resolveProduct(product_id, context);
-
-                if (resolvedProductId) {
-                    // Try to find matching item in cart
-                    const match = items.find(i => i.product_id === resolvedProductId || i.id === resolvedProductId);
-                    if (match) {
-                        cart_item_id = match.id; // Correct cart item ID
-                        console.log(`[CartTool] Resolved "${product_id}" to cart item ${cart_item_id}`);
-                    }
+                if (!cartRes.success) {
+                    return { success: false, error: "I couldn't load your cart. Please try again.", details: cartRes.error };
                 }
 
-                // Fallback: Fuzzy match name if ID match failed
-                if (!cart_item_id) {
-                    const lowerQuery = product_id.toLowerCase();
-                    const fuzzyMatch = items.find(i => i.product_name.toLowerCase().includes(lowerQuery));
-                    if (fuzzyMatch) {
-                        cart_item_id = fuzzyMatch.id;
+                const items = cartRes.data.items || [];
+                if (items.length === 0) {
+                    return { success: true, message: "Your cart is already empty." };
+                }
+
+                // Pipeline may pass cart_item_id as product_id when expanding "remove the first two"
+                const byCartItemId = items.find(i => i.id === product_id);
+                if (byCartItemId) {
+                    cart_item_id = product_id;
+                    removedItemName = byCartItemId.product_name;
+                } else {
+                    const resolvedProductId = await resolveProduct(product_id, context);
+                    if (resolvedProductId) {
+                        const match = items.find(i => i.product_id === resolvedProductId || i.id === resolvedProductId);
+                        if (match) {
+                            cart_item_id = match.id;
+                            removedItemName = match.product_name;
+                            console.log(`[CartTool] Resolved "${product_id}" to cart item ${cart_item_id}`);
+                        }
                     }
+                    if (!cart_item_id) {
+                        const lowerQuery = String(product_id).toLowerCase();
+                        const fuzzyMatch = items.find(i => i.product_name && i.product_name.toLowerCase().includes(lowerQuery));
+                        if (fuzzyMatch) {
+                            cart_item_id = fuzzyMatch.id;
+                            removedItemName = fuzzyMatch.product_name;
+                        }
+                    }
+                }
+            } else if (cart_item_id) {
+                const cartRes = await callBackendAPI(`/cart?session_id=${sessionId}`);
+                if (cartRes.success && cartRes.data.items) {
+                    const item = cartRes.data.items.find(i => i.id === cart_item_id);
+                    if (item) removedItemName = item.product_name;
                 }
             }
 
-            if (!cart_item_id) return { error: "Could not find that item in your cart." };
+            if (!cart_item_id) {
+                return { success: false, error: "I couldn't find that item in your cart. Say \"show my cart\" to see what's there, or describe the item (e.g. \"the second item\")." };
+            }
 
             const result = await callBackendAPI(`/cart/items/${cart_item_id}`, {
                 method: 'DELETE'
             });
 
-            if (!result.success) return { error: "Failed to remove item", details: result.error };
+            if (!result.success) {
+                return { success: false, error: "I couldn't remove that item. Please try again.", details: result.error };
+            }
 
-            // Update State
             await stateManager.updateCart(sessionId, {
                 item_count: result.data.cart?.item_count || 0,
                 total: result.data.cart?.total || 0
             });
 
-            return { success: true, message: "Item removed from cart" };
+            const namePart = removedItemName ? ` "${removedItemName}"` : ' it';
+            return { success: true, message: `Removed${namePart} from your cart.` };
         }
     },
     'cart.updateQuantity': {
         description: 'Update the quantity of an item in the shopping cart',
         params: {
-            cart_item_id: { type: 'string', description: 'ID of the item in the cart' },
+            cart_item_id: { type: 'string', description: 'ID of the item in the cart (optional if product_id is provided)' },
+            product_id: { type: 'string', description: 'Product ID or name to locate the cart item (resolved from context)' },
             quantity: { type: 'number', description: 'New quantity' }
         },
         handler: async (params, context) => {
-            const { cart_item_id, quantity } = params;
-            if (!cart_item_id) return { error: "Cart Item ID required" };
-            if (!quantity || quantity < 1) return { error: "Quantity must be at least 1" };
+            let { cart_item_id, product_id, quantity } = params;
+            const { sessionId } = context;
+
+            if (!cart_item_id && product_id) {
+                const cartRes = await callBackendAPI(`/cart?session_id=${sessionId}`);
+                if (!cartRes.success) {
+                    return { success: false, error: "I couldn't load your cart. Please try again.", details: cartRes.error };
+                }
+                const items = cartRes.data.items || [];
+                if (items.length === 0) {
+                    return { success: false, error: "Your cart is empty. Add something first, then I can update the quantity." };
+                }
+                const resolvedProductId = await resolveProduct(product_id, context);
+                if (resolvedProductId) {
+                    const match = items.find(i => i.product_id === resolvedProductId || i.id === resolvedProductId);
+                    if (match) {
+                        cart_item_id = match.id;
+                        console.log(`[CartTool] Resolved "${product_id}" to cart item ${cart_item_id} for quantity update`);
+                    }
+                }
+                if (!cart_item_id) {
+                    const lowerQuery = product_id.toLowerCase();
+                    const fuzzyMatch = items.find(i => i.product_name.toLowerCase().includes(lowerQuery));
+                    if (fuzzyMatch) cart_item_id = fuzzyMatch.id;
+                }
+            }
+
+            if (!cart_item_id) {
+                return { success: false, error: "I couldn't find that item in your cart. Say \"show my cart\" to see your items." };
+            }
+            if (!quantity || quantity < 1) {
+                return { success: false, error: "Quantity must be at least 1. Say how many you want (e.g. \"change it to 2\")." };
+            }
 
             const result = await callBackendAPI(`/cart/items/${cart_item_id}`, {
                 method: 'PATCH',
                 data: { quantity: parseInt(quantity) }
             });
 
-            if (!result.success) return { error: "Failed to update quantity", details: result.error };
+            if (!result.success) {
+                return { success: false, error: "I couldn't update the quantity. Please try again.", details: result.error };
+            }
 
+            const item = result.data.item;
+            const name = item?.product_name || 'Item';
             return {
                 success: true,
-                message: "Quantity updated",
+                message: `Updated quantity to ${quantity} for ${name}.`,
                 item: result.data.item
             };
         }

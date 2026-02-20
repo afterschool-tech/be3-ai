@@ -24,6 +24,8 @@ async function resolveDeterministic(userMessage, state) {
     };
 
     logDebug('DETERMINISTIC_RESOLVER:INPUT', {
+        _desc: 'Deterministic resolver entry — resolveAndMap with aiQueryFn=null',
+        _example: 'Message + state → full pipeline, zero AI',
         userMessage,
         sessionId: state?.sessionId,
         historyLength: state?.conversation_history?.length || 0,
@@ -50,6 +52,8 @@ async function resolveDeterministic(userMessage, state) {
     };
 
     logDebug('DETERMINISTIC_RESOLVER:OUTPUT', {
+        _desc: 'Deterministic resolver output — intents, tools, corrections',
+        _example: 'add_to_cart → tools: [cart.add], intent, allIntents',
         intent: output.intent,
         confidence: output.confidence,
         toolCount: output.tools.length,

@@ -34,5 +34,52 @@ module.exports = {
 
     minProducts: 0,
     maxProducts: 0,
-    invertTo: null
+    invertTo: null,
+
+    /**
+     * Microstates:
+     *  - collect_order_id: ask for a valid-looking order ID if missing/ambiguous
+     */
+    microstates: {
+        collect_order_id: {
+            trigger: (params, entities) => {
+                // Trigger only when we don't already have an order_id
+                return !params.order_id;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            prompt: {
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'order_id',
+                    message: 'What is your order number?',
+                    hint: 'e.g., #12345'
+                }
+            },
+            // Per-param validators / normalizers
+            validators: {
+                order_id: (value) => {
+                    if (!value) return false;
+                    const v = String(value).trim();
+                    return /^#?\d{3,}$/.test(v);
+                }
+            },
+            normalizers: {
+                order_id: (value) => {
+                    if (!value) return value;
+                    return String(value).trim().replace(/^#/, '');
+                }
+            },
+            termination: {
+                maxMessages: 2,
+                onFulfilled: ['order_id'],
+                escalation: null
+            },
+            breakthrough: {
+                // Be relatively permissive to let users change topic if they want
+                minScore: 1.5,
+                blockIntents: []
+            }
+        }
+    }
 };

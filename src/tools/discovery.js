@@ -110,8 +110,40 @@ Reply ONLY with the "slug" of the category. No other text.`;
                         headers: { 'X-Tenant-ID': TENANT_ID }
                     });
 
-                    let products = searchRes.data.products || searchRes.data.results || [];
-                    products = await processProductList(products);
+                    let rawProducts = searchRes.data.products || searchRes.data.results || [];
+                    
+                    // Extract attributes BEFORE processProductList (attributes are stripped)
+                    const productAttrsMap = {};
+                    const categoryAttrs = targetCategory?.attributes || [];
+                    const commonAttrs = ['color', 'brand', 'size', 'storage', 'material'];
+                    rawProducts.slice(0, 10).forEach(p => {
+                        const pid = p.id || p.handle || p.product_id;
+                        if (!pid) return;
+                        
+                        const attrs = {};
+                        if (p.attributes && typeof p.attributes === 'object') {
+                            Object.assign(attrs, p.attributes);
+                        }
+                        if (p.variants && Array.isArray(p.variants) && p.variants[0]?.attributes) {
+                            Object.assign(attrs, p.variants[0].attributes);
+                        }
+                        commonAttrs.forEach(attrKey => {
+                            if (p[attrKey] && !attrs[attrKey]) {
+                                attrs[attrKey] = p[attrKey];
+                            }
+                        });
+                        categoryAttrs.forEach(attrKey => {
+                            if (p[attrKey] && !attrs[attrKey]) {
+                                attrs[attrKey] = p[attrKey];
+                            }
+                        });
+                        
+                        if (Object.keys(attrs).length > 0) {
+                            productAttrsMap[pid] = attrs;
+                        }
+                    });
+                    
+                    let products = await processProductList(rawProducts);
 
                     if (context.sessionId) {
                         await stateManager.setLastSuggestion(context.sessionId, {
@@ -124,6 +156,29 @@ Reply ONLY with the "slug" of the category. No other text.`;
 
                         if (products.length > 0) {
                             await stateManager.updateReferenceMap(context.sessionId, products);
+
+                            // Populate search_context with recovery product IDs, attributes map, and category
+                            const existingCtx = await stateManager.getSearchContext(context.sessionId);
+                            if (existingCtx) {
+                                const productIds = products.slice(0, 10).map(p => p.id || p.handle || p.product_id);
+                                existingCtx.product_ids = productIds;
+                                existingCtx.result_count = products.length;
+                                existingCtx.product_attributes_map = productAttrsMap;
+                                console.log(`[DiscoveryTool] 📦 Built product_attributes_map:`, {
+                                    productCount: Object.keys(productAttrsMap).length,
+                                    sample: Object.keys(productAttrsMap).slice(0, 2).reduce((acc, pid) => {
+                                        acc[pid] = productAttrsMap[pid];
+                                        return acc;
+                                    }, {}),
+                                    categoryAttrs: categoryAttrs
+                                });
+
+                                // Sync suggested category
+                                existingCtx.category_id = targetCategory.slug;
+                                existingCtx.category = targetCategory.label;
+
+                                await stateManager.setSearchContext(context.sessionId, existingCtx);
+                            }
                         }
                     }
 
@@ -160,6 +215,7 @@ Reply ONLY with the "slug" of the category. No other text.`;
             const searchProducts = searchCall?.result?.products || [];
 
             // 2. Deterministic Verification (string matching only)
+            const { logDebug } = require('../utils/debugLogger');
             let isRelevant = false;
             if (searchProducts.length > 0 && query) {
                 const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -174,11 +230,33 @@ Reply ONLY with the "slug" of the category. No other text.`;
             }
 
             if (isRelevant) {
+                logDebug('TOOL:SENTINEL_VERIFICATION [discovery.sentinel]', {
+                    _desc: 'Sentinel verification — string-matching relevance check',
+                    _example: '"gaming console" results contain "xbox/playstation/switch" → verified',
+                    query,
+                    productCount: searchProducts.length,
+                    verified: true
+                });
                 console.log(`[Sentinel-D] Results verified as relevant.`);
                 return { status: 'verified', message: 'Search results are relevant.' };
             }
+            
+            logDebug('TOOL:SENTINEL_VERIFICATION [discovery.sentinel]', {
+                _desc: 'Sentinel verification — results empty or irrelevant',
+                _example: '"gaming console" results do not contain console keywords → irrelevant',
+                query,
+                productCount: searchProducts.length,
+                verified: false,
+                reason: searchProducts.length === 0 ? 'no_results' : 'irrelevant'
+            });
 
             // 3. Deterministic Recovery — find best category match
+            logDebug('TOOL:RECOVERY_FALLBACK [discovery.sentinel]', {
+                _desc: 'Recovery fallback — category browse when sentinel results empty/irrelevant',
+                _example: '"cool gadgets" sentinel empty → fallback to browsing Gadgets collection',
+                query: query || category,
+                reason: searchProducts.length === 0 ? 'no_results' : 'irrelevant'
+            });
             console.log(`[Sentinel-D] Entering deterministic recovery for: "${query || category}"`);
 
             const categories = Object.values(context.CATEGORIES || {})
@@ -219,11 +297,67 @@ Reply ONLY with the "slug" of the category. No other text.`;
             // 4. Fetch fallback products deterministically
             try {
                 const result = await callBackendAPI(`/search/products?category=${bestCategory.slug}&per_page=5`);
-                let products = result.data?.products || result.data?.results || [];
-                products = await processProductList(products);
+                let rawProducts = result.data?.products || result.data?.results || [];
+                
+                // Extract attributes BEFORE processProductList (attributes are stripped)
+                const productAttrsMap = {};
+                const categoryAttrs = bestCategory?.attributes || [];
+                const commonAttrs = ['color', 'brand', 'size', 'storage', 'material'];
+                rawProducts.slice(0, 10).forEach(p => {
+                    const pid = p.id || p.handle || p.product_id;
+                    if (!pid) return;
+                    
+                    const attrs = {};
+                    if (p.attributes && typeof p.attributes === 'object') {
+                        Object.assign(attrs, p.attributes);
+                    }
+                    if (p.variants && Array.isArray(p.variants) && p.variants[0]?.attributes) {
+                        Object.assign(attrs, p.variants[0].attributes);
+                    }
+                    commonAttrs.forEach(attrKey => {
+                        if (p[attrKey] && !attrs[attrKey]) {
+                            attrs[attrKey] = p[attrKey];
+                        }
+                    });
+                    categoryAttrs.forEach(attrKey => {
+                        if (p[attrKey] && !attrs[attrKey]) {
+                            attrs[attrKey] = p[attrKey];
+                        }
+                    });
+                    
+                    if (Object.keys(attrs).length > 0) {
+                        productAttrsMap[pid] = attrs;
+                    }
+                });
+                
+                let products = await processProductList(rawProducts);
 
                 if (context.sessionId && products.length > 0) {
                     await stateManager.updateReferenceMap(context.sessionId, products);
+
+                    // Populate search_context with discovery product IDs, attributes map, and category
+                    const existingCtx = await stateManager.getSearchContext(context.sessionId);
+                    if (existingCtx) {
+                        const productIds = products.slice(0, 10).map(p => p.id || p.handle || p.product_id);
+                        existingCtx.product_ids = productIds;
+                        existingCtx.result_count = products.length;
+                        existingCtx.product_attributes_map = productAttrsMap;
+                        console.log(`[DiscoveryTool] 📦 Built product_attributes_map:`, {
+                            productCount: Object.keys(productAttrsMap).length,
+                            sample: Object.keys(productAttrsMap).slice(0, 2).reduce((acc, pid) => {
+                                acc[pid] = productAttrsMap[pid];
+                                return acc;
+                            }, {}),
+                            categoryAttrs: categoryAttrs
+                        });
+
+                        // Sync suggest category
+                        existingCtx.category_id = bestCategory.slug;
+                        existingCtx.category = bestCategory.label;
+
+                        await stateManager.setSearchContext(context.sessionId, existingCtx);
+                    }
+
                     await stateManager.setLastSuggestion(context.sessionId, {
                         type: 'discovery_browse',
                         intent: 'discovery.sentinel',

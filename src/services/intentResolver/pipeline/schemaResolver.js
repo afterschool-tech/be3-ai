@@ -14,7 +14,8 @@
  */
 
 const intentRegistry = require('../config/intentRegistry');
-
+const { logDebug } = require('../../../utils/debugLogger');
+const { isRoot } = require('../../../context/categoryHelpers');
 // ── Entity-type to parameter-name mapping ──
 // Maps entity types from entityExtractor to the parameter names used in intent schemas
 const ENTITY_TO_PARAM = {
@@ -24,7 +25,8 @@ const ENTITY_TO_PARAM = {
     'order_id': 'order_id',
     'quantity': 'quantity',
     'price_max': 'price_max',
-    'price_min': 'price_min'
+    'price_min': 'price_min',
+    'clause': 'clause_words'
 };
 
 // ── Action category to intent name mapping ──
@@ -129,26 +131,35 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
         // 3a. Schema Fit: Check each parameter against extracted entities
         for (const [paramName, paramDef] of Object.entries(params)) {
-            if (paramDef.required) {
-                requiredTotal++;
-                if (entityParams[paramName]) {
-                    requiredFilled++;
-                    matchedParams[paramName] = entityParams[paramName].value || entityParams[paramName].id;
-                } else {
-                    hasUnfilledRequired = true;
+            const entity = entityParams[paramName];
+            if (entity) {
+                // Strict Type Rule: Categories belong in category slots.
+                // Never allow a category entity to masquerade as a required product name.
+                if (entity.type === 'category' && (paramName === 'product_name' || paramName === 'products')) {
+                    if (paramDef.required) hasUnfilledRequired = true;
+                    continue;
                 }
+
+                if (paramDef.required) {
+                    requiredFilled++;
+                    requiredTotal++;
+                    matchedParams[paramName] = entity.id || entity.clauseId || entity.value;
+                } else {
+                    optionalFilled++;
+                    optionalTotal++;
+                    matchedParams[paramName] = entity.id || entity.clauseId || entity.value;
+                }
+            } else if (paramDef.required) {
+                requiredTotal++;
+                hasUnfilledRequired = true;
             } else {
                 optionalTotal++;
-                if (entityParams[paramName]) {
-                    optionalFilled++;
-                    matchedParams[paramName] = entityParams[paramName].value || entityParams[paramName].id;
-                }
             }
         }
-
         // 3b. Schema Score
         // Required slots filled: +2.0 each
         score += requiredFilled * 2.0;
+
         // Optional slots filled: +0.5 each
         score += optionalFilled * 0.5;
 
@@ -170,7 +181,10 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             const kwLower = kw.toLowerCase();
             if (textWords.includes(kwLower) && !matchedKeywords.includes(kwLower)) {
                 const kwIdf = idfMap[kwLower] || 0.5;
-                score += kwIdf;
+                if (intentName === 'vendor_contact') console.log(`[SchemaResolver] Match for vendor_contact: "${kwLower}" in words: [${textWords.join(', ')}] with IDF ${kwIdf}`);
+                // Boost for exact keyword matches (especially for test/debug intents)
+                const exactMatchBoost = kwLower === textWords.join(' ').trim() ? 3.0 : 0;
+                score += kwIdf + exactMatchBoost;
                 matchedKeywords.push(kwLower);
             }
         }
@@ -183,7 +197,19 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             }
         }
 
-        // 3f. Penalty: If intent has required params but entities don't provide ANY relevant type
+        // ── Phase 3f: Intent-Specific Signal Rules ──
+
+        // [Search-Discovery Rule]: If we have a category AND a clause (e.g. "cheap smartphones"),
+        // this is a very strong signal for product_search even without an action verb.
+        if (intentName === 'product_search') {
+            const hasCategory = extractionResult.entities.some(e => e.type === 'category');
+            const hasClause = extractionResult.entities.some(e => e.type === 'clause');
+            if (hasCategory && hasClause) {
+                score += 2.0;
+            }
+        }
+
+        // 3g. Penalty: If intent has required params but entities don't provide ANY relevant type
         // Only penalize if we actually have entities AND no action verb directly points here.
         // When action verbs directly suggest this intent, the missing param will be filled
         // downstream by parameterExtractor or AI — don't penalize the verb's signal.
@@ -208,9 +234,59 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3h. Zero-param intents with no action match get a baseline penalty
-        // Prevents intents like get_help/end_conversation from competing via keyword overlap
         if (Object.keys(params).length === 0 && !actionSuggestedIntents.has(intentName)) {
             score -= 2.0;
+        }
+
+        // 3i. Discovery vs Identity Bias Correction
+        // If a brand is detected without an action verb, user is likely searching, not identifying vendors.
+        if (entityParams['brand'] || entityParams['category']) {
+            if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
+                score += 1.5; // Discovery boost for specific entities
+            }
+            if (intentName === 'vendor_identity' && !actionSuggestedIntents.has('info')) {
+                score -= 2.0; // Identity penalty for brand-only mentions
+            }
+        }
+
+        // 3j. Hierarchy Boost: Root category alone → boost discovery_sentinel
+        // If a root category is mentioned without specific product terms, user wants to browse
+        if (entityParams['category'] && isRoot(entityParams['category'].id)) {
+            const hasProductTerms = entityParams['product_name'] || entityParams['brand'];
+            if (!hasProductTerms) {
+                if (intentName === 'discovery_sentinel') {
+                    score += 2.0;
+                    logDebug('SCORING:HIERARCHY_BOOST', {
+                        _desc: 'Schema hierarchy boost — root category alone boosts discovery_sentinel',
+                        _example: '"Gadgets" without product → discovery_sentinel +2',
+                        category: entityParams['category'].value,
+                        intent: intentName,
+                        boost: 2.0,
+                        reason: 'Root category without product terms'
+                    });
+                }
+            }
+        }
+
+        // [New] Orphan Noun Rule: product_search should win over vendor_identity for simple product mentions.
+        // BUT: Don't apply this boost if another intent has a direct keyword match (e.g., "dami" → test_microstate)
+        if (entityParams['product_name'] && entityParams['product_name'].source === 'residual') {
+            const productNameLower = entityParams['product_name'].value.toLowerCase();
+            
+            // Check if this product name is actually a keyword for another intent
+            const isKeywordForOtherIntent = Object.values(allIntents).some(intent => {
+                if (intent.name === 'product_search') return false;
+                const allKeywords = [...(intent.keywords || []), ...(intent.synonyms || [])];
+                return allKeywords.some(kw => kw.toLowerCase() === productNameLower);
+            });
+            
+            if (intentName === 'product_search') {
+                // Only boost if this is NOT a keyword for another intent
+                if (!isKeywordForOtherIntent) {
+                    score += 2.0; // Boost search
+                }
+            }
+            if (intentName === 'vendor_identity') score -= 1.0; // Penalize "guess" identity
         }
 
         scored.push({
@@ -262,7 +338,15 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     // ── Phase 6: Product search fallback for residual product words ──
     // If we have residual words (likely product names) but no strong winner,
     // ensure product_search is in the candidates
-    if (residualWords.length > 0 && !validCandidates.some(c => c.intentName === 'product_search' && c.score > 1)) {
+    // BUT: Skip this if the residual word matches a keyword from another intent (e.g., "dami" → test_microstate)
+    const residualText = residualWords.join(' ').toLowerCase().trim();
+    const residualIsKeyword = residualText && Object.values(allIntents).some(intent => {
+        if (intent.name === 'product_search') return false;
+        const allKeywords = [...(intent.keywords || []), ...(intent.synonyms || [])];
+        return allKeywords.some(kw => kw.toLowerCase() === residualText);
+    });
+    
+    if (residualWords.length > 0 && !residualIsKeyword && !validCandidates.some(c => c.intentName === 'product_search' && c.score > 1)) {
         const existing = validCandidates.find(c => c.intentName === 'product_search');
         if (!existing) {
             validCandidates.push({

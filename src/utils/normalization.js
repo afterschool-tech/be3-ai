@@ -217,7 +217,70 @@ function levenshtein(a, b) {
     return dp[n];
 }
 
+// Ordinal words that can be part of category names OR used as references
+const ORDINAL_WORDS = new Set([
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+    'last'
+]);
+
+// Words that indicate ordinal/reference context (when these precede ordinals, skip category matching)
+const ORDINAL_INDICATORS = new Set([
+    'the', 'it', 'this', 'that', 'compare', 'versus', 'vs', 'and', 'or'
+]);
+
+/**
+ * Check if a phrase is being used as an ordinal/reference (skip category matching)
+ * vs. part of a legitimate category name (allow matching).
+ * 
+ * Examples:
+ * - "all in one" → NOT ordinal (contains "all", "in" - non-ordinal words)
+ * - "the first one" → IS ordinal (preceded by "the", purely ordinal words)
+ * - "second one" → IS ordinal (purely ordinal words, likely reference)
+ * - "one" alone → IS ordinal (single ordinal word, likely reference)
+ * 
+ * @param {string} phrase - The phrase to check
+ * @param {string} fullText - The full text context (optional, for better detection)
+ * @param {number} phraseStartIndex - Start index of phrase in fullText (optional)
+ * @returns {boolean} - True if phrase should be skipped (is ordinal/reference)
+ */
+function isOrdinalOrReferencePhrase(phrase, fullText = null, phraseStartIndex = -1) {
+    if (!phrase || typeof phrase !== 'string') return false;
+    
+    const words = phrase.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return false;
+    
+    // If phrase contains non-ordinal words, it's likely a category name (e.g., "all in one")
+    const hasNonOrdinalWords = words.some(w => !ORDINAL_WORDS.has(w) && !ORDINAL_INDICATORS.has(w));
+    if (hasNonOrdinalWords) return false;
+    
+    // If phrase is purely ordinal words, check context
+    const isPurelyOrdinal = words.every(w => ORDINAL_WORDS.has(w) || ORDINAL_INDICATORS.has(w));
+    if (!isPurelyOrdinal) return false;
+    
+    // Check surrounding context if available
+    if (fullText && phraseStartIndex >= 0) {
+        const beforePhrase = fullText.substring(Math.max(0, phraseStartIndex - 20), phraseStartIndex).trim();
+        const beforeWords = beforePhrase.toLowerCase().split(/\s+/).filter(Boolean);
+        
+        // If preceded by ordinal indicators or comparison words, it's likely a reference
+        const hasOrdinalContext = beforeWords.length > 0 && (
+            ORDINAL_INDICATORS.has(beforeWords[beforeWords.length - 1]) ||
+            ORDINAL_WORDS.has(beforeWords[beforeWords.length - 1]) ||
+            beforeWords.some(w => ['compare', 'versus', 'vs', 'difference', 'between'].includes(w))
+        );
+        
+        if (hasOrdinalContext) return true;
+    }
+    
+    // Default: if phrase is purely ordinal words (especially single word), treat as reference
+    // This catches cases like "one" in "compare X and Y, the first one"
+    return words.length === 1 || words.every(w => ORDINAL_WORDS.has(w));
+}
+
 module.exports = {
     normalizeCategory,
-    normalizeVendor
+    normalizeVendor,
+    ORDINAL_WORDS, // Export for reference (ordinal words that can be part of category names)
+    isOrdinalOrReferencePhrase
 };

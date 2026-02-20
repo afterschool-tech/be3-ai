@@ -33,10 +33,14 @@ function bleedParameters(resolvedStatements) {
 
             const currentValue = current.extractedParams[paramName];
             const isMissing = currentValue === null || currentValue === undefined;
+            // For 'products', allow merging if incomplete (needs more products to meet minProducts)
+            // Exception: For add_to_cart (which doesn't require products), don't merge if products already exist
+            // This prevents incorrect bleeding while still allowing compare to get products when it has 1 but needs 2+
             const isIncomplete = paramName === 'products' &&
                 Array.isArray(currentValue) &&
                 intent.minProducts &&
-                currentValue.length < intent.minProducts;
+                currentValue.length < intent.minProducts &&
+                (current.intentName === 'product_compare' || currentValue.length === 0); // Allow merge for compare OR if completely missing
 
             if (isMissing || isIncomplete) {
                 // Look backwards at preceding statements for the same param

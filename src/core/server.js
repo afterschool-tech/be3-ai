@@ -225,7 +225,13 @@ Respond naturally and warmly to the user's conversational message!`
      * Generate response based on tool results (Unified Be3 Voice)
      */
 async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
+    const { logDebug } = require('../utils/debugLogger');
     const contextSummary = JSON.stringify(getLeanContext());
+    logDebug('SERVER:TOOL_RESULT_OPTIMIZATION', {
+        _desc: 'Tool result optimization — trim product fields for prompt size',
+        _example: 'Drop long HTML descriptions, keep name/price/vendor',
+        inputToolCount: toolResults.length
+    });
     const optimizedResults = toolResults.map(tr => {
         if (tr.result && (tr.result.products || tr.result.results)) {
             const rawProducts = tr.result.products || tr.result.results;
@@ -247,6 +253,28 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         return tr;
     });
 
+    const skippedActions = toolResults.filter(tr => tr.skipped && tr.skippedMessage);
+    const skippedInstruction = skippedActions.length > 0
+        ? `\nSKIPPED ACTIONS (same-turn): Some add-to-cart actions were skipped because the item wasn't resolved yet. You MUST tell the user: "${skippedActions[0].skippedMessage}" (or the same idea in your own words) so they know to say "add the first one" or "add the white one" in their next message.\n`
+        : '';
+
+    // Phase 7: Surface tool failures (cart.add / product.compare / cart.remove, etc.)
+    // We must explicitly instruct the personality layer to acknowledge failures instead of silently ignoring them.
+    const failedActions = toolResults.filter(tr =>
+        tr && !tr.skipped && (
+            tr.success === false ||
+            !!tr.error ||
+            !!tr.result?.error
+        )
+    );
+    const failuresInstruction = failedActions.length > 0
+        ? `\nTOOL FAILURES: One or more tools failed. You MUST acknowledge the failure(s) clearly and helpfully in your reply.\n` +
+          `- Say what succeeded (if anything) AND what failed.\n` +
+          `- If a cart/remove/compare action failed, suggest a next step (retry, rephrase, or pick by ordinal like "remove the second item").\n` +
+          `- Do NOT pretend the failed action worked.\n` +
+          `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })), null, 2)}\n`
+        : '';
+
     const resultsSummary = JSON.stringify(optimizedResults, null, 2);
     const systemPrompt = `You are a super friendly, playful, and LOVING shopping assistant for the Be3 store. ✨👋
 
@@ -261,6 +289,8 @@ CRITICAL GROUNDING RULES:
 3. PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
 4. LINKS: Always include the "whatsapp_link" or "checkout_url" for products you recommend.
 5. FORMATTING: Use lists/bullet points. NO markdown tables (poor display on WhatsApp).
+${skippedInstruction}
+${failuresInstruction}
 
 STORE CONTEXT:
 ${contextSummary}
@@ -308,6 +338,8 @@ app.post('/chat', async (req, res) => {
         startRun(runId);
 
         logDebug('SERVER:REQUEST_RECEIVED', {
+            _desc: 'Request received — POST /chat, start run',
+            _example: '"Add drawer to cart" → runId, sessionId, message',
             runId,
             sessionId: session_id,
             message,
@@ -320,6 +352,8 @@ app.post('/chat', async (req, res) => {
 
             // ========== FULL STATE BEFORE ==========
             logDebug('SERVER:STATE_BEFORE', {
+                _desc: 'State retrieval — load user state from Redis/memory before processing',
+                _example: 'state.reference_map, cart, microstate loaded',
                 session_id: state.session_id,
                 user_id: state.user_id,
                 current_intent: state.current_intent,
@@ -355,6 +389,8 @@ app.post('/chat', async (req, res) => {
             const intent = selection.intent || 'unknown';
 
             logDebug('SERVER:INTENT_RESOLVED', {
+                _desc: 'Intent resolved — deterministic pipeline output, tools selected',
+                _example: 'add_to_cart → cart.add with product_id',
                 intent,
                 confidence: selection.confidence,
                 toolCount: toolsSelected.length,
@@ -362,6 +398,8 @@ app.post('/chat', async (req, res) => {
             });
 
             logDebug('SERVER:STATEMANAGER_PRUNE', {
+                _desc: 'Prune state — clear stale context on new search or category shift',
+                _example: 'product_search → prune old reference_map if category changed',
                 action: 'pruneState',
                 intent,
                 willPrune: intent === 'new search' || intent.includes('category')
@@ -369,6 +407,8 @@ app.post('/chat', async (req, res) => {
             await stateManager.pruneState(session_id, intent);
 
             logDebug('SERVER:STATEMANAGER_SET_INTENT', {
+                _desc: 'Set current intent — persist resolved intent to state',
+                _example: 'add_to_cart stored as state.current_intent',
                 action: 'setCurrentIntent',
                 intent
             });
@@ -377,43 +417,114 @@ app.post('/chat', async (req, res) => {
             let toolResults = [];
             if (toolsSelected.length > 0) {
                 toolResults = await executeTools(toolsSelected, session_id);
+                logDebug('SERVER:IMAGE_INJECTION', {
+                    _desc: 'Image injection — re-inject cached product images into tool results',
+                    _example: 'product.search stripped images → inject thumbnails back for UI',
+                    toolResultsCount: toolResults.length
+                });
                 await injectImages(toolResults, stateManager);
             }
 
             // ========== FULL TOOL RESULTS (every product, every field) ==========
-            logDebug('SERVER:TOOL_RESULTS_FULL', toolResults);
-
-            logDebug('SERVER:AI_RESPONSE_GENERATION', {
-                model: 'llama-3.3-70b-versatile',
-                purpose: 'Personality response from tool results',
-                inputToolCount: toolResults.length,
-                conversationHistoryLength: state.conversation_history?.length || 0
+            logDebug('SERVER:TOOL_RESULTS_FULL', {
+                _desc: 'Tool results — aggregated outputs from all executed tools',
+                _example: 'cart.add → success, product_name; product.search → products array',
+                results: toolResults
             });
 
-            const response = await generateResponseFromTools(message, toolResults, state.conversation_history);
+            // Check if any tool returned a directResponse (bypasses personality layer)
+            const directResponseResult = toolResults.find(tr => 
+                tr.result && tr.result.directResponse === true && tr.result.message
+            );
 
-            logDebug('SERVER:AI_RAW_RESPONSE', response);
+            let response;
+            if (directResponseResult) {
+                // Microstate tools bypass personality layer - use structured message directly
+                logDebug('SERVER:DIRECT_RESPONSE_BYPASS', {
+                    _desc: 'Direct response check — use tool message as reply, bypass AI',
+                    _example: 'microstate.disambiguate → "Which one? Reply 1-5" as reply',
+                    tool: directResponseResult.tool,
+                    action: directResponseResult.result.action,
+                    reason: 'Microstate structured message - bypassing personality layer'
+                });
+                response = directResponseResult.result.message;
+            } else {
+                // Normal flow: generate response through personality layer
+                logDebug('SERVER:AI_RESPONSE_GENERATION', {
+                    _desc: 'AI personality path — Groq Llama generates response from tool results',
+                    _example: 'cart.add success → "Yaaas, I added the drawer! 🎉"',
+                    model: 'llama-3.3-70b-versatile',
+                    purpose: 'Personality response from tool results',
+                    inputToolCount: toolResults.length,
+                    conversationHistoryLength: state.conversation_history?.length || 0
+                });
+                response = await generateResponseFromTools(message, toolResults, state.conversation_history);
+            }
+
+            logDebug('SERVER:AI_RAW_RESPONSE', {
+                _desc: 'AI raw response — model output before sanitization',
+                _example: 'Full text with markdown, emojis',
+                response
+            });
 
             const displayImages = extractImages(toolResults);
 
-            logDebug('SERVER:DISPLAY_IMAGES', displayImages);
+            logDebug('SERVER:DISPLAY_IMAGES', {
+                _desc: 'Display image extraction — product image URLs from tool results',
+                _example: 'product.search → [url1, url2] for UI carousel',
+                displayImages
+            });
 
-            // Sanitization
-            const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
-            const sanitizedResponse = response.replace(idPattern, '').replace(/\*\*(.*?)\*\*/g, '*$1*').trim();
+            // Sanitization (skip for directResponse - already structured and deterministic)
+            let sanitizedResponse;
+            if (directResponseResult) {
+                // Direct responses are already structured - use as-is
+                sanitizedResponse = response;
+                logDebug('SERVER:SANITIZATION_SKIPPED', {
+                    _desc: 'Sanitization skipped — direct response already structured',
+                    _example: 'Microstate message used as-is, no ID stripping',
+                    reason: 'directResponse - structured message'
+                });
+            } else {
+                // Normal sanitization for AI-generated responses
+                const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
+                sanitizedResponse = response.replace(idPattern, '').replace(/\*\*(.*?)\*\*/g, '*$1*').trim();
+            }
 
-            logDebug('SERVER:SANITIZED_RESPONSE', sanitizedResponse);
+            logDebug('SERVER:SANITIZED_RESPONSE', {
+                _desc: 'Response sanitization — remove internal IDs, fix markdown',
+                _example: 'Strip (ID: abc123), keep product names',
+                sanitizedResponse
+            });
 
             await stateManager.addMessage(session_id, 'ai', sanitizedResponse);
+            logDebug('SERVER:ADD_AI_MESSAGE', {
+                _desc: 'Add AI message — append reply to conversation history',
+                _example: 'Store last answer text for follow-up context',
+                messageLength: sanitizedResponse.length
+            });
+            logDebug('SERVER:EXTEND_TTL', {
+                _desc: 'Extend TTL — bump session expiry so active users do not time out',
+                _example: 'Each message resets last active timer in Redis',
+                sessionId: session_id
+            });
             await stateManager.extendTTL(session_id);
 
             if (toolResults.length % 10 === 0) {
+                logDebug('SERVER:CONVERSATION_SUMMARIZATION', {
+                    _desc: 'Conversation summarization — background AI summarizes long chats',
+                    _example: 'Every 10 tool runs → "User is shopping for cheap Android phones"',
+                    toolCount: toolResults.length,
+                    trigger: 'every_10_tools'
+                });
                 summarizeConversation(session_id).catch(err => console.error(err));
             }
 
             // ========== FULL STATE AFTER ==========
             const stateAfter = await stateManager.getState(session_id);
             logDebug('SERVER:STATE_AFTER', {
+                _desc: 'State after — full state after addMessage, extendTTL',
+                _example: 'cart updated, conversation_history appended',
                 session_id: stateAfter.session_id,
                 user_id: stateAfter.user_id,
                 current_intent: stateAfter.current_intent,
@@ -435,17 +546,33 @@ app.post('/chat', async (req, res) => {
                 updated_at: stateAfter.updated_at
             });
 
+            // Extract WhatsApp button data from tool results (for microstate buttons)
+            const whatsappButtons = toolResults.find(tr => 
+                tr.result && tr.result.whatsapp && tr.result.whatsapp.type === 'button'
+            )?.result?.whatsapp;
+            logDebug('SERVER:WHATSAPP_BUTTON_EXTRACTION', {
+                _desc: 'WhatsApp button extraction — pull whatsapp_buttons from tool results',
+                _example: 'checkout tool returns buttons "Pay now" / "Change address"',
+                hasButtons: !!whatsappButtons,
+                buttonCount: whatsappButtons?.buttons?.length || 0
+            });
+
             const finalResponse = {
                 success: true,
                 reply: sanitizedResponse,
                 intent: intent,
                 display_images: displayImages,
                 tools_used: toolsSelected,
-                results: toolResults
+                results: toolResults,
+                whatsapp_buttons: whatsappButtons || null
             };
 
             // ========== FULL SERVER JSON RESPONSE ==========
-            logDebug('SERVER:FINAL_JSON_RESPONSE', finalResponse);
+            logDebug('SERVER:FINAL_JSON_RESPONSE', {
+                _desc: 'Final JSON response — success, reply, intent, display_images, results',
+                _example: '{ success: true, reply, intent, tools_used, whatsapp_buttons }',
+                ...finalResponse
+            });
 
             return res.json(finalResponse);
         }

@@ -29,6 +29,14 @@ const DEFAULT_STATE = {
     reference_map: {},
     ordinal_list: [],
 
+    user_query_map: {}, // Volatile map: user's search queries -> product IDs (session-only, not persisted)
+    // Format: { "spaghetti": "id1", "pasta": "id1,id2,id3" }
+    // Only stores queries that successfully matched products
+    // Single product: "query": "id"
+    // Multiple products: "query": "id1,id2,id3" (comma-separated)
+
+    search_context: null, // Semantic snapshot of last search/browse results (memory-only, message-count TTL)
+
     cart: {
         id: null,
         item_count: 0,
@@ -60,12 +68,7 @@ const DEFAULT_STATE = {
         platform: 'whatsapp'
     },
 
-    microstate: {
-        type: null, // clause_resolution, cart_interaction, etc
-        data: {},
-        intent_confidence: 1.0, // Confidence score from tool selection
-        expires_at: null
-    },
+    microstate: null, // null when inactive, full microstate object when active
 
     last_bot_suggestion: {
         type: null,  // 'product_offer', 'action_offer', 'category_offer'
@@ -110,6 +113,11 @@ class StateManager {
 
             // Return existing state or create new
             if (state) {
+                // Ensure user_query_map exists (volatile, session-only)
+                // If state came from Redis, it won't have user_query_map (we exclude it)
+                if (!state.user_query_map) {
+                    state.user_query_map = {};
+                }
                 return state;
             }
 
@@ -133,16 +141,20 @@ class StateManager {
 
             const stateTTL = ttl || this.defaultTTL;
 
-            // Save to Redis
-            await redisClient.setState(userId, state, stateTTL);
+            // user_query_map is volatile - exclude it from Redis persistence
+            const stateForRedis = { ...state };
+            delete stateForRedis.user_query_map;
 
-            // Also save to memory cache as fallback
+            // Save to Redis (without user_query_map)
+            await redisClient.setState(userId, stateForRedis, stateTTL);
+
+            // Also save to memory cache as fallback (with user_query_map - it's session-only)
             memoryCache.set(userId, state);
 
             return true;
         } catch (error) {
             console.error('[StateManager] Error setting state:', error.message);
-            // At least save to memory
+            // At least save to memory (with user_query_map)
             memoryCache.set(userId, state);
             return false;
         }
@@ -257,9 +269,10 @@ class StateManager {
     }
 
     /**
-     * Start a multi-turn flow
+     * @deprecated Use setMicrostate() with chained contracts instead.
      */
     async startFlow(userId, flowType, initialData = {}) {
+        console.warn(`[StateManager] DEPRECATED: startFlow() called. Use setMicrostate() instead.`);
         const flow = {
             type: flowType,
             stage: 'started',
@@ -267,52 +280,42 @@ class StateManager {
             started_at: new Date().toISOString(),
             completed_steps: []
         };
-
         await this.updateState(userId, { active_flow: flow });
-        console.log(`[StateManager] Started flow: ${flowType} for ${userId}`);
         return flow;
     }
 
     /**
-     * Update flow progress
+     * @deprecated Use advanceMicrostate() instead.
      */
     async updateFlow(userId, stage, data = {}) {
+        console.warn(`[StateManager] DEPRECATED: updateFlow() called. Use advanceMicrostate() instead.`);
         const state = await this.getState(userId);
-
-        if (!state.active_flow) {
-            console.warn(`[StateManager] No active flow for ${userId}`);
-            return null;
-        }
-
-        // Add previous stage to completed steps
+        if (!state.active_flow) return null;
         if (state.active_flow.stage && !state.active_flow.completed_steps.includes(state.active_flow.stage)) {
             state.active_flow.completed_steps.push(state.active_flow.stage);
         }
-
         state.active_flow.stage = stage;
         state.active_flow.data = { ...state.active_flow.data, ...data };
-
         await this.setState(userId, state);
         return state.active_flow;
     }
 
     /**
-     * Complete and clear active flow
+     * @deprecated Use clearMicrostate() instead.
      */
     async completeFlow(userId) {
+        console.warn(`[StateManager] DEPRECATED: completeFlow() called. Use clearMicrostate() instead.`);
         const state = await this.getState(userId);
         const completedFlow = state.active_flow;
-
         await this.updateState(userId, { active_flow: null, expecting_input: null });
-        console.log(`[StateManager] Completed flow: ${completedFlow?.type} for ${userId}`);
-
         return completedFlow;
     }
 
     /**
-     * Get active flow
+     * @deprecated Use getMicrostate() instead.
      */
     async getActiveFlow(userId) {
+        console.warn(`[StateManager] DEPRECATED: getActiveFlow() called. Use getMicrostate() instead.`);
         const state = await this.getState(userId);
         return state.active_flow;
     }
@@ -356,31 +359,68 @@ class StateManager {
     // ============ MICROSTATE MANAGEMENT ============
 
     /**
-     * Set a short-lived microstate for specific reasoning contexts
+     * Open a microstate sandbox.
+     * 
+     * @param {string} userId
+     * @param {object} microstateObj - Full microstate definition:
+     *   { type, intent, sandbox, boostScore, params, entities, contract, prompt }
+     * @param {number} ttlSeconds - TTL fallback (default 5 min)
      */
-    async setMicrostate(userId, type, data = {}, ttlSeconds = 300) {
+    async setMicrostate(userId, microstateObj, ttlSeconds = 300) {
         const state = await this.getState(userId);
-        const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
         state.microstate = {
-            type,
-            data,
-            expires_at: expiresAt
+            id: `ms_${Date.now()}`,
+            type: microstateObj.type,
+            intent: microstateObj.intent,
+            sandbox: microstateObj.sandbox || 'soft',
+            boostScore: microstateObj.boostScore || 10.0,
+            params: microstateObj.params || {},
+            entities: microstateObj.entities || [],
+            options: microstateObj.options || [],
+            contract: {
+                maxMessages: microstateObj.contract?.maxMessages || 3,
+                messagesUsed: 0,
+                onFulfilled: microstateObj.contract?.onFulfilled || [],
+                onKeyword: microstateObj.contract?.onKeyword || ['cancel', 'nevermind', 'stop'],
+                escalation: microstateObj.contract?.escalation || null,
+                onFulfilledSpawn: microstateObj.contract?.onFulfilledSpawn || null
+            },
+            confidence: 1.0,
+            created_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString()
         };
 
         await this.setState(userId, state);
-        console.log(`[StateManager] Set microstate "${type}" for ${userId} (Expires: ${expiresAt})`);
+        console.log(`[StateManager] 🔒 Microstate OPENED: "${microstateObj.type}" for intent "${microstateObj.intent}" (${userId})`);
+        return state.microstate;
     }
 
     /**
-     * Get valid microstate
+     * Get active microstate (null if expired or inactive)
      */
     async getMicrostate(userId) {
         const state = await this.getState(userId);
-        if (!state.microstate || !state.microstate.expires_at) return null;
+        if (!state.microstate) return null;
 
-        // Check expiry
-        if (new Date() > new Date(state.microstate.expires_at)) {
+        // Check TTL expiry
+        if (state.microstate.expires_at && new Date() > new Date(state.microstate.expires_at)) {
+            console.log(`[StateManager] Microstate expired (TTL) for ${userId}`);
+            await this.clearMicrostate(userId);
+            return null;
+        }
+
+        // Check contract expiry (maxMessages exceeded)
+        if (state.microstate.contract &&
+            state.microstate.contract.messagesUsed >= state.microstate.contract.maxMessages) {
+            console.log(`[StateManager] Microstate expired (maxMessages: ${state.microstate.contract.maxMessages}) for ${userId}`);
+            await this.clearMicrostate(userId);
+            return null;
+        }
+
+        // Check confidence decay
+        if (state.microstate.confidence <= 0) {
+            console.log(`[StateManager] Microstate expired (confidence depleted) for ${userId}`);
             await this.clearMicrostate(userId);
             return null;
         }
@@ -389,11 +429,160 @@ class StateManager {
     }
 
     /**
+     * Advance microstate: merge new params, increment message count, decay confidence.
+     * Returns the updated microstate.
+     * 
+     * @param {string} userId
+     * @param {object} newParams - New params to merge
+     * @param {boolean} advanced - Whether the message advanced the microstate (filled a param)
+     * @returns {object|null} Updated microstate or null if expired
+     */
+    async advanceMicrostate(userId, newParams = {}, advanced = false) {
+        const state = await this.getState(userId);
+        if (!state.microstate) return null;
+
+        // Merge new params
+        state.microstate.params = { ...state.microstate.params, ...newParams };
+
+        // Multi-field progression: if this microstate tracks ordered fields,
+        // advance the pointer when the current field is now satisfied.
+        if (state.microstate.fields && Array.isArray(state.microstate.fields) && state.microstate.fields.length > 0) {
+            const idx = state.microstate.currentFieldIndex || 0;
+            const currentField = state.microstate.fields[idx];
+            if (currentField && currentField.name) {
+                const val = state.microstate.params[currentField.name];
+                if (val !== undefined && val !== null && String(val).trim().length > 0) {
+                    const nextIdx = idx + 1;
+                    if (nextIdx < state.microstate.fields.length) {
+                        state.microstate.currentFieldIndex = nextIdx;
+                    }
+                }
+            }
+        }
+
+        // Increment message counter
+        state.microstate.contract.messagesUsed++;
+
+        // Decay confidence only if message didn't advance the microstate
+        if (!advanced) {
+            state.microstate.confidence = Math.max(0, state.microstate.confidence - 0.3);
+        }
+
+        await this.setState(userId, state);
+        console.log(`[StateManager] Microstate advanced: messages=${state.microstate.contract.messagesUsed}/${state.microstate.contract.maxMessages}, confidence=${state.microstate.confidence.toFixed(1)}, params=${JSON.stringify(newParams)}`);
+        return state.microstate;
+    }
+
+    /**
      * Clear microstate
      */
     async clearMicrostate(userId) {
         const state = await this.getState(userId);
-        state.microstate = { type: null, data: {}, expires_at: null };
+        state.microstate = null;
+        console.log(`[StateManager] 🔓 Microstate CLEARED for ${userId}`);
+        await this.setState(userId, state);
+    }
+
+    // ═══════════════════════════════════════════════
+    // SEARCH CONTEXT (semantic reference map)
+    // ═══════════════════════════════════════════════
+
+    /**
+     * Set search context after a search/browse execution.
+     * Overwrites any previous context (single-slot design).
+     */
+    async setSearchContext(userId, context) {
+        const state = await this.getState(userId);
+
+        // Safely extract clause IDs into a clean string array
+        let clauseList = context.clauses || [];
+        if (Array.isArray(clauseList)) {
+            clauseList = clauseList.map(c => typeof c === 'object' ? (c.clauseId || c.id || String(c)) : String(c));
+        } else {
+            clauseList = typeof clauseList === 'object' ? Object.keys(clauseList) : [String(clauseList)];
+        }
+
+        state.search_context = {
+            category: context.category || null,
+            category_id: context.category_id || context.category || null,
+            vendor: context.vendor || null,
+            vendor_id: context.vendor_id || context.vendor || null,
+            clauses: clauseList,
+            attributes: context.attributes || {},
+            product_ids: Array.isArray(context.product_ids) ? context.product_ids.slice(0, 10) : [],
+            product_attributes_map: context.product_attributes_map || {}, // { productId: { color: 'white', brand: 'Apple', ... } }
+            result_count: context.result_count || 0,
+            query: context.query || null,
+            source_intent: context.source_intent || null,
+            created_at: new Date().toISOString(),
+            ttl_messages: context.ttl_messages || 5
+        };
+
+        const clausesStr = clauseList.join(',');
+        console.log(`[StateManager] 📸 Search context SET:`, {
+            category: state.search_context.category || 'none',
+            clauses: `[${clausesStr}]`,
+            product_ids_count: state.search_context.product_ids.length,
+            product_attributes_map_count: Object.keys(state.search_context.product_attributes_map || {}).length,
+            attributes: state.search_context.attributes,
+            sample_product_attrs: Object.keys(state.search_context.product_attributes_map || {}).slice(0, 2).reduce((acc, pid) => {
+                acc[pid] = state.search_context.product_attributes_map[pid];
+                return acc;
+            }, {})
+        });
+
+        await this.setState(userId, state);
+    }
+
+    /**
+     * Get search context if still valid (TTL > 0).
+     * Returns null if expired or never set.
+     */
+    async getSearchContext(userId) {
+        const state = await this.getState(userId);
+        if (!state.search_context) return null;
+        if (state.search_context.ttl_messages <= 0) {
+            state.search_context = null;
+            await this.setState(userId, state);
+            return null;
+        }
+        console.log(`[StateManager] 🔍 Retrieved search_context:`, {
+            product_ids_count: state.search_context.product_ids?.length || 0,
+            product_attributes_map_count: Object.keys(state.search_context.product_attributes_map || {}).length,
+            clauses: state.search_context.clauses,
+            attributes: state.search_context.attributes,
+            sample_attrs_map: Object.keys(state.search_context.product_attributes_map || {}).slice(0, 2).reduce((acc, pid) => {
+                acc[pid] = state.search_context.product_attributes_map[pid];
+                return acc;
+            }, {})
+        });
+        return state.search_context;
+    }
+
+    /**
+     * Clear search context immediately.
+     */
+    async clearSearchContext(userId) {
+        const state = await this.getState(userId);
+        if (state.search_context) {
+            console.log(`[StateManager] 🗑️ Search context CLEARED for ${userId}`);
+            state.search_context = null;
+            await this.setState(userId, state);
+        }
+    }
+
+    /**
+     * Decrement search context TTL. Called once per message.
+     * Auto-clears when TTL hits 0.
+     */
+    async decrementSearchContextTTL(userId) {
+        const state = await this.getState(userId);
+        if (!state.search_context) return;
+        state.search_context.ttl_messages--;
+        if (state.search_context.ttl_messages <= 0) {
+            console.log(`[StateManager] ⏰ Search context EXPIRED (TTL=0) for ${userId}`);
+            state.search_context = null;
+        }
         await this.setState(userId, state);
     }
 
@@ -463,8 +652,10 @@ class StateManager {
     async cacheProductImage(productId, imageUrl) {
         if (!productId || !imageUrl) return;
         try {
-            // Store with a long TTL (e.g. 24 hours) as images don't change often
-            await redisClient.getClient().setEx(`product_image:${productId}`, 86400, imageUrl);
+            if (redisClient.isRedisConnected()) {
+                // Store with a long TTL (e.g. 24 hours) as images don't change often
+                await redisClient.getClient().setEx(`product_image:${productId}`, 86400, imageUrl);
+            }
         } catch (error) {
             console.error(`[StateManager] Failed to cache image for ${productId}:`, error.message);
         }
@@ -476,7 +667,10 @@ class StateManager {
     async getProductImage(productId) {
         if (!productId) return null;
         try {
-            return await redisClient.getClient().get(`product_image:${productId}`);
+            if (redisClient.isRedisConnected()) {
+                return await redisClient.getClient().get(`product_image:${productId}`);
+            }
+            return null;
         } catch (error) {
             console.error(`[StateManager] Failed to get image for ${productId}:`, error.message);
             return null;
@@ -567,6 +761,8 @@ class StateManager {
                 const pluralStr = currentPlural.join(',');
                 referenceMap.them = pluralStr;
                 referenceMap.all = pluralStr;
+                referenceMap.ones = pluralStr;
+                referenceMap.the_ones = pluralStr;
                 referenceMap.the_products = pluralStr;
                 referenceMap.all_of_them = pluralStr;
             }
@@ -610,6 +806,82 @@ class StateManager {
         state.ordinal_list = ordinalList;
         await this.setState(userId, state);
         console.log(`[StateManager] Reference map updated. Keys: ${Object.keys(referenceMap).length}, Items in list: ${ordinalList.length}`);
+    }
+
+    /**
+     * Update user_query_map: Volatile map of user's search queries -> product IDs
+     * Only stores queries that successfully matched products.
+     * Session-only (not persisted to Redis).
+     * 
+     * @param {string} userId - User session ID
+     * @param {string} query - User's search query (normalized)
+     * @param {Array} products - Products found for this query
+     */
+    async updateUserQueryMap(userId, query, products) {
+        if (!query || !products || products.length === 0) return;
+
+        // Ensure query is a string (can be object/number from params in some flows)
+        const queryStr = typeof query === 'string' ? query : (query?.query ?? String(query));
+        if (typeof queryStr !== 'string' || queryStr.trim().length === 0) return;
+
+        const state = await this.getState(userId);
+        const userQueryMap = state.user_query_map || {};
+        
+        // Normalize query: lowercase, trim, collapse whitespace
+        const normalizedQuery = queryStr.toLowerCase().trim().replace(/\s+/g, ' ');
+        
+        // Extract product IDs
+        const productIds = products.map(p => p.handle || p.id || p.product_id).filter(Boolean);
+        
+        if (productIds.length === 0) return;
+        
+        // Store: single product as string, multiple as comma-separated
+        if (productIds.length === 1) {
+            userQueryMap[normalizedQuery] = productIds[0];
+            console.log(`[StateManager] 📝 User query map: "${normalizedQuery}" → ${productIds[0]} (single product)`);
+        } else {
+            userQueryMap[normalizedQuery] = productIds.join(',');
+            console.log(`[StateManager] 📝 User query map: "${normalizedQuery}" → ${productIds.join(',')} (${productIds.length} products)`);
+        }
+        
+        state.user_query_map = userQueryMap;
+        // Note: user_query_map is volatile - only stored in memory cache, not persisted to Redis
+        await this.setState(userId, state);
+    }
+
+    /**
+     * Resolve a user query to product ID(s) from user_query_map
+     * Returns single ID string or comma-separated string for sets
+     * 
+     * @param {string} userId - User session ID
+     * @param {string} query - User's search query
+     * @returns {string|null} - Product ID(s) or null if not found
+     */
+    async resolveUserQuery(userId, query) {
+        if (!query) return null;
+
+        const queryStr = typeof query === 'string' ? query : (query?.query ?? String(query));
+        if (typeof queryStr !== 'string' || queryStr.trim().length === 0) return null;
+        
+        const state = await this.getState(userId);
+        const userQueryMap = state.user_query_map || {};
+        
+        // Normalize query
+        const normalizedQuery = queryStr.toLowerCase().trim().replace(/\s+/g, ' ');
+        
+        // Exact match
+        if (userQueryMap[normalizedQuery]) {
+            return userQueryMap[normalizedQuery];
+        }
+        
+        // Try substring matching (e.g., "spaghetti" matches "home made spaghetti")
+        for (const [key, value] of Object.entries(userQueryMap)) {
+            if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
+                return value;
+            }
+        }
+        
+        return null;
     }
 
     /**

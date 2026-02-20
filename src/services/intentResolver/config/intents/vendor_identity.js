@@ -34,5 +34,45 @@ module.exports = {
 
     minProducts: 1,
     maxProducts: 1,
-    invertTo: null
+    invertTo: null,
+
+    /**
+     * Microstates:
+     *  - collect_product_for_vendor_identity: ask which product they're asking about when product_name is missing.
+     */
+    microstates: {
+        collect_product_for_vendor_identity: {
+            trigger: (params, entities) => {
+                return !params.product_name;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            prompt: {
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'product_name',
+                    message: 'Which product are you asking about?',
+                    hint: 'e.g., "iPhone 16" or "Samsung Galaxy S24"'
+                }
+            },
+            validators: {
+                product_name: (value) => {
+                    if (!value) return false;
+                    return String(value).trim().length > 1;
+                }
+            },
+            normalizers: {
+                product_name: (value) => value ? String(value).trim() : value
+            },
+            termination: {
+                maxMessages: 2,
+                onFulfilled: ['product_name'],
+                escalation: null
+            },
+            breakthrough: {
+                minScore: 1.5,
+                blockIntents: []
+            }
+        }
+    }
 };

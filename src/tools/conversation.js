@@ -142,6 +142,30 @@ Be friendly and knowledgeable.`;
                 };
             }
         }
+    },
+
+    /**
+     * Test response tool - used by test_microstate intent
+     */
+    'conversation.test_response': {
+        description: 'Respond to test microstate confirmation',
+        params: {
+            confirmation: { type: 'boolean', required: true, description: 'User confirmation (true/false)' }
+        },
+        handler: async (params) => {
+            const { confirmation } = params;
+            if (confirmation === true) {
+                return {
+                    message: 'Great! You confirmed. The test microstate worked perfectly! ✅',
+                    success: true
+                };
+            } else {
+                return {
+                    message: 'Okay, you declined. The test microstate is now closed.',
+                    success: true
+                };
+            }
+        }
     }
 };
 

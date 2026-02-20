@@ -19,8 +19,9 @@ function normalize(text) {
         .toLowerCase()
         .trim()
         .replace(/\s+/g, ' ')
-        // Remove punctuation except #, $, -, ', and .
-        .replace(/[^\w\s#$\-'.]/g, '');
+        // Remove punctuation except #, $, -, ', ., and ,
+        // We keep commas so they can act as soft separators in splitStatements.
+        .replace(/[^\w\s#$\-',.]/g, '');
 }
 
 /**
@@ -68,7 +69,17 @@ function isConjunctionGuarded(text, conjPosition, conjunction) {
  * Returns array of statement strings.
  */
 function splitStatements(text) {
-    let statements = [text];
+    // First, treat commas as soft separators for multi-intent queries.
+    // Example: "iphone 17, cheap smartphones and a laptop, i also need dareymi contact"
+    //   → ["iphone 17", "cheap smartphones and a laptop", "i also need dareymi contact"]
+    //
+    // We deliberately keep this simple and domain-biased:
+    // in shopping queries, splitting on commas is almost always "list of things to do/buy".
+    // If we later find bad cases (e.g., "lagos, nigeria"), we can add targeted guards.
+    let statements = text
+        .split(/\s*,\s*/g)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
 
     // Try each conjunction (already sorted: multi-word first)
     for (const conj of conjunctions) {

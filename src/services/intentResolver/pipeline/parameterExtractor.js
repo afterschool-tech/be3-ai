@@ -7,7 +7,7 @@
  */
 
 const intentRegistry = require('../config/intentRegistry');
-const { normalizeCategory } = require('../../../utils/normalization');
+const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
 const { CLAUSES } = require('../../../context/clauses');
 const structuralMatcher = require('../semanticLab/structural/utils/StructuralMatcher');
 
@@ -17,16 +17,22 @@ const clauseWordToId = new Map();
 for (const [clauseId, clause] of Object.entries(CLAUSES)) {
     // Add the clause label words (e.g., "affordable" → "affordable")
     const labelWords = clause.label.toLowerCase().split(/\s+/);
-    labelWords.forEach(w => { clauseWordSet.add(w); clauseWordToId.set(w, clauseId); });
+    labelWords.forEach(w => {
+        clauseWordSet.add(w);
+        clauseWordToId.set(w, { clauseId, attribute: clause.attribute });
+    });
     // Add the matches keywords (e.g., "budget", "midrange")
     (clause.matches || []).forEach(m => {
         const mLower = m.toLowerCase();
         clauseWordSet.add(mLower);
-        clauseWordToId.set(mLower, clauseId);
+        clauseWordToId.set(mLower, { clauseId, attribute: clause.attribute });
     });
     // Add display prefix/suffix words (e.g., "cheap", "expensive")
     const displayWords = `${clause.display?.prefix || ''} ${clause.display?.suffix || ''}`.toLowerCase().split(/\s+/).filter(Boolean);
-    displayWords.forEach(w => { clauseWordSet.add(w); clauseWordToId.set(w, clauseId); });
+    displayWords.forEach(w => {
+        clauseWordSet.add(w);
+        clauseWordToId.set(w, { clauseId, attribute: clause.attribute });
+    });
 }
 // Remove overly generic words that would cause false positives
 ['by', 'for', 'the', 'a', 'and', 'of', 'in', 'men', 'ladies', 'gaming', 'high', 'small', 'color'].forEach(w => {
@@ -38,8 +44,17 @@ for (const [clauseId, clause] of Object.entries(CLAUSES)) {
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
  */
-function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = []) {
+function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null) {
     const extracted = {};
+
+    // Identify supported attributes for scoping
+    const supportedAttributes = new Set();
+    if (categoryId && storeContext.CATEGORIES) {
+        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+        if (catObj) {
+            (catObj.attributes || []).forEach(a => supportedAttributes.add(a));
+        }
+    }
 
     // 1. Quantity detection
     const qtyMatch = text.match(/\b(?:add|buy|get|order|want|need|grab|purchase)\s+(\d+)\b/i);
@@ -145,11 +160,22 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         let foundCategoryUUID = null;
         let categoryWords = [];
 
-        // N-Gram Scanning: Try Bigrams (2 words) then Monograms (1 word)
-        for (let size = 2; size >= 1; size--) {
+        // N-Gram Scanning: Try Trigrams (3 words), Bigrams (2 words), then Monograms (1 word)
+        const textLower = text.toLowerCase();
+        // Build word position map for accurate context detection
+        let currentPos = 0;
+        const wordPositions = words.map(w => {
+            const pos = textLower.indexOf(w, currentPos);
+            currentPos = pos >= 0 ? pos + w.length : currentPos;
+            return pos;
+        });
+        
+        for (let size = 3; size >= 1; size--) {
             if (foundCategoryUUID) break;
             for (let i = 0; i <= words.length - size; i++) {
                 const phrase = words.slice(i, i + size).join(' ');
+                const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
+                if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
                 const catId = normalizeCategory(phrase, storeContext.CATEGORIES);
                 if (catId) {
                     foundCategoryUUID = catId;
@@ -164,7 +190,7 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         categoryWords.forEach(w => excludeSet.add(w));
 
         const productWords = words.filter(w => !excludeSet.has(w) && w.length > 0);
-        const { productName, clauses } = performClauseStripping(productWords);
+        const { productName, clauses } = performClauseStripping(productWords, categoryId, supportedAttributes);
 
         if (productName) {
             extracted.product_name = productName;
@@ -181,14 +207,19 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
 /**
  * Helper to identify and strip clauses from a list of words.
  */
-function performClauseStripping(words) {
+function performClauseStripping(words, categoryId = null, supportedAttributes = new Set()) {
     const detectedClauses = [];
     const cleanWords = [];
 
     for (const word of words) {
-        const clauseId = clauseWordToId.get(word.toLowerCase());
-        if (clauseId) {
-            detectedClauses.push({ word, clauseId });
+        const match = clauseWordToId.get(word.toLowerCase());
+        if (match) {
+            // Scoping Rule: If category is known, only allow supported attributes
+            if (categoryId && !supportedAttributes.has(match.attribute)) {
+                cleanWords.push(word);
+                continue;
+            }
+            detectedClauses.push({ word, clauseId: match.clauseId });
         } else {
             cleanWords.push(word);
         }
@@ -206,8 +237,18 @@ function performClauseStripping(words) {
  * Implements "Entity Consolidation": if a word in a [clause] slot is not a 
  * valid clause, it is merged into the adjacent [product] slot.
  */
-function extractStructural(text, candidates = []) {
+function extractStructural(text, candidates = [], categoryId = null, storeContext = {}) {
     const structuralResult = {};
+
+    // Identify supported attributes for scoping
+    const supportedAttributes = new Set();
+    if (categoryId && storeContext.CATEGORIES) {
+        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+        if (catObj) {
+            (catObj.attributes || []).forEach(a => supportedAttributes.add(a));
+        }
+    }
+
     const candidateNames = candidates.map(c => c.intentName);
     const matches = structuralMatcher.findMatches(text, candidateNames);
 
@@ -301,7 +342,7 @@ function extractStructural(text, candidates = []) {
         const secondaryClauses = [];
         const polishedProducts = structuralResult.products.map(p => {
             const words = p.split(/\s+/);
-            const { productName, clauses } = performClauseStripping(words);
+            const { productName, clauses } = performClauseStripping(words, categoryId, supportedAttributes);
             if (clauses.length > 0) secondaryClauses.push(...clauses);
             return productName;
         }).filter(Boolean);
@@ -386,21 +427,52 @@ Return a JSON object with parameter names as keys. Use null for parameters that 
  * Main extraction function.
  * Runs deterministic extraction first, then AI for remaining gaps.
  */
-async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = []) {
+async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = [], entities = []) {
     const schema = buildParameterSchema(candidates);
 
-    // 1. Run Structural Extraction first (Positional Intuition)
-    const structural = extractStructural(text, candidates);
+    // 0. Fill primitive parameters from pre-detected entities (Stage 4a)
+    const baseFromEntities = {};
+    if (entities && entities.length > 0) {
+        entities.forEach(ent => {
+            if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id;
+            if (ent.type === 'vendor' && !baseFromEntities.vendor) baseFromEntities.vendor = ent.value;
+            if (ent.type === 'brand' && !baseFromEntities.brand) baseFromEntities.brand = ent.value;
+            if (ent.type === 'order_id' && !baseFromEntities.order_id) baseFromEntities.order_id = ent.value;
+            if (ent.type === 'quantity' && !baseFromEntities.quantity) baseFromEntities.quantity = ent.value;
+            if (ent.type === 'price_max' && !baseFromEntities.price_max) baseFromEntities.price_max = ent.value;
+            if (ent.type === 'price_min' && !baseFromEntities.price_min) baseFromEntities.price_min = ent.value;
+
+            if (ent.type === 'clause') {
+                if (!baseFromEntities.clause_words) baseFromEntities.clause_words = [];
+                baseFromEntities.clause_words.push({ word: ent.value, clauseId: ent.clauseId });
+            }
+        });
+    }
+
+    // 1. Run Structural Extraction (Positional Intuition)
+    const categoryId = baseFromEntities.category;
+    const structural = extractStructural(text, candidates, categoryId, storeContext);
 
     // 2. Run Deterministic Fallback (Keyword/Category Stripping)
-    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions);
+    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId);
 
-    // Merge base results (structural + deterministic) with array awareness
-    const combinedBase = { ...deterministic, ...structural };
+    // Merge base results (entities + structural + deterministic) with array awareness
+    const combinedBase = { ...baseFromEntities, ...deterministic, ...structural };
 
     // Concatenate arrays instead of clobbering
-    if (deterministic.clause_words || structural.clause_words) {
-        combinedBase.clause_words = [...(deterministic.clause_words || []), ...(structural.clause_words || [])];
+    if (baseFromEntities.clause_words || deterministic.clause_words || structural.clause_words) {
+        combinedBase.clause_words = [
+            ...(baseFromEntities.clause_words || []),
+            ...(deterministic.clause_words || []),
+            ...(structural.clause_words || [])
+        ];
+        // Deduplicate clauses by ID
+        const seen = new Set();
+        combinedBase.clause_words = combinedBase.clause_words.filter(c => {
+            if (seen.has(c.clauseId)) return false;
+            seen.add(c.clauseId);
+            return true;
+        });
     }
     if (deterministic.products || structural.products) {
         combinedBase.products = Array.from(new Set([...(deterministic.products || []), ...(structural.products || [])]));
@@ -435,6 +507,30 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
             aiExtracted = JSON.parse(response);
         } catch (error) {
             console.error('[ParameterExtractor] AI extraction failed:', error.message);
+        }
+    }
+
+    // ── HALLUCINATION GUARD ──
+    // Cross-reference AI-extracted attributes against the category's supported list.
+    // Drops any attribute the AI hallucinated that doesn't belong to this category.
+    const ATTRIBUTE_PARAMS = ['brand', 'color', 'material', 'storage', 'size', 'price_tier'];
+    if (categoryId && Object.keys(aiExtracted).length > 0 && storeContext.CATEGORIES) {
+        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+        if (catObj) {
+            const supported = new Set(catObj.attributes || []);
+            for (const attrName of ATTRIBUTE_PARAMS) {
+                if (aiExtracted[attrName] && !supported.has(attrName)) {
+                    logDebug('HALLUCINATION_GUARD:DROPPED', {
+                        _desc: 'Hallucination guard — drop AI-extracted attributes not in category',
+                        _example: 'AI said color for Food category → dropped',
+                        attr: attrName,
+                        value: aiExtracted[attrName],
+                        category: catObj.label,
+                        supported: Array.from(supported)
+                    });
+                    delete aiExtracted[attrName];
+                }
+            }
         }
     }
 

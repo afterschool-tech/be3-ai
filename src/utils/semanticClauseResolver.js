@@ -31,6 +31,8 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
     const activeMatcher = getMatcher();
 
     logDebug('CLAUSE_RESOLVER:INPUT', {
+        _desc: 'Clause resolver input — resolve semantic clauses (cheap, white, etc.)',
+        _example: '"cheap android phones" → cheap, android clauses',
         userMessage,
         category,
         matcherLoaded: activeMatcher.isLoaded
@@ -38,6 +40,8 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
 
     if (!userMessage || !activeMatcher.isLoaded) {
         logDebug('CLAUSE_RESOLVER:ABORT', {
+            _desc: 'Clause resolver abort — empty message or matcher not loaded',
+            _example: 'No userMessage → return empty clauses',
             reason: !userMessage ? 'Empty message' : 'Matcher not loaded'
         });
         return { clauses: [], display_words: [] };
@@ -46,6 +50,8 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
     const matches = activeMatcher.findMatches(userMessage);
 
     logDebug('CLAUSE_RESOLVER:RAW_MATCHES', {
+        _desc: 'Clause raw matches — semantic similarity against clause index',
+        _example: '"affordable" → cheap clause, similarity 0.85',
         matchCount: matches.length,
         matches: matches.map(m => ({
             id: m.id,
@@ -58,6 +64,8 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
     const confidentMatches = matches.filter(m => m.similarity > 0.4 || m.boost > 1.8);
 
     logDebug('CLAUSE_RESOLVER:CONFIDENT_MATCHES', {
+        _desc: 'Clause confident matches — filter by similarity > 0.4 or boost > 1.8',
+        _example: '3 raw → 2 confident (above threshold)',
         confidentCount: confidentMatches.length,
         clauses: confidentMatches.map(m => m.id),
         thresholds: { similarity: 0.4, boost: 1.8 }

@@ -17,18 +17,43 @@
  */
 
 const { CLAUSES } = require('../../../context/clauses');
-const { normalizeCategory } = require('../../../utils/normalization');
+const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
 const { levenshtein } = require('../utils/levenshtein');
 
 // ── Pre-build brand lookup from clauses ──
 const BRAND_LOOKUP = new Map();
+// ── Pre-build clause lookup for non-brand clauses (affordable, premium, etc.) ──
+const CLAUSE_LOOKUP = new Map();
+// Generic words that appear in clause labels/matches but shouldn't trigger clause detection
+const CLAUSE_EXCLUDE = new Set(['by', 'for', 'the', 'a', 'and', 'of', 'in', 'men', 'ladies',
+    'high', 'small', 'color', 'all', 'yes', 'no', 'ok', 'new']);
+
 for (const [clauseId, clause] of Object.entries(CLAUSES)) {
     if (clause.attribute === 'brand') {
+        // Brand clauses go into BRAND_LOOKUP
         const label = clause.label.toLowerCase();
-        BRAND_LOOKUP.set(label, { clauseId, label: clause.label });
+        BRAND_LOOKUP.set(label, { clauseId, label: clause.label, attribute: 'brand' });
         (clause.matches || []).forEach(m => {
-            BRAND_LOOKUP.set(m.toLowerCase(), { clauseId, label: clause.label });
+            BRAND_LOOKUP.set(m.toLowerCase(), { clauseId, label: clause.label, attribute: 'brand' });
         });
+    } else {
+        // Non-brand clauses go into CLAUSE_LOOKUP
+        const allWords = [clause.label, ...(clause.matches || [])];
+        // Also include display prefix/suffix words (e.g., "cheap", "expensive")
+        if (clause.display?.prefix) allWords.push(clause.display.prefix);
+        if (clause.display?.suffix) allWords.push(clause.display.suffix);
+
+        for (const word of allWords) {
+            const w = word.toLowerCase().trim();
+            if (w.length > 1 && !CLAUSE_EXCLUDE.has(w)) {
+                CLAUSE_LOOKUP.set(w, {
+                    clauseId,
+                    label: clause.label,
+                    attribute: clause.attribute,
+                    word: w
+                });
+            }
+        }
     }
 }
 
@@ -92,13 +117,14 @@ const FILLERS = new Set([
     'do', 'does', 'did', 'doing',
     'have', 'has', 'had', 'having',
     'will', 'would', 'shall', 'should', 'may', 'might', 'can', 'could',
-    'not', 'no', 'nor', 'so', 'if', 'or', 'and',
+    'not', 'no', 'nor', 'so', 'if', 'or', 'and', 'also',
     'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why',
     'some', 'any', 'many', 'much', 'more', 'most', 'other',
     'just', 'also', 'very', 'really', 'please', 'pls', 'plz',
     'ok', 'okay', 'hi', 'hello', 'hey', 'yo', 'sup',
     'yeah', 'yes', 'yep', 'yup', 'nope', 'nah',
     'thanks', 'thank', 'thx', 'ty', 'cool', 'great', 'sure',
+    'need', 'want', 'show', 'find', 'get', 'give', 'tell', 'look', 'looking', 'about',
     "i'm", "i'd", "i'll", "i've", "let's", "don't", "doesn't",
     "can't", "won't", "shouldn't", "wouldn't", "couldn't"
 ]);
@@ -109,9 +135,10 @@ const FILLERS = new Set([
  * @param {string} text - Cleaned, lowercased text (after fuzzy + context resolution)
  * @param {Object} storeContext - Store context with VENDORS, CATEGORIES, ATTRIBUTES
  * @param {Object} idfMap - IDF weights for keywords (from intentRegistry.buildIdfMap())
+ * @param {Object} [positionTracker] - Optional. If provided, populated with { words, entities, residuals } for [TEST] analysis.
  * @returns {Object} { entities: Array, residualWords: Array }
  */
-function extractEntities(text, storeContext = {}, idfMap = {}) {
+function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null) {
     const entities = [];
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const consumed = new Set(); // Track consumed word indices
@@ -163,10 +190,21 @@ function extractEntities(text, storeContext = {}, idfMap = {}) {
 
     // ── 2. Category Detection (N-gram, reuses normalizeCategory) ──
     if (storeContext.CATEGORIES) {
+        const textLower = text.toLowerCase();
+        // Build word position map for accurate context detection
+        let currentPos = 0;
+        const wordPositions = words.map(w => {
+            const pos = textLower.indexOf(w, currentPos);
+            currentPos = pos >= 0 ? pos + w.length : currentPos;
+            return pos;
+        });
+        
         for (let size = 3; size >= 1; size--) {
             for (let i = 0; i <= words.length - size; i++) {
                 if (consumed.has(i)) continue;
                 const phrase = words.slice(i, i + size).join(' ');
+                const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
+                if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
                 const catId = normalizeCategory(phrase, storeContext.CATEGORIES);
                 if (catId) {
                     entities.push({
@@ -176,21 +214,70 @@ function extractEntities(text, storeContext = {}, idfMap = {}) {
                         source: 'storeContext.CATEGORIES',
                         wordIndices: Array.from({ length: size }, (_, j) => i + j)
                     });
-                    for (let j = i; j < i + size; j++) consumed.add(j);
+
+                    // Plural Hardening: if the word is plural (ends in 's'), don't consume it
+                    // so it can still be picked up as a product_name candidate.
+                    const isPlural = phrase.endsWith('s');
+                    if (!isPlural) {
+                        for (let j = i; j < i + size; j++) consumed.add(j);
+                    }
                     break; // Only one category per statement
                 }
             }
             if (entities.some(e => e.type === 'category')) break;
         }
+
+        // ── 2b. Vendor-Category Prioritization ──
+        // If vendor detected AND vendor has a categories list, bias toward those categories
+        const detectedVendor = entities.find(e => e.type === 'vendor');
+        if (detectedVendor && storeContext.VENDORS) {
+            const vendorObj = Object.values(storeContext.VENDORS).find(v => v.id === detectedVendor.id);
+            const vendorCats = vendorObj?.categories || [];
+            if (vendorCats.length > 0) {
+                const detectedCat = entities.find(e => e.type === 'category');
+                if (!detectedCat) {
+                    // No category detected yet — try to infer from vendor's categories
+                    const firstCat = Object.values(storeContext.CATEGORIES).find(c => vendorCats.includes(c.id));
+                    if (firstCat) {
+                        logDebug('ENTITY:VENDOR_CAT_INFER', {
+                            _desc: 'Entity vendor-category inference — infer category from vendor',
+                            _example: 'Dareymi vendor → inferred category from vendor list',
+                            vendor: vendorObj.business_name,
+                            inferred: firstCat.label,
+                            reason: 'No category detected, using vendor category list'
+                        });
+                        // Don't auto-inject — just log for now. The vendor's presence is enough context.
+                    }
+                }
+            }
+        }
     }
 
-    // ── 3. Brand Detection (from CLAUSES) ──
+    // ── 3. Brand Detection (with Category Scoping) ──
+    // Identify supported attributes for the detected category (if any)
+    const detectedCategory = entities.find(e => e.type === 'category');
+    const categoryId = detectedCategory?.id;
+    const supportedAttributes = new Set();
+    if (categoryId && storeContext.CATEGORIES) {
+        // Find category object by ID (it's keyed by slug/label)
+        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+        if (catObj) {
+            (catObj.attributes || []).forEach(a => supportedAttributes.add(a));
+        }
+    }
+
     for (let size = 2; size >= 1; size--) {
         for (let i = 0; i <= words.length - size; i++) {
             if (consumed.has(i)) continue;
             const phrase = words.slice(i, i + size).join(' ');
             const brandMatch = BRAND_LOOKUP.get(phrase);
+
             if (brandMatch) {
+                // Scoping Rule: If category is known, only allow supported attributes
+                if (categoryId && !supportedAttributes.has(brandMatch.attribute)) {
+                    continue;
+                }
+
                 entities.push({
                     type: 'brand',
                     value: brandMatch.label,
@@ -200,6 +287,31 @@ function extractEntities(text, storeContext = {}, idfMap = {}) {
                 });
                 for (let j = i; j < i + size; j++) consumed.add(j);
             }
+        }
+    }
+
+    // ── 3b. Clause Detection (non-brand: with Category Scoping) ──
+    // Resolves diverse user words ("cheap", "budget", "inexpensive") to their
+    // generic clause type ("affordable"), enabling [clause] slot matching.
+    for (let i = 0; i < words.length; i++) {
+        if (consumed.has(i)) continue;
+        const clauseMatch = CLAUSE_LOOKUP.get(words[i]);
+        if (clauseMatch) {
+            // Scoping Rule: If category is known, only allow supported attributes
+            if (categoryId && !supportedAttributes.has(clauseMatch.attribute)) {
+                continue;
+            }
+
+            entities.push({
+                type: 'clause',
+                value: clauseMatch.word,
+                clauseId: clauseMatch.clauseId,
+                clauseLabel: clauseMatch.label,
+                attribute: clauseMatch.attribute,
+                source: 'CLAUSES',
+                wordIndices: [i]
+            });
+            consumed.add(i);
         }
     }
 
@@ -270,10 +382,22 @@ function extractEntities(text, storeContext = {}, idfMap = {}) {
 
     // ── 8. Residual Words (unconsumed, non-filler = potential product names) ──
     const residualWords = [];
+    const residualWithIndices = [];
     for (let i = 0; i < words.length; i++) {
         if (!consumed.has(i) && !FILLERS.has(words[i]) && words[i].length > 1) {
             residualWords.push(words[i]);
+            residualWithIndices.push({ word: words[i], wordIndex: i });
         }
+    }
+
+    if (positionTracker && typeof positionTracker === 'object') {
+        positionTracker.words = [...words];
+        positionTracker.entities = entities.map(e => ({
+            type: e.type,
+            value: e.value || e.verb,
+            wordIndices: e.wordIndices || []
+        }));
+        positionTracker.residuals = [...residualWithIndices];
     }
 
     return { entities, residualWords };

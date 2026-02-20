@@ -28,7 +28,7 @@ module.exports = {
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' }
     },
 
-    slotTags: ['[product]', '[product]', '[clause]', '[category]'],
+    slotTags: ['[action]', '[product]', '[product]', '[clause]', '[category]'],
 
     toolName: 'product.compare',
 
@@ -40,5 +40,31 @@ module.exports = {
 
     minProducts: 2,
     maxProducts: 4,
-    invertTo: null
+    invertTo: null,
+
+    microstates: {
+        missing_products: {
+            trigger: (params, entities) => {
+                const products = params.products || [];
+                const hasProductName = !!params.product_name;
+                // Need at least 2 products to compare; trigger if fewer
+                return products.length < 2 && !hasProductName;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            prompt: {
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'products',
+                    message: 'Which products would you like to compare?',
+                    hint: 'e.g., "iPhone 16 and Galaxy S24"'
+                }
+            },
+            termination: {
+                maxMessages: 3,
+                onFulfilled: ['products'],
+                escalation: null
+            }
+        }
+    }
 };

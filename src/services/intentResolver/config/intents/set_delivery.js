@@ -32,5 +32,55 @@ module.exports = {
 
     minProducts: 0,
     maxProducts: 0,
-    invertTo: null
+    invertTo: null,
+
+    /**
+     * Microstates:
+     *  - collect_delivery_details: collect address (required) and optionally delivery_type
+     */
+    microstates: {
+        collect_delivery_details: {
+            trigger: (params, entities) => {
+                // Trigger when at least one of the key delivery parameters is missing
+                return !params.address || !params.delivery_type;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            // Ordered field metadata for multi-field collection
+            fields: [
+                { name: 'address', required: true },
+                { name: 'delivery_type', required: false }
+            ],
+            prompt: {
+                // First step: explicitly ask for the address
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'address',
+                    message: 'What is the delivery address?',
+                    hint: 'e.g., "10 Broad Street, Lagos"'
+                }
+            },
+            termination: {
+                // We consider the microstate fulfilled once we have at least an address.
+                maxMessages: 3,
+                onFulfilled: ['address', 'delivery_type'],
+                escalation: null
+            },
+            // Simple validation: require non-trivial address text
+            validators: {
+                address: (value) => {
+                    if (!value) return false;
+                    return String(value).trim().length >= 5;
+                }
+            },
+            normalizers: {
+                address: (value) => value ? String(value).trim() : value
+            },
+            breakthrough: {
+                // Allow user to pivot away if they strongly express another intent
+                minScore: 1.5,
+                blockIntents: []
+            }
+        }
+    }
 };

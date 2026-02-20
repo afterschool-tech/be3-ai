@@ -27,12 +27,60 @@ module.exports = {
     toolName: 'cart.updateQuantity',
 
     paramMap: {
-        products: { target: 'cart_item_id', expand: true },
-        product_name: 'cart_item_id',
+        // We pass a product identifier (name or ID) and let the tool
+        // resolve it to the correct cart_item_id based on the current cart.
+        products: { target: 'product_id', expand: false },
+        product_name: 'product_id',
         quantity: 'quantity'
     },
 
     minProducts: 1,
     maxProducts: 1,
-    invertTo: null
+    invertTo: null,
+
+    /**
+     * Microstates:
+     *  - collect_quantity: ask for a clear quantity when missing or invalid
+     */
+    microstates: {
+        collect_quantity: {
+            trigger: (params, entities) => {
+                // Trigger when quantity is missing or clearly invalid
+                if (params.quantity === undefined || params.quantity === null) return true;
+                const q = Number(params.quantity);
+                return Number.isNaN(q) || q <= 0 || q > 100;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            prompt: {
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'quantity',
+                    message: 'What quantity should I set for this item?',
+                    hint: 'Use a whole number between 1 and 100'
+                }
+            },
+            validators: {
+                quantity: (value) => {
+                    const q = Number(value);
+                    return Number.isInteger(q) && q >= 1 && q <= 100;
+                }
+            },
+            normalizers: {
+                quantity: (value) => {
+                    const q = Number(value);
+                    return Number.isNaN(q) ? value : q;
+                }
+            },
+            termination: {
+                maxMessages: 2,
+                onFulfilled: ['quantity'],
+                escalation: null
+            },
+            breakthrough: {
+                minScore: 1.5,
+                blockIntents: []
+            }
+        }
+    }
 };

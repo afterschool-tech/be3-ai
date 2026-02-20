@@ -19,7 +19,8 @@ module.exports = {
     ],
 
     parameters: {
-        products: { type: 'list', required: true, description: 'List of product names ONLY (e.g. ["iphone 12"]). Do NOT include removal verbs or sentences.' },
+        products: { type: 'list', required: false, description: 'List of product names or references (e.g. ["iphone 12"], ["second item"]).' },
+        cart_item_id: { type: 'string', required: false, description: 'Cart line item ID (set when user says "second item", "first item", etc.)' },
         quantity: { type: 'int', required: false, default: null, description: 'Quantity to remove (null = remove all)' }
     },
 
@@ -28,7 +29,8 @@ module.exports = {
     toolName: 'cart.remove',
 
     paramMap: {
-        products: { target: 'product_id', expand: true }
+        products: { target: 'product_id', expand: true },
+        cart_item_id: 'cart_item_id'
     },
 
     minProducts: 1,

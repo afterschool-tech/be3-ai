@@ -14,6 +14,7 @@ const collectionTools = require('./collection');
 const attributeTools = require('./attribute');
 const conversationTools = require('./conversation');
 const discoveryTools = require('./discovery');
+const microstateTools = require('./microstate');
 
 // Aggregate all tools
 const TOOL_REGISTRY = {
@@ -25,7 +26,8 @@ const TOOL_REGISTRY = {
     ...collectionTools,
     ...attributeTools,
     ...conversationTools,
-    ...discoveryTools
+    ...discoveryTools,
+    ...microstateTools
 };
 
 /**

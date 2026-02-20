@@ -45,6 +45,18 @@ const testCases = [
         text: "show me some gaming gear",
         expectedCategory: "63efd70e-2daf-46f9-b801-d9da53209930", // Gaming UUID
         expectedProductName: "gear"
+    },
+    {
+        name: "Ordinal Skip (avoid 'one' → All in one PCs)",
+        text: "compare the first and second one",
+        expectedCategory: undefined,
+        expectedProductName: "first second one" // category must NOT match; product_name from leftovers is acceptable
+    },
+    {
+        name: "Category Name with Ordinal Word (allow 'all in one' → All in one PCs)",
+        text: "show me all in one PCs",
+        expectedCategory: "f564122f-2ee3-4af9-b998-b42d72d56ccd", // All in one PCs UUID
+        expectedProductName: "pcs" // "all in one" matches category; "pcs" remains as product_name (correct behavior)
     }
 ];
 

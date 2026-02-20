@@ -149,10 +149,11 @@ const CLAUSES = {
     },
     "affordable": {
         "label": "affordable",
-        "attribute": "price tier",
+        "attribute": "price_tier",
         "matches": [
             "budget",
-            "midrange"
+            "midrange",
+            "cheap"
         ],
         "display": {
             "prefix": "cheap",
@@ -174,7 +175,7 @@ const CLAUSES = {
     },
     "expensive": {
         "label": "expensive",
-        "attribute": "price tier",
+        "attribute": "price_tier",
         "matches": [
             "premium",
             "flagship"

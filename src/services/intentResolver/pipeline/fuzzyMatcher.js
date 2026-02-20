@@ -40,13 +40,11 @@ function buildDictionary(storeContext) {
                 }
             });
         }
-        // Vendor labels
+        // Vendor labels (Business Name & Tag)
         if (storeContext.VENDORS) {
             Object.values(storeContext.VENDORS).forEach(v => {
-                const label = typeof v === 'string' ? v : v.label;
-                if (label) {
-                    label.toLowerCase().split(/\s+/).forEach(w => dictionary.add(w));
-                }
+                if (v.business_name) v.business_name.toLowerCase().split(/\s+/).forEach(w => dictionary.add(w));
+                if (v.tag) v.tag.toLowerCase().split(/\s+/).forEach(w => dictionary.add(w));
             });
         }
     }
@@ -70,8 +68,19 @@ function buildEntitySet(storeContext) {
 
     if (storeContext.VENDORS) {
         Object.values(storeContext.VENDORS).forEach(v => {
-            const label = typeof v === 'string' ? v : v.label;
-            if (label) entities.add(label.toLowerCase());
+            if (v.business_name) entities.add(v.business_name.toLowerCase());
+            if (v.tag) entities.add(v.tag.toLowerCase());
+        });
+    }
+
+    // Add Clause labels from Attributes
+    if (storeContext.ATTRIBUTES) {
+        Object.values(storeContext.ATTRIBUTES).forEach(attr => {
+            if (attr.clauses) {
+                attr.clauses.forEach(clause => {
+                    if (clause.label) entities.add(clause.label.toLowerCase());
+                });
+            }
         });
     }
 
@@ -157,6 +166,15 @@ function correctText(text, storeContext) {
 
         if (closest && closest.distance > 0) {
             const distRatio = closest.distance / lower.length;
+
+            // Compound Noun Guard: If the original word contains the match (e.g. "iphone" vs "phone")
+            // or vice-versa, and the length difference isn't massive, it's likely a specific term, not a typo.
+            const isSubset = lower.includes(closest.match) || closest.match.includes(lower);
+            if (isSubset && Math.abs(lower.length - closest.match.length) <= 2) {
+                corrected.push(word);
+                continue;
+            }
+
             if (distRatio <= 0.30) {
                 corrected.push(closest.match);
             } else {

@@ -23,13 +23,64 @@ function normalizeParameters(resolvedIntents, storeContext) {
         const params = intent.parameters;
 
         // ── 1. Clause to Attribute Mapping ──
-        if (params.clause_words && Array.isArray(params.clause_words)) {
+        // Handle both array format [{ clauseId, word }] and string format "clause_id"
+        if (params.clause_words) {
             if (!params.attributes) params.attributes = {};
+            
+            let clausesToProcess = [];
+            if (Array.isArray(params.clause_words)) {
+                clausesToProcess = params.clause_words;
+            } else if (typeof params.clause_words === 'string') {
+                // String format: "color_for_ladies" -> need to extract actual word
+                // Try to extract word from product_name or products (e.g., "white" from "white ones")
+                const clause = CLAUSES[params.clause_words];
+                let extractedWord = params.clause_words; // fallback to clause ID
+                
+                if (clause && clause.matches && Array.isArray(clause.matches)) {
+                    // Check if any clause match word appears in product_name or products
+                    const searchText = [
+                        params.product_name,
+                        ...(Array.isArray(params.products) ? params.products : [params.products].filter(Boolean))
+                    ].join(' ').toLowerCase();
+                    
+                    for (const match of clause.matches) {
+                        if (searchText.includes(match.toLowerCase())) {
+                            extractedWord = match;
+                            break;
+                        }
+                    }
+                }
+                
+                clausesToProcess = [{ clauseId: params.clause_words, word: extractedWord }];
+            } else if (typeof params.clause_words === 'object' && params.clause_words !== null) {
+                // Object format: convert to array
+                clausesToProcess = Object.entries(params.clause_words).map(([k, v]) => ({
+                    clauseId: k,
+                    word: typeof v === 'string' ? v : k
+                }));
+            }
 
-            params.clause_words.forEach(c => {
-                const clause = CLAUSES[c.clauseId];
+            clausesToProcess.forEach(c => {
+                const clauseId = typeof c === 'object' ? (c.clauseId || c.id || String(c)) : String(c);
+                const clauseWord = typeof c === 'object' ? (c.word || clauseId) : clauseId;
+                const clause = CLAUSES[clauseId];
+                
                 if (clause && clause.attribute) {
-                    params.attributes[clause.attribute] = c.word;
+                    params.attributes[clause.attribute] = clauseWord;
+                    console.log(`[ParameterNormalizer] 🔄 Mapped clause to attribute:`, {
+                        clauseId: clauseId,
+                        clauseWord: clauseWord,
+                        attribute: clause.attribute,
+                        attributeValue: clauseWord,
+                        resulting_attributes: params.attributes
+                    });
+                } else {
+                    console.log(`[ParameterNormalizer] ⚠️ Clause not mapped (no attribute):`, {
+                        clauseId: clauseId,
+                        clauseWord: clauseWord,
+                        clauseFound: !!clause,
+                        clauseHasAttribute: clause ? !!clause.attribute : false
+                    });
                 }
             });
         }
@@ -105,6 +156,8 @@ function normalizeParameters(resolvedIntents, storeContext) {
             params.products = newProducts;
         }
 
+        // Preserve _ported_from flag through normalization
+        // (intent object is mutated, so _ported_from should already be preserved, but be explicit)
         return intent;
     });
 }

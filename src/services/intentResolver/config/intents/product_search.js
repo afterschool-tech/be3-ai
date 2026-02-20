@@ -48,5 +48,28 @@ module.exports = {
 
     minProducts: 1,
     maxProducts: null,
-    invertTo: null
+    invertTo: null,
+
+    microstates: {
+        missing_query: {
+            trigger: (params, entities) => {
+                return !params.query && !params.product_name && !params.category && !params.vendor;
+            },
+            sandbox: 'soft',
+            boostScore: 10.0,
+            prompt: {
+                tool: 'microstate.collect',
+                params: {
+                    paramName: 'query',
+                    message: 'What would you like to search for?',
+                    hint: 'e.g., "cheap smartphones" or "blue shirts"'
+                }
+            },
+            termination: {
+                maxMessages: 2,
+                onFulfilled: ['query'],
+                escalation: null
+            }
+        }
+    }
 };

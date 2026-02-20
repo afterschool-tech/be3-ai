@@ -15,10 +15,19 @@ const stateManager = require('../state/stateManager');
 async function resolveProduct(identifier, context) {
     if (!identifier) return null;
     const { sessionId } = context;
+    const { logDebug } = require('./debugLogger');
 
     // 1. Check if it's already a UUID/Handle (Simple check)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-    if (isUuid) return identifier;
+    if (isUuid) {
+        logDebug('TOOL:PRODUCT_RESOLUTION', {
+            _desc: 'Product resolution — UUID check → already valid UUID',
+            _example: 'abc-123-uuid → return as-is',
+            identifier,
+            method: 'uuid_check'
+        });
+        return identifier;
+    }
 
     // 2. Try to resolve reference from state (e.g., "the first one", "it")
     if (sessionId) {
@@ -26,6 +35,13 @@ async function resolveProduct(identifier, context) {
             const resolvedId = await stateManager.resolveReference(sessionId, identifier);
             // Ensure resolvedId is actually somewhat valid (UUID or handle)
             if (resolvedId && (resolvedId.length > 5 || resolvedId.includes('-'))) {
+                logDebug('TOOL:PRODUCT_RESOLUTION', {
+                    _desc: 'Product resolution — state resolveReference → product ID from reference_map',
+                    _example: '"the first one" → uuid from ordinal_list',
+                    identifier,
+                    resolvedId,
+                    method: 'state_reference'
+                });
                 console.log(`[ProductResolver] Resolved "${identifier}" via state: ${resolvedId}`);
                 return resolvedId;
             }
@@ -46,6 +62,13 @@ async function resolveProduct(identifier, context) {
         const products = result.data?.products || result.data?.results || [];
         if (products.length > 0) {
             const resolvedId = products[0].id;
+            logDebug('TOOL:PRODUCT_RESOLUTION', {
+                _desc: 'Product resolution — search fallback → find product by name',
+                _example: '"Samsung s26 Ultra" → search API → uuid',
+                identifier,
+                resolvedId,
+                method: 'search_fallback'
+            });
             console.log(`[ProductResolver] Resolved "${identifier}" via search fallback: ${resolvedId}`);
             return resolvedId;
         }
@@ -54,6 +77,12 @@ async function resolveProduct(identifier, context) {
     }
 
     // Return identifier as last resort (might be a handle)
+    logDebug('TOOL:PRODUCT_RESOLUTION', {
+        _desc: 'Product resolution — last resort → return identifier as-is (might be handle)',
+        _example: 'handle-123 → return handle',
+        identifier,
+        method: 'last_resort'
+    });
     return identifier;
 }
 

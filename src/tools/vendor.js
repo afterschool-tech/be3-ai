@@ -8,17 +8,41 @@ const { processProductList } = require('../utils/productUtility');
 function resolveVendorFromContext(vendorName, context) {
     const vendors = Object.values(context.VENDORS);
 
-    // 1. Direct name match
+    console.log('[VendorTool] resolveVendorFromContext called with:', {
+        input: vendorName,
+        totalVendors: vendors.length
+    });
+
+    // 1. Direct ID match
+    if (vendorName) {
+        const idMatch = vendors.find(v => v.id === vendorName);
+        if (idMatch) {
+            console.log('[VendorTool] Resolved by ID match:', {
+                id: idMatch.id,
+                business_name: idMatch.business_name
+            });
+            return idMatch;
+        }
+    }
+
+    // 2. Direct name/tag match
     if (vendorName && vendorName.toLowerCase() !== 'their' && vendorName.toLowerCase() !== 'this vendor') {
         const lowerName = vendorName.toLowerCase();
         const found = vendors.find(v =>
             v.business_name.toLowerCase().includes(lowerName) ||
             v.tag.toLowerCase() === lowerName
         );
-        if (found) return found;
+        if (found) {
+            console.log('[VendorTool] Resolved by name/tag match:', {
+                input: vendorName,
+                business_name: found.business_name,
+                tag: found.tag
+            });
+            return found;
+        }
     }
 
-    // 2. Resolve from history (e.g. "their products")
+    // 3. Resolve from history (e.g. "their products")
     if (!vendorName || vendorName.toLowerCase() === 'their' || vendorName.toLowerCase() === 'this vendor') {
         const history = context.history || [];
         // Look back for the most recent vendor mentioned in history
@@ -33,6 +57,7 @@ function resolveVendorFromContext(vendorName, context) {
         }
     }
 
+    console.log('[VendorTool] Failed to resolve vendor from context for input:', vendorName);
     return null;
 }
 
@@ -190,11 +215,18 @@ const vendorTools = {
             message: { type: 'string', description: 'The exact message content to pre-fill (e.g. "I loved your last product"). Required if user wants to send specific text.' }
         },
         handler: async (params, context) => {
-            const { vendor: vendorName, message } = params;
+            // Tool registry sometimes passes "vendor_name" instead of "vendor".
+            const vendorName = params.vendor || params.vendor_name;
+            const message = params.message;
+            console.log('[VendorTool] vendor.getContactLink called with params:', params, 'resolved vendorName:', vendorName);
             const vendor = resolveVendorFromContext(vendorName, context);
-            if (!vendor) return { error: 'Vendor not found' };
+            if (!vendor) {
+                console.log('[VendorTool] vendor.getContactLink: vendor not found for input:', vendorName);
+                return { error: 'Vendor not found' };
+            }
 
             if (!vendor.whatsapp_phone) {
+                console.log('[VendorTool] vendor.getContactLink: vendor has no whatsapp_phone:', vendor.business_name);
                 return { error: `Vendor ${vendor.business_name} does not have a WhatsApp number registered.` };
             }
 
@@ -203,6 +235,12 @@ const vendorTools = {
             if (message) {
                 link += `?text=${encodeURIComponent(message)}`;
             }
+
+            console.log('[VendorTool] vendor.getContactLink: success building link:', {
+                vendor: vendor.business_name,
+                phone: vendor.whatsapp_phone,
+                link
+            });
 
             return {
                 vendor: vendor.business_name,

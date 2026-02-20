@@ -165,6 +165,20 @@ function printResult(result, executionResults = []) {
     if (result.intents.length === 0) {
         console.log(`${C.red}${C.bold}  ✗ No intent detected${C.reset}`);
     } else {
+        // Microstate Indicators
+        if (result.microstate_opened) {
+            console.log(`${C.yellow}${C.bold}  🔒 MICROSTATE OPENED: ${result.tools[0].reason}${C.reset}`);
+        }
+        if (result.microstate_fulfilled) {
+            console.log(`${C.green}${C.bold}  ✅ MICROSTATE FULFILLED${C.reset}`);
+        }
+        if (result.microstate_reprompt) {
+            console.log(`${C.yellow}${C.bold}  🔄 MICROSTATE RE-PROMPT${C.reset}`);
+        }
+        if (result.microstate_escalated) {
+            console.log(`${C.red}${C.bold}  ⬆️ MICROSTATE ESCALATED${C.reset}`);
+        }
+
         for (let i = 0; i < result.intents.length; i++) {
             const intent = result.intents[i];
             const label = result.isMultiIntent ? `  Intent ${i + 1}` : '  Intent';
@@ -192,12 +206,21 @@ function printResult(result, executionResults = []) {
     if (executionResults.length > 0) {
         console.log('');
         for (const er of executionResults) {
-            const color = er.success ? C.green : C.red;
-            const status = er.success ? '✓' : '✗';
-            console.log(`${color}${C.bold}  ${status} ${er.tool}${C.reset}`);
+            const color = er.success ? C.green : er.skipped ? C.yellow : C.red;
+            const status = er.success ? '✓' : er.skipped ? '⊘' : '✗';
+            const label = er.skipped ? ' (skipped)' : (er.ported ? ' (ported)' : '');
+            console.log(`${color}${C.bold}  ${status} ${er.tool}${label}${C.reset}`);
 
             if (er.result && er.result.message) {
                 console.log(`    ${C.white}${er.result.message}${C.reset}`);
+            }
+
+            if (er.skipped && er.skippedMessage) {
+                console.log(`    ${C.yellow}${er.skippedMessage}${C.reset}`);
+            }
+
+            if (er.ported && er.portedFrom) {
+                console.log(`    ${C.dim}(ported from ${er.portedFrom})${C.reset}`);
             }
 
             if (er.result && (er.result.products || er.result.results)) {
@@ -215,14 +238,87 @@ function printResult(result, executionResults = []) {
     console.log('');
 }
 
+/**
+ * Build a simple, deterministic "Bot" reply from tool results.
+ * This is a lightweight personality layer for the REPL only
+ * (no AI calls, just formatting based on tool outputs).
+ */
+function buildSimpleReply(userMessage, result, executionResults = []) {
+    // 1. Prefer directResponse from microstate tools (collect / disambiguate / confirm)
+    const direct = executionResults.find(er => er.result && er.result.directResponse);
+    if (direct && direct.result && direct.result.message) {
+        return direct.result.message;
+    }
+
+    // 2. If a primary tool has a message, surface it
+    const primary = executionResults[0];
+    if (primary && primary.result && primary.result.message) {
+        return primary.result.message;
+    }
+
+    // 3. For product-like tools, synthesize a full summary (no truncation)
+    const productResult = executionResults.find(er =>
+        er.result && (er.result.products || er.result.results)
+    );
+    const skipped = executionResults.find(er => er.skipped && er.skippedMessage);
+    const skippedSuffix = skipped ? ` ${skipped.skippedMessage}` : '';
+
+    if (productResult) {
+        const prods = productResult.result.products || productResult.result.results || [];
+        if (prods.length === 0) {
+            return `I couldn't find anything matching "${userMessage}".${skippedSuffix}`;
+        }
+        const names = prods.map(p => p.name || p.title).filter(Boolean);
+        if (names.length > 0) {
+            return `Here are some options I found: ${names.join(', ')}.${skippedSuffix}`;
+        }
+    }
+
+    // 4. Skipped message only (e.g. cart.add skipped, no product search)
+    if (skipped) {
+        return skipped.skippedMessage;
+    }
+
+    // 5. If we have an intent but no tools, give a minimal acknowledgement
+    if (result.intents && result.intents.length > 0) {
+        const top = result.intents[0];
+        return `Got it, I interpreted that as "${top.intentName}".`;
+    }
+
+    // 6. Fallback
+    return null;
+}
+
 async function printState() {
     const state = await stateManager.getState(TEST_SESSION_ID);
     console.log(`\n${C.cyan}── Current User State ──${C.reset}`);
-    const results = state.product_context?.last_search?.results || [];
-    console.log(`${C.dim}  Last search: "${state.product_context?.last_search?.query || 'none'}"${C.reset}`);
-    for (let i = 0; i < results.length; i++) {
-        console.log(`${C.dim}    [${i + 1}] ${results[i].name || results[i].title}${C.reset}`);
+
+    // Microstate Detail
+    if (state.microstate) {
+        const ms = state.microstate;
+        console.log(`${C.yellow}${C.bold}  🔒 Active Microstate: ${ms.type}${C.reset}`);
+        console.log(`${C.dim}     Intent: ${ms.intent}${C.reset}`);
+        console.log(`${C.dim}     Messages: ${ms.contract.messagesUsed}/${ms.contract.maxMessages}${C.reset}`);
+        console.log(`${C.dim}     Confidence: ${(ms.confidence * 100).toFixed(0)}%${C.reset}`);
+        console.log(`${C.dim}     Params: ${JSON.stringify(ms.params)}${C.reset}`);
+    } else {
+        console.log(`${C.dim}  No active microstate${C.reset}`);
     }
+
+    const results = state.product_context?.last_search?.results || [];
+    console.log(`${C.dim}  Last search (legacy): "${state.product_context?.last_search?.query || 'none'}"${C.reset}`);
+
+    // New Search Context (Phase 18)
+    const sCtx = state.search_context;
+    if (sCtx) {
+        console.log(`${C.cyan}${C.bold}  📸 Search Context (Phase 18):${C.reset}`);
+        console.log(`${C.dim}     Query:    ${sCtx.query || 'none'}${C.reset}`);
+        console.log(`${C.dim}     Category: ${sCtx.category || 'none'} (${sCtx.category_id || 'none'})${C.reset}`);
+        console.log(`${C.dim}     Clauses:  [${(sCtx.clauses || []).join(', ')}]${C.reset}`);
+        console.log(`${C.dim}     Products: ${(sCtx.product_ids || []).length} items cached${C.reset}`);
+        console.log(`${C.dim}     TTL:      ${sCtx.ttl_messages} messages${C.reset}`);
+    }
+
     console.log(`${C.dim}  Cart items: ${state.cart?.item_count || 0}${C.reset}`);
     console.log(`${C.dim}  Viewing: ${state.product_context?.currently_viewing || 'none'}${C.reset}`);
     console.log(`${C.dim}  Verbose: ${verbose ? 'on' : 'off'}${C.reset}\n`);
@@ -289,6 +385,10 @@ ${C.bold}${C.cyan}╔═══════════════════�
             const ms = Date.now() - start;
 
             printResult(result, executionResults);
+            const reply = buildSimpleReply(input, result, executionResults);
+            if (reply) {
+                console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+            }
             console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);
         } catch (err) {
             console.log(`${C.red}  Error: ${err.message}${C.reset}\n`);
