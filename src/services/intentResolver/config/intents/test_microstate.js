@@ -39,7 +39,7 @@ module.exports = {
             trigger: (params, entities) => {
                 return true; // Always fire for demonstration
             },
-            sandbox: 'soft', // Allow breakthrough if user says something else
+            sandbox: 'hard', // Prevent breakthrough during test so confirmation can complete
             boostScore: 10.0,
             prompt: {
                 tool: 'microstate.confirm',

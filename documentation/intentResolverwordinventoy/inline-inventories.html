@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IntentResolver Word Inventory — Inline inventories</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-arrow-left" viewBox="0 0 24 24">
+      <path d="M10 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M3 12h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-arrow-right" viewBox="0 0 24 24">
+      <path d="M14 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M21 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-book" viewBox="0 0 24 24">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5V5.5A2.5 2.5 0 0 1 6.5 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-menu" viewBox="0 0 24 24">
+      <path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-brain" viewBox="0 0 24 24">
+      <path d="M9.5 4.5a3.5 3.5 0 0 0-3 5.3A3.5 3.5 0 0 0 7 16.5V18a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14.5 4.5a3.5 3.5 0 0 1 3 5.3A3.5 3.5 0 0 1 17 16.5V18a3 3 0 0 1-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.5 4.5V12m5-7.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-layers" viewBox="0 0 24 24">
+      <path d="M12 2l10 6-10 6L2 8l10-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M2 12l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M2 16l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M19.4 15a7.9 7.9 0 0 0 .1-1l2-1.2-2-3.6-2.3.6a8.7 8.7 0 0 0-1.7-1l-.3-2.4H9.8L9.5 7.8a8.7 8.7 0 0 0-1.7 1l-2.3-.6-2 3.6L5.5 14a7.9 7.9 0 0 0 .1 1L3.5 16.2l2 3.6 2.3-.6a8.7 8.7 0 0 0 1.7 1l.3 2.4h5.4l.3-2.4a8.7 8.7 0 0 0 1.7-1l2.3.6 2-3.6L19.4 15Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-broom" viewBox="0 0 24 24">
+      <path d="M4 20l6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M8 14l2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M10 12l8-8a2.5 2.5 0 0 1 3.5 3.5l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M3 21c4-1 8-5 9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <a class="brand-mark icon-btn" href="../index.html" title="Back to hub" style="text-decoration:none;color:inherit">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        </a>
+        <span class="brand-title">IntentResolver Word Inventory</span>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="docs-shell">
+        <div class="sidebar-overlay" data-sidebar-overlay aria-hidden="true"></div>
+
+        <aside class="sidebar" aria-label="Documentation navigation">
+          <div class="sidebar__header">
+            <div class="sidebar__title">Word Inventory</div>
+            <div class="search" role="search">
+              <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input id="search" type="search" placeholder="Filter pages…" autocomplete="off" />
+            </div>
+          </div>
+          <nav class="nav" id="nav">
+            <a data-nav-link href="./overview.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Overview</span><span class="tag">Start</span></a>
+            <a data-nav-link href="./mental-model.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Mental model</span><span class="tag">Pipeline</span></a>
+            <a data-nav-link href="./config-global.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Global inventories</span><span class="tag">config/*</span></a>
+            <a data-nav-link href="./inline-inventories.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Inline inventories</span><span class="tag">pipeline</span></a>
+            <a data-nav-link href="./nlp-cleaner.html"><svg class="icon" aria-hidden="true"><use href="#i-broom"></use></svg><span>NLP cleaner</span><span class="tag">cleaning</span></a>
+            <a data-nav-link href="./per-intent.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Per-intent lexicons</span><span class="tag">intents</span></a>
+            <a data-nav-link href="./checklist.html"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg><span>Checklist</span><span class="tag">Where to add</span></a>
+          </nav>
+        </aside>
+
+        <section class="content" aria-label="Documentation content">
+          <div class="content__header">
+            <div>
+              <div class="toolbar">
+                <button class="btn mobile-nav-toggle icon-btn" type="button" data-sidebar-toggle>
+                  <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+                  <span>Menu</span>
+                </button>
+              </div>
+              <h1 class="content__title">Inline inventories (pipeline guards)</h1>
+              <p class="content__subtitle">Inline lists outside <code>config/*</code> that materially change routing, residual formation, and scoring.</p>
+            </div>
+          </div>
+
+          <div class="content__body">
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">B1</div>
+                <div class="section__title"><code>ACTION_VERBS</code> — <code>pipeline/entityExtractor.js</code></div>
+                <div class="section__meta">routing</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Maps specific verbs to action categories.</li>
+                  <li>Produces <code>action</code> entities.</li>
+                  <li>Feeds schema routing (high-precision intent bias).</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul>
+                  <li>Does not capture multi-word action phrases (single tokens only).</li>
+                  <li>Does not add “semantic synonyms” unless you explicitly add them.</li>
+                </ul>
+                <p><strong>Questions before adding a verb</strong></p>
+                <ul>
+                  <li>Is the verb ambiguous in shopping context? (If yes, it will misroute.)</li>
+                  <li>Does it map cleanly to exactly one action category?</li>
+                  <li>Do you need it as an action signal, or is it better as an intent synonym?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul>
+                  <li>Multi-word phrase (“take my money”): add to intent <code>synonyms</code>.</li>
+                  <li>Generic desire (“I want”): add to <code>weakSynonyms</code>.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">B2</div>
+                <div class="section__title"><code>FILLERS</code> — <code>pipeline/entityExtractor.js</code></div>
+                <div class="section__meta">residual cleanup</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Skips “non-entity” words so residual product lumps are cleaner.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul>
+                  <li>Does not affect fuzzy correction.</li>
+                  <li>Does not affect intent candidate matching directly.</li>
+                </ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Is this word frequently ending up in residual product lumps?</li>
+                  <li>Is it genuinely non-informative across your domain?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul>
+                  <li>Grammar word you mainly want to skip in fuzzy: add to <code>stopWords</code>.</li>
+                  <li>Greeting/politeness you want aggressively stripped for product extraction: also add to <code>nlpCleaner.cleanQuery()</code> greetings list.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">B3</div>
+                <div class="section__title"><code>CLAUSE_EXCLUDE</code> — <code>pipeline/entityExtractor.js</code></div>
+                <div class="section__meta">clause guard</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul><li>Prevents clause/attribute detection from triggering on overly generic words.</li></ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not affect product extraction directly; it affects whether a token becomes a clause entity.</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul><li>Is this word appearing in clause labels/matches but shouldn’t create a clause entity?</li></ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">B4</div>
+                <div class="section__title">IntentScorer guards — <code>pipeline/intentScorer.js</code></div>
+                <div class="section__meta">score penalties</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul><li>Penalizes cases where extracted <code>product_name</code> is actually a verb or navigation term.</li></ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not prevent extraction; it only adjusts final scoring.</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul><li>Is this term frequently extracted as a product but is never a legitimate product name?</li></ul>
+              </div>
+            </div>
+          </div>
+
+          <footer class="pager" aria-label="Page navigation">
+            <div class="pager__group">
+              <a class="btn icon-btn" href="./config-global.html">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                <span>Previous</span>
+              </a>
+            </div>
+            <div class="pager__group">
+              <a class="btn btn--primary icon-btn" href="./nlp-cleaner.html">
+                <span>Next</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </a>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="../assets/app.js"></script>
+  <script>
+    DocsUI.setActiveNavFromLocation();
+    DocsUI.wireMobileSidebar();
+
+    DocsUI.$all('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sec = btn.closest('.section');
+        sec.dataset.open = sec.dataset.open === 'true' ? 'false' : 'true';
+      });
+    });
+
+    const input = document.getElementById('search');
+    if (input) {
+      input.addEventListener('input', DocsUI.debounce(() => {
+        const q = input.value.trim().toLowerCase();
+        DocsUI.$all('[data-nav-link]').forEach(a => {
+          const label = a.textContent.toLowerCase();
+          a.style.display = !q || label.includes(q) ? '' : 'none';
+        });
+      }, 60));
+    }
+  </script>
+</body>
+</html>

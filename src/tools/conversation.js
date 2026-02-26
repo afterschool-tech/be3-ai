@@ -152,9 +152,91 @@ Be friendly and knowledgeable.`;
         params: {
             confirmation: { type: 'boolean', required: true, description: 'User confirmation (true/false)' }
         },
-        handler: async (params) => {
+        handler: async (params, context) => {
             const { confirmation } = params;
             if (confirmation === true) {
+                try {
+                    try {
+                        const stateManager = require('../state/stateManager');
+                        if (context?.sessionId) {
+                            await stateManager.clearStack(context.sessionId);
+                        }
+                    } catch (_) {
+                        // ignore state clearing errors in test tool
+                    }
+
+                    const productTools = require('./product');
+                    const firstSearch = await productTools['product.search'].handler({
+                        query: 'iphones',
+                        limit: 10,
+                        sort: 'relevance'
+                    }, context);
+
+                    let products = Array.isArray(firstSearch?.products) ? firstSearch.products : [];
+                    if (!products.length) {
+                        const fallbackSearch = await productTools['product.search'].handler({
+                            query: 'laptops',
+                            limit: 10,
+                            sort: 'relevance'
+                        }, context);
+                        products = Array.isArray(fallbackSearch?.products) ? fallbackSearch.products : [];
+                    }
+                    const picked = products.slice(0, 4).filter(Boolean);
+                    const top = picked[0] || null;
+                    if (!top) {
+                        return {
+                            message: 'Confirmed ✅ — but I couldn\'t find any products to show right now. Try again in a bit.',
+                            success: true
+                        };
+                    }
+
+                    const buildCardText = (p) => {
+                        const vendorName = p.vendor?.business_name || p.vendor?.name || p.vendor_name || p.vendor || null;
+                        const priceText = (p.price !== undefined && p.price !== null) ? `₦${p.price}` : 'Price unavailable';
+                        const desc = p.description ? String(p.description).slice(0, 140) : '';
+                        return `*${p.name || p.title || 'Product'}*\n💰 ${priceText}` +
+                            (vendorName ? `\n🏪 ${vendorName}` : '') +
+                            (desc ? `\n📝 ${desc}` : '');
+                    };
+
+                    const cards = picked.map((p, idx) => {
+                        const n = idx + 1;
+                        const imageUrl = p.image_url || p.metadata?.image_url || null;
+                        return {
+                            sponsor: {
+                                type: 'product',
+                                product_id: p.id,
+                                name: p.name || p.title || null,
+                                ordinal: n
+                            },
+                            image_url: imageUrl,
+                            text: buildCardText(p),
+                            buttons: [
+                                { id: `add the ${n}${n === 1 ? 'st' : (n === 2 ? 'nd' : (n === 3 ? 'rd' : 'th'))} one`, title: 'Add to cart' },
+                                { id: `tell me more about the ${n}${n === 1 ? 'st' : (n === 2 ? 'nd' : (n === 3 ? 'rd' : 'th'))} one`, title: 'More info' },
+                                { id: `contact vendor for the ${n}${n === 1 ? 'st' : (n === 2 ? 'nd' : (n === 3 ? 'rd' : 'th'))} one`, title: 'Contact vendor' }
+                            ]
+                        };
+                    });
+
+                    return {
+                        success: true,
+                        message: `✅ Confirmed! Here are ${cards.length} product cards:`,
+                        products: picked,
+                        whatsapp: {
+                            type: 'button',
+                            transaction: 'product_card',
+                            cards
+                        },
+                        directResponse: true
+                    };
+                } catch (e) {
+                    return {
+                        message: `Confirmed ✅ — but product card test failed: ${e.message}`,
+                        success: false,
+                        directResponse: true
+                    };
+                }
                 return {
                     message: 'Great! You confirmed. The test microstate worked perfectly! ✅',
                     success: true

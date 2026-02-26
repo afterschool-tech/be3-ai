@@ -7,6 +7,7 @@
 const { TOOL_REGISTRY } = require('../tools/registry');
 const { getContextSummary, CATEGORIES, VENDORS, ATTRIBUTES, COLLECTIONS } = require('../context/storeContext');
 const { logDebug } = require('../utils/debugLogger');
+const stateManager = require('../state/stateManager');
 
 // Phase 1: Same-turn multi-intent — skip cart.add when product_id is unresolved pronoun
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,13 +30,20 @@ function isUnresolvedPronounForAdd(value) {
  * @returns {Promise<Array>} Array of execution results
  */
 async function executeTools(toolsSelected, sessionId) {
+    let microstate = null;
+    try {
+        microstate = sessionId ? await stateManager.getMicrostate(sessionId) : null;
+    } catch (_) {}
+
     const context = {
         CATEGORIES,
         VENDORS,
         ATTRIBUTES,
         COLLECTIONS,
         summary: getContextSummary(),
-        sessionId: sessionId
+        sessionId: sessionId,
+        microstate_active: !!microstate,
+        microstate_scope: microstate ? 'microstate' : 'global'
     };
 
     const results = [];

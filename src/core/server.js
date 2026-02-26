@@ -5,7 +5,8 @@ const { queryAI: queryGroqAI, MODEL_ID: GROQ_MODEL_ID } = require('./hfAiService
 const { getIntentClassificationPrompt } = require('../legacy/intents');
 const { executeIntent } = require('../legacy/handlers');
 const { resolveClauses } = require('../utils/clauseResolver');
-const { CATEGORIES, VENDORS, CATEGORY_INVENTORY, ATTRIBUTES, COLLECTIONS, getContextSummary, getLeanContext } = require('../context/storeContext');
+const axios = require('axios');
+const { CATEGORIES, VENDORS, CATEGORY_INVENTORY, ATTRIBUTES, COLLECTIONS, getContextSummary, getLeanContext, getUltraLeanContext } = require('../context/storeContext');
 const { evaluateContextSufficiency } = require('../middleware/contextEvaluator');
 const stateManager = require('../state/stateManager');
 const redisClient = require('../state/redis');
@@ -18,9 +19,39 @@ const { injectImages, extractImages } = require('../utils/imageInjector');
 const { selectTools } = require('./toolSelector');
 const { resolveDeterministic } = require('./deterministicResolver');
 const { executeTools } = require('./orchestrator');
+const stack = require('../services/intentResolver/pipeline/stack');
 const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
 const { logDebug, startRun } = require('../utils/debugLogger');
 const fs = require('fs');
+
+const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
+const TENANT_ID = process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713';
+
+async function clearBackendCart(sessionId) {
+    const headers = {
+        'X-Tenant-ID': TENANT_ID,
+        'Content-Type': 'application/json'
+    };
+
+    const cartRes = await axios({
+        url: `${BACKEND_URL}/cart?session_id=${encodeURIComponent(sessionId)}`,
+        method: 'GET',
+        headers
+    });
+
+    const items = cartRes?.data?.items || [];
+    let removed = 0;
+    for (const item of items) {
+        if (!item?.id) continue;
+        await axios({
+            url: `${BACKEND_URL}/cart/items/${item.id}`,
+            method: 'DELETE',
+            headers
+        });
+        removed++;
+    }
+    return { removed, hadItems: items.length };
+}
 
 function logStep(msg) {
     const timestamp = new Date().toISOString();
@@ -226,27 +257,157 @@ Respond naturally and warmly to the user's conversational message!`
      */
 async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
     const { logDebug } = require('../utils/debugLogger');
-    const contextSummary = JSON.stringify(getLeanContext());
+
+    const MAX_PRODUCTS_FOR_LLM = 6;
+
+    const summarizeToolResultsForLLM = (results) => {
+        const summarized = [];
+
+        for (const tr of results || []) {
+            const tool = tr?.tool || tr?.name || 'tool';
+            const success = tr?.success !== false && !tr?.error && !tr?.result?.error;
+            const base = {
+                tool,
+                success,
+                skipped: !!tr?.skipped,
+                message: tr?.result?.message || tr?.message || null,
+                error: tr?.error || tr?.result?.error || null
+            };
+
+            const r = tr?.result || {};
+
+            // Cart view items: preserve full line items for grounded cart responses.
+            // cart.view returns r.items (not r.products), so we explicitly summarize it.
+            if (Array.isArray(r.items) && (tool === 'cart.view' || tool === 'cart.get' || tool === 'cart')) {
+                base.cart_items = r.items.map(i => ({
+                    id: i?.id || null,
+                    name: i?.product_name || i?.name || i?.title || null,
+                    quantity: i?.quantity ?? null,
+                    price: i?.price ?? null,
+                    subtotal: i?.subtotal ?? null
+                }));
+                base.total = r.total ?? null;
+                base.item_count = r.item_count ?? base.cart_items.length;
+            }
+
+            // Single-product details (e.g., product.getDetails)
+            if (r && r.product && typeof r.product === 'object' && !Array.isArray(r.product)) {
+                const p = r.product;
+                base.product = {
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    description: typeof p?.description === 'string'
+                        ? (p.description.length > 220 ? `${p.description.substring(0, 220)}...` : p.description)
+                        : null,
+                    attributes: (p?.attributes && typeof p.attributes === 'object' && !Array.isArray(p.attributes))
+                        ? Object.keys(p.attributes).slice(0, 12).reduce((acc, k) => {
+                            acc[k] = p.attributes[k];
+                            return acc;
+                        }, {})
+                        : null,
+                    image_url: p?.image_url || p?.metadata?.image_url || null
+                };
+            }
+
+            const hasProducts = Array.isArray(r.products) || Array.isArray(r.results);
+            const productArray = Array.isArray(r.products) ? r.products : (Array.isArray(r.results) ? r.results : null);
+
+            if (hasProducts && Array.isArray(productArray)) {
+                const isCartView = tool === 'cart.view' || tool === 'cart.get' || tool === 'cart';
+                const max = isCartView ? productArray.length : MAX_PRODUCTS_FOR_LLM;
+
+                base.products = productArray.slice(0, max).map(p => ({
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    whatsapp_link: p?.whatsapp_link || null,
+                    checkout_url: p?.checkout_url || null
+                }));
+                base.products_truncated = !isCartView && productArray.length > MAX_PRODUCTS_FOR_LLM;
+                base.total_products = productArray.length;
+            }
+
+            // Preserve critical vendor breakdown / checkout links if present, but keep it lean
+            if (Array.isArray(r.vendor_breakdown)) {
+                base.vendor_breakdown = r.vendor_breakdown.map(v => ({
+                    vendor: v.vendor || v.vendor_name || v.name || null,
+                    order_number: v.order_number || null,
+                    subtotal: v.subtotal || null,
+                    whatsapp_link: v.whatsapp_link || null,
+                    checkout_url: v.checkout_url || null,
+                    status: v.status || v.message || null
+                }));
+            }
+
+            // Product comparisons (e.g., product.compare)
+            if (Array.isArray(r.comparison)) {
+                base.comparison = r.comparison.map(p => ({
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    whatsapp_link: p?.whatsapp_link || p?.metadata?.whatsapp_link || null,
+                    checkout_url: p?.checkout_url || p?.metadata?.checkout_url || null,
+                    description: typeof p?.description === 'string'
+                        ? (p.description.length > 220 ? `${p.description.substring(0, 220)}...` : p.description)
+                        : null,
+                    // Prefer expanded_attributes (human-keyed) emitted by product.compare tool.
+                    // Fall back to attributes/raw_attributes when not present.
+                    attributes: (() => {
+                        const attrs = (p?.expanded_attributes && typeof p.expanded_attributes === 'object' && !Array.isArray(p.expanded_attributes))
+                            ? p.expanded_attributes
+                            : (p?.attributes && typeof p.attributes === 'object' && !Array.isArray(p.attributes))
+                                ? p.attributes
+                                : (p?.raw_attributes && typeof p.raw_attributes === 'object' && !Array.isArray(p.raw_attributes))
+                                    ? p.raw_attributes
+                                    : null;
+
+                        if (!attrs) return null;
+                        return Object.keys(attrs).slice(0, 24).reduce((acc, k) => {
+                            acc[k] = attrs[k];
+                            return acc;
+                        }, {});
+                    })()
+                }));
+            }
+
+            summarized.push(base);
+        }
+
+        return summarized;
+    };
     logDebug('SERVER:TOOL_RESULT_OPTIMIZATION', {
         _desc: 'Tool result optimization — trim product fields for prompt size',
         _example: 'Drop long HTML descriptions, keep name/price/vendor',
         inputToolCount: toolResults.length
     });
     const optimizedResults = toolResults.map(tr => {
-        if (tr.result && (tr.result.products || tr.result.results)) {
-            const rawProducts = tr.result.products || tr.result.results;
+        if (tr.result && (tr.result.products || tr.result.results || tr.result.items)) {
+            const isCartView = tr.tool === 'cart.view' || tr.tool === 'cart.get' || tr.tool === 'cart';
+            const rawProducts = tr.result.products || tr.result.results || (isCartView ? tr.result.items : null);
+            const limitedProducts = Array.isArray(rawProducts)
+                ? (isCartView ? rawProducts : rawProducts.slice(0, MAX_PRODUCTS_FOR_LLM))
+                : rawProducts;
             return {
                 ...tr,
                 result: {
                     ...tr.result,
-                    products: rawProducts.map(p => ({
+                    products: (Array.isArray(limitedProducts) ? limitedProducts : []).map(p => (isCartView ? ({
+                        id: p?.id || null,
+                        name: p?.product_name || p?.name || p?.title || null,
+                        quantity: p?.quantity ?? null,
+                        price: p?.price ?? null,
+                        subtotal: p?.subtotal ?? null
+                    }) : ({
                         id: p.id,
                         name: p.name || p.title,
                         price: p.price,
-                        description: p.description ? (p.description.substring(0, 150) + '...') : null,
                         whatsapp_link: p.whatsapp_link,
                         checkout_url: p.checkout_url
-                    }))
+                    })))
                 }
             };
         }
@@ -272,10 +433,20 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
           `- Say what succeeded (if anything) AND what failed.\n` +
           `- If a cart/remove/compare action failed, suggest a next step (retry, rephrase, or pick by ordinal like "remove the second item").\n` +
           `- Do NOT pretend the failed action worked.\n` +
-          `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })), null, 2)}\n`
+          `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })))}\n`
         : '';
 
-    const resultsSummary = JSON.stringify(optimizedResults, null, 2);
+    const summarizedResultsForLLM = summarizeToolResultsForLLM(optimizedResults);
+    const resultsSummary = JSON.stringify(summarizedResultsForLLM);
+
+    const hasComparisonData = Array.isArray(summarizedResultsForLLM) && summarizedResultsForLLM.some(x =>
+        x && Array.isArray(x.comparison) && x.comparison.length >= 2
+    );
+
+    // Only include ultra-lean context as a rescue aid when something failed/skipped.
+    const shouldIncludeRescueContext = failedActions.length > 0 || skippedActions.length > 0;
+    const rescueContext = shouldIncludeRescueContext ? JSON.stringify(getUltraLeanContext()) : '';
+
     const systemPrompt = `You are a super friendly, playful, and LOVING shopping assistant for the Be3 store. ✨👋
 
 PERSONALITY:
@@ -292,15 +463,40 @@ CRITICAL GROUNDING RULES:
 ${skippedInstruction}
 ${failuresInstruction}
 
-STORE CONTEXT:
-${contextSummary}
+RENDER-ONLY MODE:
+- You are mainly a presentation layer for tool results.
+- Do NOT invent products, prices, specs, or links.
+- If tool results are insufficient, ask ONE short clarifying question.
+
+${hasComparisonData ? `PRODUCT COMPARISON RULES (IMPORTANT):
+- The user is explicitly comparing products.
+- You MUST compare more than just price.
+- Do NOT dump a raw list of every attribute key/value. Summarize like a helpful friend.
+- Structure your reply like this:
+  1) QUICK VERDICT: 1–2 lines on the biggest difference(s).
+  2) BEST FOR: 1 bullet per product (e.g. "Best for storage", "Best for premium build", "Best on a budget").
+  3) KEY DIFFERENCES: 3–6 short bullets total, written in plain language (not "b/c/j" codes).
+- Use "attributes" to justify the differences (storage, color, size, material, brand, price_tier, etc.).
+- If attributes exist, you MUST mention at least 3 non-price attribute differences overall (unless fewer are available).
+- If attributes are missing/empty, say so and ask ONE short question: "Which spec matters most to you (storage, color, size, etc.)?"`
+        : ''}
+
+${shouldIncludeRescueContext ? `RESCUE CONTEXT (ONLY FOR HELP WHEN TOOLS FAIL):\n${rescueContext}\n` : ''}
 
 TOOL RESULTS DATA:
 ${resultsSummary}`;
 
+    logDebug('SERVER:LLM_PROMPT_SIZE', {
+        _desc: 'Prompt size telemetry — chars and approximate tokens',
+        systemPromptChars: systemPrompt.length,
+        toolResultsChars: resultsSummary.length,
+        historyChars: (conversationHistory || []).slice(-2).reduce((sum, h) => sum + ((h?.text || '').length), 0),
+        approxTokens: Math.ceil(systemPrompt.length / 4)
+    });
+
     const messages = [
         { role: "system", content: systemPrompt },
-        ...conversationHistory.slice(-8).map(h => ({
+        ...conversationHistory.slice(-2).map(h => ({
             role: h.role === 'ai' ? 'assistant' : 'user',
             content: h.text
         })),
@@ -328,9 +524,21 @@ app.post('/chat', async (req, res) => {
     const { message, session_id } = req.body;
     console.log(`\n[Chat] Received from ${session_id}: "${message}"`);
 
-    if (message.trim() === '.clearcache') {
+    const systemCmd = (message || '').trim().toLowerCase();
+    if (systemCmd === '.clearcache' || systemCmd === '.clearcahe') {
         await stateManager.clearState(session_id);
-        return res.json({ success: true, reply: "Cache cleared!" });
+        await stateManager.setLastTools(session_id, []);
+        return res.json({ success: true, reply: "State cache cleared!" });
+    }
+    if (systemCmd === '.clearcart') {
+        const { removed } = await clearBackendCart(session_id);
+        return res.json({ success: true, reply: `Cart cleared! Removed ${removed} item${removed === 1 ? '' : 's'}.` });
+    }
+    if (systemCmd === '.clearall') {
+        await stateManager.clearState(session_id);
+        await stateManager.setLastTools(session_id, []);
+        const { removed } = await clearBackendCart(session_id);
+        return res.json({ success: true, reply: `State + cart cleared! Removed ${removed} item${removed === 1 ? '' : 's'} from cart.` });
     }
 
     try {
@@ -349,6 +557,7 @@ app.post('/chat', async (req, res) => {
 
         if (shouldUseToolSystem(session_id)) {
             const state = await stateManager.getState(session_id);
+            const previousToolHistory = await stateManager.getLastTools(session_id);
 
             // ========== FULL STATE BEFORE ==========
             logDebug('SERVER:STATE_BEFORE', {
@@ -423,17 +632,160 @@ app.post('/chat', async (req, res) => {
                     toolResultsCount: toolResults.length
                 });
                 await injectImages(toolResults, stateManager);
+
+                // STACK-SCOPED SEARCH CONTEXT: if product.search ran, snapshot search_context into the stack
+                const ranProductSearch = toolResults.some(tr => tr && tr.tool === 'product.search' && tr.success);
+                if (ranProductSearch) {
+                    const sCtx = await stateManager.getSearchContext(session_id);
+                    const s = await stateManager.getStack(session_id);
+                    if (s && sCtx && Array.isArray(sCtx.product_ids) && sCtx.product_ids.length > 0) {
+                        s.last_search_context = sCtx;
+                        if (!Array.isArray(s.search_history)) s.search_history = [];
+                        s.search_history.push({
+                            ts: new Date().toISOString(),
+                            intent: 'product_search',
+                            product_ids_count: sCtx.product_ids.length,
+                            query: sCtx.query || '',
+                            category_id: sCtx.category_id || null,
+                            category: sCtx.category || null
+                        });
+                        await stateManager.setStack(session_id, s);
+                    }
+                }
+            }
+
+            // We'll consolidate tool history AFTER stack continuation runs.
+            // (Stack execution mutates toolResults by pushing additional tool executions.)
+            let consolidatedToolResults = [];
+
+            // ═══════════════════════════════════════════════
+            // STACK: Execute all remaining intents sequentially
+            // ═══════════════════════════════════════════════
+            // If ANY microstate is active, do not continue the stack in the same request.
+            // This prevents overwriting the active microstate when the next stack intent
+            // also requires a microstate.
+            const activeMicrostateBeforeStack = await stateManager.getMicrostate(session_id);
+            let stackData = await stateManager.getStack(session_id);
+            let pausedForMicrostate = false;
+            if (activeMicrostateBeforeStack) {
+                console.log(`[Server] 🔒 Microstate already active (${activeMicrostateBeforeStack.type}) - skipping stack continuation`);
+            } else if (stackData?.remaining_intents?.length > 0) {
+                console.log(`[Server] 📚 Executing ${stackData.remaining_intents.length} remaining stack intents`);
+
+                while (stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0) {
+                    const activeMicrostateInLoop = await stateManager.getMicrostate(session_id);
+                    if (activeMicrostateInLoop) {
+                        console.log(`[Server] 🔒 Microstate active (${activeMicrostateInLoop.type}) - pausing stack loop`);
+                        pausedForMicrostate = true;
+                        break;
+                    }
+
+                    // Re-resolve ordinals with fresh search_context before each intent
+                    await stack.reResolveOrdinalsForRemainingIntents(
+                        stackData.remaining_intents,
+                        state,
+                        { CATEGORIES, VENDORS, ATTRIBUTES }
+                    );
+
+                    const nextIntent = stackData.remaining_intents[0];
+
+                    // Check if this intent needs a microstate (mirror REPL behavior)
+                    const microstateRegistry = require('../services/intentResolver/config/microstateRegistry');
+                    const triggered = microstateRegistry.checkTriggers(nextIntent.intentName, nextIntent.parameters || {}, []);
+                    if (triggered) {
+                        console.log(`[Server] 🔒 Microstate needed for: ${nextIntent.intentName} → ${triggered.triggerName}`);
+
+                        const microstate = triggered.buildMicrostate(nextIntent);
+                        await stateManager.setMicrostate(session_id, microstate);
+
+                        // Keep intent at front of remaining_intents (do NOT advance)
+                        await stateManager.setStack(session_id, stackData);
+
+                        // Execute the microstate prompt tool (directResponse)
+                        const promptTool = [{
+                            tool: triggered.prompt.tool,
+                            params: triggered.prompt.params,
+                            reason: triggered.prompt.reason
+                        }];
+                        const promptResults = await executeTools(promptTool, session_id);
+                        toolResults.push(...promptResults);
+
+                        pausedForMicrostate = true;
+                        break;
+                    }
+
+                    const nextTools = require('../services/intentResolver/pipeline/toolMapper').mapToTools([{
+                        intentName: nextIntent.intentName,
+                        parameters: nextIntent.parameters || {},
+                        _ported_from: nextIntent._ported_from
+                    }]);
+
+                    console.log(`[Server] 📚 Executing stack intent: ${nextIntent.intentName}`);
+                    const nextToolResults = await executeTools(nextTools, session_id);
+                    toolResults.push(...nextToolResults);
+
+                    // STACK-SCOPED SEARCH CONTEXT: if product.search ran in stack, snapshot search_context into stack
+                    const ranStackProductSearch = nextToolResults.some(tr => tr && tr.tool === 'product.search' && tr.success);
+                    if (ranStackProductSearch) {
+                        const sCtx = await stateManager.getSearchContext(session_id);
+                        if (sCtx && Array.isArray(sCtx.product_ids) && sCtx.product_ids.length > 0) {
+                            if (!stackData.last_search_context) stackData.last_search_context = null;
+                            stackData.last_search_context = sCtx;
+                            if (!Array.isArray(stackData.search_history)) stackData.search_history = [];
+                            stackData.search_history.push({
+                                ts: new Date().toISOString(),
+                                intent: nextIntent.intentName,
+                                product_ids_count: sCtx.product_ids.length,
+                                query: sCtx.query || '',
+                                category_id: sCtx.category_id || null,
+                                category: sCtx.category || null
+                            });
+                        }
+                    }
+
+                    // Update stack progress - ONLY advance if we actually executed
+                    stackData.executed_intents.push(nextIntent);
+                    stackData.remaining_intents = stackData.remaining_intents.slice(1);
+                    stackData.current_intent_index++;
+
+                    if (stackData.remaining_intents.length === 0) {
+                        await stateManager.clearStack(session_id);
+                        console.log(`[Server] 📚 Stack complete, cleared`);
+                    } else {
+                        await stateManager.setStack(session_id, stackData);
+                    }
+
+                    // Refresh stack data for next iteration
+                    stackData = await stateManager.getStack(session_id);
+                }
             }
 
             // ========== FULL TOOL RESULTS (every product, every field) ==========
+            consolidatedToolResults = Array.isArray(previousToolHistory)
+                ? [...previousToolHistory, ...toolResults]
+                : [...toolResults];
+
+            // IMAGE REINJECTION (stack-aware): re-inject images after stack continuation.
+            // In stacked / multi-turn flows, product.search results may be from a prior turn (previousToolHistory)
+            // or from later stack intents. Reinjection must happen on the consolidated results.
+            logDebug('SERVER:IMAGE_INJECTION_STACK_AWARE', {
+                _desc: 'Image injection — re-inject cached product images into consolidated tool results (stack-aware)',
+                _example: 'product.search in earlier turn + stack continuation → consolidated results get images',
+                toolResultsCount: consolidatedToolResults.length
+            });
+            await injectImages(consolidatedToolResults, stateManager);
+
             logDebug('SERVER:TOOL_RESULTS_FULL', {
                 _desc: 'Tool results — aggregated outputs from all executed tools',
                 _example: 'cart.add → success, product_name; product.search → products array',
-                results: toolResults
+                results: consolidatedToolResults
             });
 
-            // Check if any tool returned a directResponse (bypasses personality layer)
-            const directResponseResult = toolResults.find(tr => 
+            // Check if any tool returned a directResponse (bypasses personality layer).
+            // IMPORTANT: Only consider tools executed in THIS request.
+            // If we scan the consolidated history, an older microstate prompt can be
+            // re-sent on a later turn, creating duplicate prompts on the frontend.
+            const directResponseResult = toolResults.find(tr =>
                 tr.result && tr.result.directResponse === true && tr.result.message
             );
 
@@ -455,10 +807,10 @@ app.post('/chat', async (req, res) => {
                     _example: 'cart.add success → "Yaaas, I added the drawer! 🎉"',
                     model: 'llama-3.3-70b-versatile',
                     purpose: 'Personality response from tool results',
-                    inputToolCount: toolResults.length,
+                    inputToolCount: consolidatedToolResults.length,
                     conversationHistoryLength: state.conversation_history?.length || 0
                 });
-                response = await generateResponseFromTools(message, toolResults, state.conversation_history);
+                response = await generateResponseFromTools(message, consolidatedToolResults, state.conversation_history);
             }
 
             logDebug('SERVER:AI_RAW_RESPONSE', {
@@ -467,7 +819,7 @@ app.post('/chat', async (req, res) => {
                 response
             });
 
-            const displayImages = extractImages(toolResults);
+            const displayImages = extractImages(consolidatedToolResults);
 
             logDebug('SERVER:DISPLAY_IMAGES', {
                 _desc: 'Display image extraction — product image URLs from tool results',
@@ -546,16 +898,127 @@ app.post('/chat', async (req, res) => {
                 updated_at: stateAfter.updated_at
             });
 
-            // Extract WhatsApp button data from tool results (for microstate buttons)
-            const whatsappButtons = toolResults.find(tr => 
-                tr.result && tr.result.whatsapp && tr.result.whatsapp.type === 'button'
-            )?.result?.whatsapp;
+            // Extract WhatsApp button data from tool results.
+            // Only from THIS request (same reason as directResponseResult).
+            // Aggregate multiple tool contributions into a single payload.
+            // IMPORTANT: If the final reply is NOT a directResponse, ignore microstate tool buttons.
+            // Otherwise, a microstate prompt's controls (More/Cancel/etc) can leak into an unrelated
+            // final tool response (e.g., after compare fulfillment).
+            const ignoreMicrostateButtons = !directResponseResult;
+            const whatsappButtonResults = toolResults
+                .filter(tr => {
+                    if (!ignoreMicrostateButtons) return true;
+                    const toolName = String(tr?.tool || '');
+                    return !toolName.startsWith('microstate.');
+                })
+                .map(tr => tr?.result?.whatsapp)
+                .filter(w => w && w.type === 'button');
+
+            // Product cards may come either from legacy `result.whatsapp` (transaction=product_card)
+            // or from explicit `result.whatsapp_product_cards` (preferred for tools like product.search).
+            const whatsappProductCardResults = toolResults
+                .map(tr => tr?.result?.whatsapp_product_cards)
+                .filter(w => w && w.type === 'button' && w.transaction === 'product_card');
+
+            const productCardPayload = whatsappProductCardResults.find(w =>
+                Array.isArray(w?.cards) && w.cards.length > 0
+            ) || whatsappButtonResults.find(w =>
+                w?.transaction === 'product_card' && Array.isArray(w?.cards) && w.cards.length > 0
+            ) || null;
+
+            // Global button aggregation: ignore product_card payloads and merge the rest.
+            let whatsappButtons = null;
+            const globalButtonPayloads = whatsappButtonResults.filter(w => w?.transaction !== 'product_card');
+
+            if (globalButtonPayloads.length > 0) {
+                const merged = {
+                    type: 'button',
+                    buttons: []
+                };
+
+                // Priority-aware merge:
+                // - Allow tools to contribute multiple buttons
+                // - Choose top 3 by priority (desc)
+                // - Stable tie-break by contribution order (tool order, then button order)
+                // - De-dupe by id+title while keeping the highest priority version
+                const candidates = [];
+                let order = 0;
+                for (const w of globalButtonPayloads) {
+                    const payloadPriority = Number.isFinite(w?.priority) ? Number(w.priority) : 0;
+                    const btns = Array.isArray(w.buttons) ? w.buttons : [];
+                    for (const b of btns) {
+                        const id = String(b?.id ?? '');
+                        const title = String(b?.title ?? b?.text ?? id);
+                        if (!id || !title) continue;
+                        const priority = Number.isFinite(b?.priority) ? Number(b.priority) : payloadPriority;
+                        candidates.push({ id, title, priority, order: order++ });
+                    }
+
+                    // Carry forward optional fields when present (first writer wins).
+                    if (!merged.transaction && w.transaction) merged.transaction = w.transaction;
+                    if (!merged.sponsor && w.sponsor) merged.sponsor = w.sponsor;
+                }
+
+                const bestByKey = new Map();
+                for (const c of candidates) {
+                    const key = `${c.id}::${c.title}`;
+                    const existing = bestByKey.get(key);
+                    if (!existing) {
+                        bestByKey.set(key, c);
+                        continue;
+                    }
+                    if (c.priority > existing.priority) {
+                        bestByKey.set(key, c);
+                        continue;
+                    }
+                    if (c.priority === existing.priority && c.order < existing.order) {
+                        bestByKey.set(key, c);
+                    }
+                }
+
+                const selected = Array.from(bestByKey.values())
+                    .sort((a, b) => {
+                        if (b.priority !== a.priority) return b.priority - a.priority;
+                        return a.order - b.order;
+                    })
+                    .slice(0, 3)
+                    .map(({ id, title }) => ({ id, title }));
+
+                merged.buttons = selected;
+
+                if (merged.buttons.length > 0) {
+                    whatsappButtons = merged;
+                }
+            }
+
             logDebug('SERVER:WHATSAPP_BUTTON_EXTRACTION', {
-                _desc: 'WhatsApp button extraction — pull whatsapp_buttons from tool results',
-                _example: 'checkout tool returns buttons "Pay now" / "Change address"',
+                _desc: 'WhatsApp button extraction — aggregate whatsapp_buttons from tool results',
+                _example: 'multiple tools each contribute a button; merged into one payload',
+                buttonContributions: whatsappButtonResults.length,
                 hasButtons: !!whatsappButtons,
-                buttonCount: whatsappButtons?.buttons?.length || 0
+                buttonCount: whatsappButtons?.buttons?.length || 0,
+                hasProductCards: !!productCardPayload,
+                productCardCount: productCardPayload?.cards?.length || 0
             });
+
+            // Prevent stale microstate UI payloads from leaking via the `results` array.
+            // Some clients render buttons directly off tool results (not just whatsapp_buttons).
+            // If this is a normal (non-direct) final response, strip `result.whatsapp` from any
+            // microstate.* tool results in the consolidated history.
+            const resultsForClient = (!directResponseResult && Array.isArray(consolidatedToolResults))
+                ? consolidatedToolResults.map(tr => {
+                    const toolName = String(tr?.tool || '');
+                    if (!toolName.startsWith('microstate.')) return tr;
+                    if (!tr || !tr.result || !tr.result.whatsapp) return tr;
+                    return {
+                        ...tr,
+                        result: {
+                            ...tr.result,
+                            whatsapp: null
+                        }
+                    };
+                })
+                : consolidatedToolResults;
 
             const finalResponse = {
                 success: true,
@@ -563,9 +1026,22 @@ app.post('/chat', async (req, res) => {
                 intent: intent,
                 display_images: displayImages,
                 tools_used: toolsSelected,
-                results: toolResults,
-                whatsapp_buttons: whatsappButtons || null
+                results: resultsForClient,
+                whatsapp_buttons: whatsappButtons || null,
+                whatsapp_product_cards: productCardPayload
             };
+
+            // Persist tool history while multi-turn flows are active; clear when flow ends.
+            const endMicrostate = await stateManager.getMicrostate(session_id);
+            const endStack = await stateManager.getStack(session_id);
+            const hasStack = !!(endStack && endStack.remaining_intents && endStack.remaining_intents.length > 0);
+            const hasMicrostate = !!endMicrostate;
+            if (hasStack || hasMicrostate) {
+                const capped = consolidatedToolResults.slice(-50);
+                await stateManager.setLastTools(session_id, capped);
+            } else {
+                await stateManager.setLastTools(session_id, []);
+            }
 
             // ========== FULL SERVER JSON RESPONSE ==========
             logDebug('SERVER:FINAL_JSON_RESPONSE', {

@@ -89,12 +89,61 @@ const DEFAULT_STATE = {
 
 // In-memory fallback cache
 const memoryCache = new Map();
+const searchSnapshotCache = new Map();
 
 class StateManager {
     constructor() {
         this.historyLimit = parseInt(process.env.CONVERSATION_HISTORY_LIMIT || '20');
         this.defaultTTL = parseInt(process.env.STATE_TTL || '300'); // Default 5 mins (was 3600)
         this.enableLearning = process.env.ENABLE_PREFERENCE_LEARNING !== 'false'; // Enabled by default
+        this.searchSnapshotTTL = parseInt(process.env.SEARCH_SNAPSHOT_TTL || '900');
+    }
+
+    async setSearchSnapshot(userId, snapshotId, filters, ttlSeconds = null) {
+        if (!userId || !snapshotId) return false;
+        const ttl = ttlSeconds || this.searchSnapshotTTL;
+        const payload = {
+            filters: filters && typeof filters === 'object' ? filters : {},
+            created_at: new Date().toISOString()
+        };
+
+        const key = `be3:search_snapshot:${userId}:${snapshotId}`;
+
+        try {
+            const client = redisClient.getClient ? redisClient.getClient() : null;
+            if (client) {
+                await client.setEx(key, ttl, JSON.stringify(payload));
+            } else {
+                searchSnapshotCache.set(key, { payload, expiresAt: Date.now() + ttl * 1000 });
+            }
+            return true;
+        } catch (e) {
+            searchSnapshotCache.set(key, { payload, expiresAt: Date.now() + ttl * 1000 });
+            return false;
+        }
+    }
+
+    async getSearchSnapshot(userId, snapshotId) {
+        if (!userId || !snapshotId) return null;
+        const key = `be3:search_snapshot:${userId}:${snapshotId}`;
+
+        try {
+            const client = redisClient.getClient ? redisClient.getClient() : null;
+            if (client) {
+                const raw = await client.get(key);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed && typeof parsed === 'object' ? parsed : null;
+            }
+        } catch (_) {}
+
+        const local = searchSnapshotCache.get(key);
+        if (!local) return null;
+        if (local.expiresAt && local.expiresAt <= Date.now()) {
+            searchSnapshotCache.delete(key);
+            return null;
+        }
+        return local.payload;
     }
 
     /**
@@ -484,6 +533,59 @@ class StateManager {
     }
 
     // ═══════════════════════════════════════════════
+    // STACK MANAGEMENT (Intent Stack for sequential execution)
+    // ═══════════════════════════════════════════════
+
+    /**
+     * Set intent stack for sequential execution.
+     * Stores remaining intents when microstate opens mid-stack.
+     */
+    async setStack(userId, stackObj) {
+        const state = await this.getState(userId);
+        state.stack = {
+            remaining_intents: stackObj.remaining_intents || [],
+            current_intent_index: stackObj.current_intent_index || 0,
+            executed_intents: stackObj.executed_intents || [],
+            accumulated_results: stackObj.accumulated_results || [],
+            created_at: stackObj.created_at || new Date().toISOString(),
+            expires_at: stackObj.expires_at || new Date(Date.now() + 300 * 1000).toISOString()
+        };
+        console.log(`[StateManager] 📚 Stack SET: ${state.stack.remaining_intents.length} remaining, index=${state.stack.current_intent_index}`);
+        await this.setState(userId, state);
+        return state.stack;
+    }
+
+    /**
+     * Get intent stack if valid.
+     * Returns null if expired or inactive.
+     */
+    async getStack(userId) {
+        const state = await this.getState(userId);
+        if (!state.stack) return null;
+
+        // Check TTL expiry
+        if (state.stack.expires_at && new Date() > new Date(state.stack.expires_at)) {
+            console.log(`[StateManager] Stack expired (TTL) for ${userId}`);
+            await this.clearStack(userId);
+            return null;
+        }
+
+        return state.stack;
+    }
+
+    /**
+     * Clear intent stack.
+     */
+    async clearStack(userId) {
+        const state = await this.getState(userId);
+        if (state.stack) {
+            console.log(`[StateManager] 📚 Stack CLEARED for ${userId}`);
+            state.stack = null;
+            await this.setState(userId, state);
+        }
+    }
+
+    // ═══════════════════════════════════════════════
     // SEARCH CONTEXT (semantic reference map)
     // ═══════════════════════════════════════════════
 
@@ -684,12 +786,19 @@ class StateManager {
      * - Preserves product slugs (name-based refs) cumulatively.
      * - Additive plurals: 'them'/'all' append single products, overwrite on sets.
      */
-    async updateReferenceMap(userId, products) {
+    async updateReferenceMap(userId, products, options = {}) {
         if (!products || products.length === 0) return;
 
         const state = await this.getState(userId);
-        const referenceMap = state.reference_map || {};
-        let ordinalList = [...(state.ordinal_list || [])];
+        const scope = (options && options.scope) ? String(options.scope).toLowerCase() : 'global';
+        const useMicrostateScope = scope === 'microstate' && state.microstate;
+
+        const referenceMap = useMicrostateScope
+            ? (state.microstate.reference_map || {})
+            : (state.reference_map || {});
+        let ordinalList = useMicrostateScope
+            ? ([...(state.microstate.ordinal_list || [])])
+            : ([...(state.ordinal_list || [])]);
         const isSingleProduct = products.length === 1;
 
         const slotKeys = ['the_first_one', 'the_second_one', 'the_third_one', 'first', 'second', 'third'];
@@ -802,10 +911,15 @@ class StateManager {
             }
         });
 
-        state.reference_map = referenceMap;
-        state.ordinal_list = ordinalList;
+        if (useMicrostateScope) {
+            state.microstate.reference_map = referenceMap;
+            state.microstate.ordinal_list = ordinalList;
+        } else {
+            state.reference_map = referenceMap;
+            state.ordinal_list = ordinalList;
+        }
         await this.setState(userId, state);
-        console.log(`[StateManager] Reference map updated. Keys: ${Object.keys(referenceMap).length}, Items in list: ${ordinalList.length}`);
+        console.log(`[StateManager] Reference map updated (${useMicrostateScope ? 'microstate' : 'global'}). Keys: ${Object.keys(referenceMap).length}, Items in list: ${ordinalList.length}`);
     }
 
     /**
@@ -896,16 +1010,35 @@ class StateManager {
 
         const refLower = reference.toLowerCase().replace(/\s+/g, '_');
 
-        // Check reference map
+        // Prefer microstate-scoped references when a microstate is active.
+        const msMap = state.microstate?.reference_map || null;
+        const msOrdinals = Array.isArray(state.microstate?.ordinal_list) ? state.microstate.ordinal_list : null;
+
+        if (msMap && msMap[refLower]) {
+            console.log(`[StateManager] Resolved "${reference}" → ${msMap[refLower]} (microstate)`);
+            return msMap[refLower];
+        }
+
+        // Check global reference map
         if (state.reference_map[refLower]) {
             console.log(`[StateManager] Resolved "${reference}" → ${state.reference_map[refLower]}`);
             return state.reference_map[refLower];
         }
 
-        // Check ordinal positions
-        const ordinalMatch = reference.match(/(\d+)(st|nd|rd|th)/i);
-        if (ordinalMatch) {
-            const position = parseInt(ordinalMatch[1]) - 1;
+        // Check ordinal positions (microstate first)
+        const ordinalMatchMs = reference.match(/(\d+)(st|nd|rd|th)/i);
+        if (ordinalMatchMs && msOrdinals) {
+            const position = parseInt(ordinalMatchMs[1]) - 1;
+            if (msOrdinals[position]) {
+                console.log(`[StateManager] Resolved "${reference}" → ${msOrdinals[position]} (microstate ordinal)`);
+                return msOrdinals[position];
+            }
+        }
+
+        // Check ordinal positions (global)
+        const ordinalMatchGlobal = reference.match(/(\d+)(st|nd|rd|th)/i);
+        if (ordinalMatchGlobal) {
+            const position = parseInt(ordinalMatchGlobal[1]) - 1;
             if (state.ordinal_list[position]) {
                 console.log(`[StateManager] Resolved "${reference}" → ${state.ordinal_list[position]}`);
                 return state.ordinal_list[position];

@@ -8,6 +8,7 @@ const readline = require('readline');
 const { resolveAndMap } = require('../src/services/intentResolver');
 const stateManager = require('../src/state/stateManager');
 const { executeTools } = require('../src/core/orchestrator');
+const stack = require('../src/services/intentResolver/pipeline/stack');
 const storeContext = require('../src/context/storeContext');
 const { CLAUSES } = require('../src/context/clauses');
 
@@ -16,6 +17,10 @@ const { CLAUSES } = require('../src/context/clauses');
 // ═══════════════════════════════════════════════════
 const TEST_SESSION_ID = 'repl_test_session';
 let verbose = false;
+
+// Accumulate tool executions across turns so the final stack-completion summary
+// includes tools that ran during earlier microstate turns.
+let accumulatedExecutionResults = [];
 
 // ═══════════════════════════════════════════════════
 //  Mock AI (Context-Aware Deterministic Extraction)
@@ -256,6 +261,22 @@ function buildSimpleReply(userMessage, result, executionResults = []) {
         return primary.result.message;
     }
 
+    // 2.5 If cart.add ran, surface a clear outcome
+    const cartAdds = executionResults.filter(er => er && er.tool === 'cart.add');
+    if (cartAdds.length > 0) {
+        const successCount = cartAdds.filter(er => er.success).length;
+        const failCount = cartAdds.filter(er => !er.success && !er.skipped).length;
+        if (successCount > 0 && failCount === 0) {
+            return `Added ${successCount} item${successCount === 1 ? '' : 's'} to your cart.`;
+        }
+        if (successCount > 0 && failCount > 0) {
+            return `Added ${successCount} item${successCount === 1 ? '' : 's'} to your cart, but ${failCount} item${failCount === 1 ? '' : 's'} failed to add.`;
+        }
+        if (successCount === 0 && failCount > 0) {
+            return `I couldn't add those items to your cart.`;
+        }
+    }
+
     // 3. For product-like tools, synthesize a full summary (no truncation)
     const productResult = executionResults.find(er =>
         er.result && (er.result.products || er.result.results)
@@ -272,6 +293,7 @@ function buildSimpleReply(userMessage, result, executionResults = []) {
         if (names.length > 0) {
             return `Here are some options I found: ${names.join(', ')}.${skippedSuffix}`;
         }
+        return `I found ${prods.length} products.${skippedSuffix}`;
     }
 
     // 4. Skipped message only (e.g. cart.add skipped, no product search)
@@ -327,6 +349,7 @@ async function printState() {
 async function initializeSession() {
     console.log(`${C.dim}Initializing REPL session...${C.reset}`);
     await stateManager.clearState(TEST_SESSION_ID);
+    accumulatedExecutionResults = [];
 }
 
 // ═══════════════════════════════════════════════════
@@ -382,14 +405,189 @@ ${C.bold}${C.cyan}╔═══════════════════�
                 executionResults = await executeTools(result.tools, TEST_SESSION_ID);
             }
 
+            // STACK-SCOPED SEARCH CONTEXT: if product.search ran, snapshot search_context into the stack
+            const ranProductSearch = executionResults.some(tr => tr && tr.tool === 'product.search' && tr.success);
+            if (ranProductSearch) {
+                const sCtx = await stateManager.getSearchContext(TEST_SESSION_ID);
+                const s = await stateManager.getStack(TEST_SESSION_ID);
+                if (s && sCtx && Array.isArray(sCtx.product_ids) && sCtx.product_ids.length > 0) {
+                    s.last_search_context = sCtx;
+                    if (!Array.isArray(s.search_history)) s.search_history = [];
+                    s.search_history.push({
+                        ts: new Date().toISOString(),
+                        intent: 'product_search',
+                        product_ids_count: sCtx.product_ids.length,
+                        query: sCtx.query || '',
+                        category_id: sCtx.category_id || null,
+                        category: sCtx.category || null
+                    });
+                    await stateManager.setStack(TEST_SESSION_ID, s);
+                }
+            }
+
+            // Keep a running log across turns.
+            accumulatedExecutionResults.push(...executionResults);
+
             const ms = Date.now() - start;
 
-            printResult(result, executionResults);
-            const reply = buildSimpleReply(input, result, executionResults);
+            // If a microstate is open (either just opened by resolveAndMap or already active),
+            // print immediately and do NOT continue the stack in the same turn.
+            const activeMicrostateAfter = await stateManager.getMicrostate(TEST_SESSION_ID);
+            const microstateIsOpenNow = !!(activeMicrostateAfter || result.microstate_opened);
+
+            if (microstateIsOpenNow) {
+                // For microstates, show prompt/fulfillment info immediately.
+                const consolidated = [...accumulatedExecutionResults];
+                printResult(result, consolidated);
+                const reply = buildSimpleReply(input, result, consolidated);
+                if (reply) {
+                    console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+                }
+                console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);
+                rl.prompt();
+                return;
+            }
+
+            // ═══════════════════════════════════════════════
+            // STACK: Execute all remaining intents sequentially
+            // ═══════════════════════════════════════════════
+            const persistedStack = await stateManager.getStack(TEST_SESSION_ID);
+            const hasPersistedStack = !!(persistedStack && persistedStack.remaining_intents && persistedStack.remaining_intents.length > 0);
+            console.log(`${C.dim}[STACK DEBUG] Checking continuation | stack_active: ${result.stack_active} | microstate_fulfilled: ${result.microstate_fulfilled} | persisted: ${hasPersistedStack} | microstate_open: ${microstateIsOpenNow}${C.reset}`);
+
+            // In REPL mode, always trust persisted stack state.
+            // The pipeline can return stack_active:false in some edge paths (e.g. microstate TTL expiry)
+            // even though stack still exists in state.
+            if (!microstateIsOpenNow && (result.stack_active || result.microstate_fulfilled || hasPersistedStack)) {
+                let stackData = persistedStack;
+                
+                console.log(`${C.cyan}[STACK DEBUG] Initial state | remaining: ${stackData?.remaining_intents?.length || 0} | executed: ${stackData?.executed_intents?.length || 0} | index: ${stackData?.current_intent_index}${C.reset}`);
+
+                let pausedForMicrostate = false;
+                
+                while (stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0) {
+                    console.log(`${C.yellow}📚 Executing remaining stack intents: ${stackData.remaining_intents.length}${C.reset}`);
+                    
+                    // Show pending intents
+                    stackData.remaining_intents.forEach((intent, i) => {
+                        const params = JSON.stringify(intent.parameters).slice(0, 60);
+                        console.log(`${C.dim}  [${i}] ${intent.intentName}: ${params}...${C.reset}`);
+                    });
+                    
+                    // Re-resolve ordinals with fresh search_context before each intent
+                    console.log(`${C.magenta}[STACK DEBUG] Re-resolving ordinals...${C.reset}`);
+                    await stack.reResolveOrdinalsForRemainingIntents(stackData.remaining_intents, state, storeContext);
+                    
+                    // Get next intent
+                    const nextIntent = stackData.remaining_intents[0];
+                    
+                    // ═══════════════════════════════════════════════
+                    // Check if this intent needs a microstate
+                    // ═══════════════════════════════════════════════
+                    const microstateRegistry = require('../src/services/intentResolver/config/microstateRegistry');
+                    const triggered = microstateRegistry.checkTriggers(nextIntent.intentName, nextIntent.parameters || {}, []);
+                    
+                    console.log(`${C.dim}[STACK DEBUG] Microstate check: ${nextIntent.intentName} | triggered: ${triggered ? 'YES' : 'NO'}${C.reset}`);
+                    if (triggered) {
+                        console.log(`${C.dim}[STACK DEBUG]   trigger: ${triggered.triggerName}${C.reset}`);
+                    }
+                    
+                    if (triggered) {
+                        // Open microstate and pause stack execution
+                        console.log(`${C.yellow}[STACK DEBUG] Microstate needed for: ${nextIntent.intentName} → ${triggered.triggerName}${C.reset}`);
+                        
+                        const microstate = triggered.buildMicrostate(nextIntent);
+                        await stateManager.setMicrostate(TEST_SESSION_ID, microstate);
+                        
+                        // Update stack - intent stays at front of remaining (not executed yet)
+                        // Just save current state, don't advance
+                        await stateManager.setStack(TEST_SESSION_ID, stackData);
+                        
+                        // Show the microstate prompt
+                        const promptText = triggered.triggerDef.prompt?.text || `Please provide ${triggered.triggerName}`;
+                        console.log(`\n${C.yellow}🔒 MICROSTATE OPENED: ${triggered.triggerName}${C.reset}`);
+                        console.log(`${C.yellow}   Intent: ${nextIntent.intentName}${C.reset}`);
+                        console.log(`${C.white}  Bot: ${promptText}${C.reset}\n`);
+                        
+                        // Break out to wait for user input
+                        pausedForMicrostate = true;
+                        break;
+                    }
+                    
+                    // No microstate needed - execute normally
+                    const toolMapper = require('../src/services/intentResolver/pipeline/toolMapper');
+                    const nextTools = toolMapper.mapToTools([{
+                        intentName: nextIntent.intentName,
+                        parameters: nextIntent.parameters || {},
+                        _ported_from: nextIntent._ported_from
+                    }]);
+                    
+                    console.log(`${C.yellow}📚 Executing: ${nextIntent.intentName}${C.reset}`);
+                    const nextExecutionResults = await executeTools(nextTools, TEST_SESSION_ID);
+                    executionResults.push(...nextExecutionResults);
+                    accumulatedExecutionResults.push(...nextExecutionResults);
+
+                    // STACK-SCOPED SEARCH CONTEXT: if product.search ran in stack, snapshot search_context into stack
+                    const ranStackProductSearch = nextExecutionResults.some(tr => tr && tr.tool === 'product.search' && tr.success);
+                    if (ranStackProductSearch) {
+                        const sCtx = await stateManager.getSearchContext(TEST_SESSION_ID);
+                        if (sCtx && Array.isArray(sCtx.product_ids) && sCtx.product_ids.length > 0) {
+                            stackData.last_search_context = sCtx;
+                            if (!Array.isArray(stackData.search_history)) stackData.search_history = [];
+                            stackData.search_history.push({
+                                ts: new Date().toISOString(),
+                                intent: nextIntent.intentName,
+                                product_ids_count: sCtx.product_ids.length,
+                                query: sCtx.query || '',
+                                category_id: sCtx.category_id || null,
+                                category: sCtx.category || null
+                            });
+                            await stateManager.setStack(TEST_SESSION_ID, stackData);
+                        }
+                    }
+                    
+                    // Update stack progress - ONLY advance if we actually executed
+                    stackData.executed_intents.push(nextIntent);
+                    stackData.remaining_intents = stackData.remaining_intents.slice(1);
+                    stackData.current_intent_index++;
+                    
+                    if (stackData.remaining_intents.length === 0) {
+                        await stateManager.clearStack(TEST_SESSION_ID);
+                        console.log(`${C.green}📚 Stack complete!${C.reset}`);
+                    } else {
+                        await stateManager.setStack(TEST_SESSION_ID, stackData);
+                    }
+                    
+                    // Refresh stack data for next iteration
+                    stackData = await stateManager.getStack(TEST_SESSION_ID);
+                }
+
+                // If we paused due to opening a microstate, do not print any further synthesized reply.
+                // The microstate prompt above is the correct next output.
+                if (pausedForMicrostate) {
+                    rl.prompt();
+                    return;
+                }
+            }
+
+            // End-of-turn consolidated output (old behavior):
+            // print a single summary that includes EVERY tool run (initial + stack),
+            // then print the synthesized Bot reply.
+            const consolidated = [...accumulatedExecutionResults];
+            printResult(result, consolidated);
+            const reply = buildSimpleReply(input, result, consolidated);
             if (reply) {
                 console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
             }
             console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);
+
+            // If stack is cleared and no microstate remains, reset accumulator for next interaction.
+            const endMicrostate = await stateManager.getMicrostate(TEST_SESSION_ID);
+            const endStack = await stateManager.getStack(TEST_SESSION_ID);
+            const stackIsGone = !(endStack && endStack.remaining_intents && endStack.remaining_intents.length > 0);
+            if (!endMicrostate && stackIsGone) {
+                accumulatedExecutionResults = [];
+            }
         } catch (err) {
             console.log(`${C.red}  Error: ${err.message}${C.reset}\n`);
             if (verbose) console.error(err.stack);

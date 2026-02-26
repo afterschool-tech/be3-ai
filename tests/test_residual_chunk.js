@@ -43,7 +43,8 @@ const testQueries = [
     'show me a smart watch that tracks sleep and heart rate properly',
     'looking for a portable power bank that can charge laptops too',
     'want a mechanical keyboard that has nice rgb lighting',
-    'find me noise cancelling headphones that work well on long flights'
+    'find me noise cancelling headphones that work well on long flights',
+    'So here’s what I need today: I’m looking for a really cheap android phone for my younger brother, a decent gaming laptop that can run FIFA smoothly, and I also want to compare the iPhone 15 with the latest Samsung flagship you have. After that, add whichever iPhone is cheaper to my cart, and please give me Dareymi’s WhatsApp number so I can ask about delivery.'
 ];
 
 async function run() {

@@ -22,9 +22,14 @@ function normalizeParameters(resolvedIntents, storeContext) {
     return resolvedIntents.map(intent => {
         const params = intent.parameters;
 
+        // Compare intents should not treat clause words (e.g. brand tokens inside resolved product names)
+        // as semantic search refinements. This prevents side effects like setting brand=infinix when the
+        // user simply asked to compare products that include an Infinix item.
+        const isCompareIntent = intent?.intentName === 'product_compare';
+
         // ── 1. Clause to Attribute Mapping ──
         // Handle both array format [{ clauseId, word }] and string format "clause_id"
-        if (params.clause_words) {
+        if (params.clause_words && !isCompareIntent) {
             if (!params.attributes) params.attributes = {};
             
             let clausesToProcess = [];

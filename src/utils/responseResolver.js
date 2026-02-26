@@ -6,6 +6,49 @@
  * No state, no side effects — safe to call anywhere.
  */
 
+// ── Explicit Engineered Tokens (microstate/control) ──
+
+/**
+ * Resolve explicit engineered tokens like __flow:cancel, __nav:more.
+ * @param {string} text
+ * @returns {{ raw: string, namespace: string, command: string, arg: string|null }|null}
+ */
+function resolveEngineeredToken(text) {
+    if (!text) return null;
+    const raw = String(text).trim();
+
+    // Canonical format: __namespace:command(:arg)__
+    const m = raw.match(/^__([a-z0-9_]+):([a-z0-9_]+)(?::([^\s]+))?__$/i);
+    if (m) {
+        return {
+            raw: raw,
+            namespace: String(m[1] || '').toLowerCase(),
+            command: String(m[2] || '').toLowerCase(),
+            arg: m[3] || null
+        };
+    }
+
+    // Alias format observed from some WA button payloads: __navmore__ (no colons)
+    // Support a small allowlist of deterministic control tokens.
+    const aliasMap = {
+        '__navmore__': { namespace: 'nav', command: 'more', arg: null },
+        '__navprev__': { namespace: 'nav', command: 'prev', arg: null },
+        '__flowcancel__': { namespace: 'flow', command: 'cancel', arg: null },
+        '__flowskip__': { namespace: 'flow', command: 'skip', arg: null }
+    };
+    const aliased = aliasMap[String(raw).toLowerCase()];
+    if (aliased) {
+        return {
+            raw: raw,
+            namespace: aliased.namespace,
+            command: aliased.command,
+            arg: aliased.arg
+        };
+    }
+
+    return null;
+}
+
 // ── Yes/No Resolution ──
 
 const YES_WORDS = new Set([
@@ -83,11 +126,17 @@ function resolveOrdinal(text) {
     // Direct match
     if (ORDINAL_MAP.hasOwnProperty(clean)) return ORDINAL_MAP[clean];
 
-    // "number N" or just a digit
-    const digitMatch = clean.match(/^(\d+)$/);
-    if (digitMatch) {
-        const n = parseInt(digitMatch[1]);
-        if (n >= 1 && n <= 20) return n;
+    // "number N" / "option N" / "pick N" / "choose N" / "no N" or just a digit
+    const directDigitMatch = clean.match(/^(\d+)$/);
+    if (directDigitMatch) {
+        const n = parseInt(directDigitMatch[1], 10);
+        if (!Number.isNaN(n) && n >= 1) return n;
+    }
+
+    const prefixedDigitMatch = clean.match(/^(?:option|number|no|#|pick|choose)\s*#?\s*(\d+)$/);
+    if (prefixedDigitMatch) {
+        const n = parseInt(prefixedDigitMatch[1], 10);
+        if (!Number.isNaN(n) && n >= 1) return n;
     }
 
     // "the Nth" pattern
@@ -245,6 +294,7 @@ function isTerminationKeyword(text, keywords = DEFAULT_TERMINATION_KEYWORDS) {
 
 
 module.exports = {
+    resolveEngineeredToken,
     resolveYesNo,
     resolveOrdinal,
     resolveGroupedOrdinal,

@@ -164,7 +164,15 @@ const cartTools = {
                 message: `Added ${qtyText} to your cart.`,
                 product_name: name,
                 quantity,
-                cart_summary: result.data.cart
+                cart_summary: result.data.cart,
+                whatsapp: {
+                    type: 'button',
+                    buttons: [
+                        { id: '__cart:view__', title: 'View cart' },
+                        { id: '__order:checkout__', title: 'Checkout' },
+                        { id: '__shop:continue__', title: 'Continue shopping' }
+                    ]
+                }
             };
         }
     },

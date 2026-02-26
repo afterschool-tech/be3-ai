@@ -90,7 +90,19 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     // --- SHARED EXCLUDE SET FOR CLEANING ---
     // NOTE: clause-like words (cheap, expensive, premium, budget, affordable) are intentionally
     // excluded from this set — they are handled by clause-aware stripping in Section 5.
-    const excludeSet = new Set(['show', 'me', 'i', 'need', 'want', 'under', 'for', 'the', 'a', 'an', 'any', 'some', 'compare', 'difference', 'between', 'versus', 'vs', 'v/s', 'and', 'with', 'what', 'is', 'it', 'tell', 'about', 'by', 'those', 'these', 'this', 'that', 'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm", 'to', 'its', 'my', 'your']);
+    const excludeSet = new Set([
+        'show', 'me', 'i', 'need', 'want', 'give', 'list', 'lists', 'under', 'below', 'for', 'the', 'a', 'an', 'any', 'some',
+        'compare', 'comparison', 'difference', 'between', 'versus', 'vs', 'v/s',
+        'and', 'with',
+        'but', 'still', 'like', 'also',
+        'what', 'is', 'it', 'tell', 'about', 'by', 'those', 'these', 'this', 'that',
+        'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm",
+        'to', 'its', 'my', 'your', 'get', 'based', 'own', 'which', 'one', 'two',
+        'can', 'you', 'could', 'would',
+        'so', "i'll", "ibcll", 'ill', 'of', 'on',
+        'advice', 'advise', 'recommend', 'recommendation', 'suggest', 'suggestion', 'guidance', 'help',
+        'product', 'products', 'item', 'items', 'gadget', 'gadgets'
+    ]);
 
     // Add deterministic parameter values to excludeSet to prevent them leaking into product_name
     if (extracted.quantity) excludeSet.add(extracted.quantity.toString());
@@ -116,7 +128,17 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         if (resolutions.length > 0) {
             resolutions.forEach(res => {
                 if (res.productId) {
-                    products.push(res.productId);
+                    // ContextResolver can emit a comma-separated list for plural references
+                    // e.g. "them" → "id1,id2,id3". Split so compare gets a real array.
+                    const pid = String(res.productId).trim();
+                    if (pid.includes(',')) {
+                        pid.split(',')
+                            .map(x => x.trim())
+                            .filter(Boolean)
+                            .forEach(x => products.push(x));
+                    } else {
+                        products.push(pid);
+                    }
 
                     // Remove ORIGINAL resolved phrase (e.g., "it")
                     const escapedOriginal = (res.original || '').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -131,7 +153,8 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
 
         // B. Split text by comparison tokens to find raw names
         const cleanMessage = textForRaw
-            .replace(/\b(?:compare|difference between|difference|between|vs|v\/s|versus|with|and)\b/gi, '|')
+            .replace(/[;,:.?!]/g, ' | ')
+            .replace(/\b(?:compare|comparison|difference between|difference|between|vs|v\/s|versus|with|and|but|to)\b/gi, '|')
             .split('|')
             .map(p => p.trim())
             .filter(p => p.length > 0);
@@ -141,6 +164,8 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             const words = segment.split(/\s+/).filter(w => !excludeSet.has(w) && w.length > 0);
             if (words.length > 0) {
                 const rawName = words.join(' ');
+                if (rawName.length < 3) return;
+                if (excludeSet.has(rawName)) return;
                 // Avoid adding duplicates (by name or ID)
                 if (!products.includes(rawName)) {
                     products.push(rawName);
@@ -156,7 +181,12 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     // 5. Zero-AI Category & Product Name Discovery (Product Search)
     const isSearch = candidates.some(c => c.intentName === 'product_search');
     if (isSearch && storeContext.CATEGORIES) {
-        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        const words = text
+            .toLowerCase()
+            .split(/\s+/)
+            // Trim leading/trailing punctuation so tokens like "$2000" become "2000"
+            .map(w => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+            .filter(w => w.length > 0);
         let foundCategoryUUID = null;
         let categoryWords = [];
 

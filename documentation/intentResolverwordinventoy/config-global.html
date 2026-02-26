@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IntentResolver Word Inventory — Global inventories</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-arrow-left" viewBox="0 0 24 24">
+      <path d="M10 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M3 12h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-arrow-right" viewBox="0 0 24 24">
+      <path d="M14 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M21 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-book" viewBox="0 0 24 24">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5V5.5A2.5 2.5 0 0 1 6.5 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-menu" viewBox="0 0 24 24">
+      <path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-brain" viewBox="0 0 24 24">
+      <path d="M9.5 4.5a3.5 3.5 0 0 0-3 5.3A3.5 3.5 0 0 0 7 16.5V18a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14.5 4.5a3.5 3.5 0 0 1 3 5.3A3.5 3.5 0 0 1 17 16.5V18a3 3 0 0 1-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.5 4.5V12m5-7.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-layers" viewBox="0 0 24 24">
+      <path d="M12 2l10 6-10 6L2 8l10-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M2 12l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M2 16l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M19.4 15a7.9 7.9 0 0 0 .1-1l2-1.2-2-3.6-2.3.6a8.7 8.7 0 0 0-1.7-1l-.3-2.4H9.8L9.5 7.8a8.7 8.7 0 0 0-1.7 1l-2.3-.6-2 3.6L5.5 14a7.9 7.9 0 0 0 .1 1L3.5 16.2l2 3.6 2.3-.6a8.7 8.7 0 0 0 1.7 1l.3 2.4h5.4l.3-2.4a8.7 8.7 0 0 0 1.7-1l2.3.6 2-3.6L19.4 15Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="i-broom" viewBox="0 0 24 24">
+      <path d="M4 20l6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M8 14l2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M10 12l8-8a2.5 2.5 0 0 1 3.5 3.5l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M3 21c4-1 8-5 9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <a class="brand-mark icon-btn" href="../index.html" title="Back to hub" style="text-decoration:none;color:inherit">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        </a>
+        <span class="brand-title">IntentResolver Word Inventory</span>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="docs-shell">
+        <div class="sidebar-overlay" data-sidebar-overlay aria-hidden="true"></div>
+
+        <aside class="sidebar" aria-label="Documentation navigation">
+          <div class="sidebar__header">
+            <div class="sidebar__title">Word Inventory</div>
+            <div class="search" role="search">
+              <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input id="search" type="search" placeholder="Filter pages…" autocomplete="off" />
+            </div>
+          </div>
+          <nav class="nav" id="nav">
+            <a data-nav-link href="./overview.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Overview</span><span class="tag">Start</span></a>
+            <a data-nav-link href="./mental-model.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Mental model</span><span class="tag">Pipeline</span></a>
+            <a data-nav-link href="./config-global.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Global inventories</span><span class="tag">config/*</span></a>
+            <a data-nav-link href="./inline-inventories.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Inline inventories</span><span class="tag">pipeline</span></a>
+            <a data-nav-link href="./nlp-cleaner.html"><svg class="icon" aria-hidden="true"><use href="#i-broom"></use></svg><span>NLP cleaner</span><span class="tag">cleaning</span></a>
+            <a data-nav-link href="./per-intent.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Per-intent lexicons</span><span class="tag">intents</span></a>
+            <a data-nav-link href="./checklist.html"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg><span>Checklist</span><span class="tag">Where to add</span></a>
+          </nav>
+        </aside>
+
+        <section class="content" aria-label="Documentation content">
+          <div class="content__header">
+            <div>
+              <div class="toolbar">
+                <button class="btn mobile-nav-toggle icon-btn" type="button" data-sidebar-toggle>
+                  <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+                  <span>Menu</span>
+                </button>
+              </div>
+              <h1 class="content__title">Global inventories (config)</h1>
+              <p class="content__subtitle">Lists in <code>src/services/intentResolver/config/</code> that affect fuzzy matching, candidate detection, splitting, and inversion.</p>
+            </div>
+          </div>
+
+          <div class="content__body">
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A1</div>
+                <div class="section__title"><code>stopWords</code> — <code>config/stopWords.js</code></div>
+                <div class="section__meta">fuzzy + fallback</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Used to skip certain words when <code>pipeline/fuzzyMatcher.js</code> decides what words to even attempt to correct.</li>
+                  <li>Used by orphan fallback in <code>pipeline/candidateDetector.js</code> (“if any non-stop-words exist, default to product_search”).</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul>
+                  <li>Does not stop a word from matching intent <code>keywords</code>/<code>synonyms</code> directly.</li>
+                  <li>Is not the main place to remove social chatter from residual product text.</li>
+                </ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Will you regret never correcting typos for this word?</li>
+                  <li>Is it purely grammatical, or does it carry commerce meaning?</li>
+                  <li>If it’s commerce meaning (<code>cart</code>, <code>track</code>, <code>checkout</code>), should it really be skipped in fuzzy correction?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul>
+                  <li>Social noise (hi/thanks/please): prefer <code>FILLERS</code> or <code>nlpCleaner.cleanQuery()</code> greetings.</li>
+                  <li>Generic phrase causing false intent matches: consider <code>weakSynonyms</code>.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A2</div>
+                <div class="section__title"><code>commonWords</code> — <code>config/commonWords.js</code></div>
+                <div class="section__meta">fuzzy guard</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Common Word Guard in <code>pipeline/fuzzyMatcher.js</code>: if a word is common English, don’t correct it.</li>
+                  <li>Protects conversational words like “seriously”, “actually”, “love”, etc.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not influence intent matching or entity extraction.</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Is this word being wrongly corrected into an intent keyword?</li>
+                  <li>Is it common conversational language that should never be corrected?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul>
+                  <li>Grammar-only: <code>stopWords</code>.</li>
+                  <li>Domain-specific but should be protected: consider improving fuzzyMatcher guards (not this list).</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A3</div>
+                <div class="section__title"><code>weakSynonyms</code> — <code>config/weakSynonyms.js</code></div>
+                <div class="section__meta">down-weight phrases</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Down-weights generic multi-word phrases in <code>pipeline/candidateDetector.js</code>.</li>
+                  <li>If a matched multi-word synonym is in this list, it adds only <code>+0.3</code> keywordScore.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul>
+                  <li>Does not prevent matching.</li>
+                  <li>Does not affect schemaResolver scoring directly.</li>
+                </ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Does this phrase occur across many intents and cause false positives?</li>
+                  <li>Is it desire scaffolding (I want / can you / help me) rather than intent-specific?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul><li>If it’s intent-specific: add it to that intent’s <code>synonyms</code>.</li></ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A4</div>
+                <div class="section__title"><code>conjunctions</code> — <code>config/conjunctions.js</code></div>
+                <div class="section__meta">split statements</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Used by <code>pipeline/preprocessor.js</code> to split one message into multiple statements.</li>
+                  <li>Ordered list: multi-word connectors are matched first.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul>
+                  <li>Does not detect intent.</li>
+                  <li>Does not extract products.</li>
+                </ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Does this connector reliably separate two actions, not two objects?</li>
+                  <li>Will it cause harmful over-splitting (e.g., splitting product lists into separate intents)?</li>
+                </ul>
+                <p><strong>If not here, add it instead</strong></p>
+                <ul><li>If “compare X and Y” is being split incorrectly: add guard words to <code>conjunctionGuards</code>.</li></ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A5</div>
+                <div class="section__title"><code>conjunctionGuards</code> — <code>config/conjunctionGuards.js</code></div>
+                <div class="section__meta">prevent bad split</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Used by <code>pipeline/preprocessor.js</code> to prevent splitting when “and” links operands.</li>
+                  <li>Current example: compare-style phrases.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not prevent splitting on “then” (treated as always split-worthy).</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Does this word reliably imply “and” connects items (products/attributes), not intents?</li>
+                  <li>Is it safe as a global guard, or should it be intent-specific?</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A6</div>
+                <div class="section__title"><code>negations</code> — <code>config/negations.js</code></div>
+                <div class="section__meta">detect negation</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul><li>Marks statements as <code>negated</code> in <code>pipeline/preprocessor.js</code> using regex patterns.</li></ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not itself invert intents; inversion happens only if <code>intentInversions</code> defines a mapping.</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Will this accidentally label normal sentences as negated?</li>
+                  <li>Is this token used non-negatively in commerce queries?</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A7</div>
+                <div class="section__title"><code>intentInversions</code> — <code>config/intentInversions.js</code></div>
+                <div class="section__meta">invert intent</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Used by <code>pipeline/candidateDetector.js</code>.</li>
+                  <li>If a statement is negated and the detected intent appears here, remaps to the inverse.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not handle nuanced negation (“don’t remove” vs “remove”). It’s a coarse remap.</li></ul>
+                <p><strong>Questions before adding</strong></p>
+                <ul>
+                  <li>Is there a true stable inverse intent?</li>
+                  <li>Will user phrasing make the mapping correct most of the time?</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true">A8</div>
+                <div class="section__title"><code>intentRegistry</code> — <code>config/intentRegistry.js</code> (meta)</div>
+                <div class="section__meta">IDF & maps</div>
+              </button>
+              <div class="section__panel">
+                <p>This file doesn’t contain word lists, but it controls how your word lists are consumed.</p>
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Loads all intents.</li>
+                  <li>Exposes <code>getAllKeywords()</code>, <code>buildKeywordMap()</code>, and <code>buildIdfMap()</code> for keyword + synonym tokens across intents.</li>
+                </ul>
+                <p><strong>What it does NOT do</strong></p>
+                <ul><li>Does not apply stopword/common word filtering when building IDF. All tokens count.</li></ul>
+                <p><strong>Questions before adding new intent words</strong></p>
+                <ul>
+                  <li>Will this word show up in many intents and reduce its IDF signal?</li>
+                  <li>Is it so common that it dilutes IDF without adding meaning?</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <footer class="pager" aria-label="Page navigation">
+            <div class="pager__group">
+              <a class="btn icon-btn" href="./mental-model.html">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                <span>Previous</span>
+              </a>
+            </div>
+            <div class="pager__group">
+              <a class="btn btn--primary icon-btn" href="./inline-inventories.html">
+                <span>Next</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </a>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="../assets/app.js"></script>
+  <script>
+    DocsUI.setActiveNavFromLocation();
+    DocsUI.wireMobileSidebar();
+
+    DocsUI.$all('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sec = btn.closest('.section');
+        sec.dataset.open = sec.dataset.open === 'true' ? 'false' : 'true';
+      });
+    });
+
+    const input = document.getElementById('search');
+    if (input) {
+      input.addEventListener('input', DocsUI.debounce(() => {
+        const q = input.value.trim().toLowerCase();
+        DocsUI.$all('[data-nav-link]').forEach(a => {
+          const label = a.textContent.toLowerCase();
+          a.style.display = !q || label.includes(q) ? '' : 'none';
+        });
+      }, 60));
+    }
+  </script>
+</body>
+</html>

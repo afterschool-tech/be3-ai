@@ -398,7 +398,9 @@ async function handleCompareProducts(params, sessionId, state = null) {
     // Persist compared products to state for follow-up context (e.g. advice, add-to-cart)
     if (state) {
         await stateManager.updateLastSearch(sessionId, `Comparison: ${products.map(p => p.name).join(' vs ')}`, {}, products, products.length);
-        await stateManager.updateReferenceMap(sessionId, products);
+        const activeMicrostate = await stateManager.getMicrostate(sessionId);
+        const scope = activeMicrostate ? 'microstate' : 'global';
+        await stateManager.updateReferenceMap(sessionId, products, { scope });
     }
 
     return {

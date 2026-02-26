@@ -53,11 +53,13 @@ module.exports = {
             sandbox: 'soft',
             boostScore: 10.0,
             prompt: {
-                tool: 'microstate.collect',
+                tool: 'microstate.disambiguate',
                 params: {
-                    paramName: 'products',
+                    reason: 'compare_recommendations',
                     message: 'Which products would you like to compare?',
-                    hint: 'e.g., "iPhone 16 and Galaxy S24"'
+                    options: [],
+                    controls: { more: true, cancel: true, recommendedIndex: 0 },
+                    missingParam: 'products'
                 }
             },
             termination: {

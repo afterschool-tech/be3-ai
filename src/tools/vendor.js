@@ -1,6 +1,28 @@
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
+const {
+    buildProductCards,
+    buildFacetRefinerButtons,
+    deriveClauseNameFromAttributes,
+    pickVendorSeeMoreTitle,
+    computeHasNextPage,
+    createSnapshotId
+} = require('../utils/storefrontWhatsAppUx');
+
+function truncateButtonTitle(title, maxLen = 20) {
+    const t = String(title || '');
+    if (t.length <= maxLen) return t;
+    return t.slice(0, Math.max(0, maxLen - 1)) + '…';
+}
+
+function encodeBase64Url(str) {
+    return Buffer.from(String(str || ''), 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
 
 /**
  * Internal helper to resolve vendor from name or history
@@ -79,89 +101,111 @@ const vendorTools = {
         description: "Get products belonging to a specific vendor using multiple lookup methods (Tags, Collections, and Creator IDs). Use this when the user asks 'What does [Vendor] sell?' or 'Show me products from [Vendor]'.",
         params: {
             vendor: { type: 'string', description: 'Vendor name or "their" for current sequence' },
-            limit: { type: 'number', description: 'Max products to return (default 5)' }
+            limit: { type: 'number', description: 'Max products to return (default 5)' },
+            page: { type: 'number', description: 'Pagination page (1-indexed, default 1)' },
+            sort: { type: 'string', description: 'price_asc, price_desc, date_desc, relevance' },
+            attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' }
         },
         handler: async (params, context) => {
-            const { vendor: vendorName, limit = 5 } = params;
-            const vendor = resolveVendorFromContext(vendorName, context);
+            // Tool registry sometimes passes "vendor_name" instead of "vendor".
+            const vendorName = params.vendor || params.vendor_name;
+            const { limit = 5, page = 1, sort = 'relevance', attributes = {} } = params;
 
+            const vendor = resolveVendorFromContext(vendorName, context);
             if (!vendor) return { error: `Vendor "${vendorName}" not found.` };
 
-            console.log(`[VendorTool] Fetching products for ${vendor.business_name} using 4-path lookup (Priority: Tag)`);
+            const vendorTag = vendor.tag || vendor.business_name;
+            if (!vendorTag) {
+                return { error: `Vendor "${vendorName}" has no tag.` };
+            }
 
-            // Method 1: Tag Match (tag=) - STRICTEST VENDOR FILTER
-            const tagResult = await callBackendAPI(`/search/products?tag=${encodeURIComponent(vendor.tag || vendor.business_name)}&per_page=${limit}`);
-            if (tagResult.success && tagResult.data.products?.length > 0) {
-                let products = tagResult.data.products;
-                products = await processProductList(products);
+            const snapshotId = createSnapshotId();
+            try {
                 if (context.sessionId) {
-                    await stateManager.updateReferenceMap(context.sessionId, products);
+                    // Store a snapshot compatible with __nav:more:<snapshotId>__ → product.search paging.
+                    await stateManager.setSearchSnapshot(context.sessionId, snapshotId, {
+                        query: null,
+                        category: null,
+                        price_min: null,
+                        price_max: null,
+                        limit,
+                        page,
+                        sort,
+                        tag: vendorTag,
+                        attributes
+                    });
                 }
-                return {
-                    vendor: vendor.business_name,
-                    method: 'tag',
-                    products: products,
-                    total: tagResult.data.pagination?.total || products.length
-                };
+            } catch (_) {}
+
+            const searchQuery = new URLSearchParams({
+                per_page: limit,
+                page: page,
+                sort: sort
+            });
+            searchQuery.append('tag', vendorTag);
+            searchQuery.append('type', 'product');
+
+            const safeAttributes = attributes || {};
+            Object.entries(safeAttributes).forEach(([key, val]) => {
+                if (val === undefined || val === null) return;
+                searchQuery.append(`attribute.${key}`, val);
+            });
+
+            const result = await callBackendAPI(`/search?${searchQuery.toString()}`);
+            if (!result?.success) {
+                return { error: `Failed to fetch products for vendor "${vendor.business_name}"`, details: result?.error };
             }
 
-            // Method 2: Keyword Match (q=) - Fallback for loose names
-            const keywordResult = await callBackendAPI(`/search?q=${encodeURIComponent(vendor.business_name)}&per_page=${limit}`);
-            if (keywordResult.success && (keywordResult.data.products?.length > 0 || keywordResult.data.results?.length > 0)) {
-                let products = keywordResult.data.products || keywordResult.data.results;
-                products = await processProductList(products);
-                if (context.sessionId) {
-                    await stateManager.updateReferenceMap(context.sessionId, products);
-                }
-                return {
-                    vendor: vendor.business_name,
-                    method: 'keyword',
-                    products: products,
-                    total: keywordResult.data.pagination?.total || products.length
-                };
+            let rawProducts = result.data.products || result.data.results || [];
+            let products = await processProductList(rawProducts);
+            if (context.sessionId) {
+                const scope = context && context.microstate_active ? 'microstate' : 'global';
+                await stateManager.updateReferenceMap(context.sessionId, products, { scope });
             }
 
-            // Method 2: Collection Match (Vendor named collections)
-            const collKey = vendor.business_name.toLowerCase().replace(/\s+/g, '_');
-            const collection = context.COLLECTIONS[collKey] || Object.values(context.COLLECTIONS).find(c => c.label.toLowerCase() === vendor.business_name.toLowerCase());
+            const hasNextPage = computeHasNextPage({
+                pagination: result?.data?.pagination,
+                fallbackCount: result?.data?.total || products.length,
+                page,
+                limit
+            });
 
-            if (collection) {
-                const collResult = await callBackendAPI(`/search/products?collection=${collection.slug || collection.id}&per_page=${limit}`);
-                if (collResult.success && collResult.data.products?.length > 0) {
-                    let products = collResult.data.products;
-                    products = await processProductList(products);
-                    if (context.sessionId) {
-                        await stateManager.updateReferenceMap(context.sessionId, products);
-                    }
-                    return {
-                        vendor: vendor.business_name,
-                        method: 'collection',
-                        products: products,
-                        total: collResult.data.pagination?.total || products.length
-                    };
-                }
+            const { clauseButtons, valueButtons } = buildFacetRefinerButtons({
+                facets: result?.data?.facets,
+                attributes,
+                snapshotId
+            });
+
+            const clauseName = deriveClauseNameFromAttributes(attributes);
+
+            const globalButtons = [];
+            if (hasNextPage) {
+                const titleBase = pickVendorSeeMoreTitle(vendor.business_name || vendor.tag);
+                const seeMoreTitle = truncateButtonTitle(titleBase || 'See more');
+                globalButtons.push({
+                    id: `__nav:more:${snapshotId}__`,
+                    title: seeMoreTitle || 'See more',
+                    priority: 100
+                });
             }
 
-            // Method 3: Creator ID (Secondary fallback)
-            const creatorResult = await callBackendAPI(`/search/products?created_by=${vendor.id}&per_page=${limit}`);
-            if (creatorResult.success && creatorResult.data.products?.length > 0) {
-                let products = creatorResult.data.products;
-                products = await processProductList(products);
-                if (context.sessionId) {
-                    await stateManager.updateReferenceMap(context.sessionId, products);
-                }
-                return {
-                    vendor: vendor.business_name,
-                    method: 'creator_id',
-                    products: products,
-                    total: creatorResult.data.pagination?.total || products.length
-                };
-            }
+            const refiners = [...clauseButtons, ...valueButtons];
+            if (refiners.length > 0) globalButtons.push(...refiners);
+
+            const cardsPayload = buildProductCards(products);
 
             return {
                 vendor: vendor.business_name,
-                message: "No products found for this vendor using standard lookup methods.",
-                products: []
+                method: 'search',
+                products,
+                total: result.data.pagination?.total || result.data.total || products.length,
+                facets: result.data.facets,
+                whatsapp_product_cards: (Array.isArray(cardsPayload?.cards) && cardsPayload.cards.length > 0)
+                    ? cardsPayload
+                    : undefined,
+                whatsapp: (globalButtons.length > 0)
+                    ? { type: 'button', buttons: globalButtons }
+                    : undefined
             };
         }
     },
@@ -205,7 +249,22 @@ const vendorTools = {
         handler: async (params, context) => {
             const vendor = resolveVendorFromContext(params.vendor, context);
             if (!vendor) return { error: 'Vendor not found' };
-            return vendor;
+
+            const vendorKeyRaw = vendor.tag || vendor.business_name || vendor.id;
+            const vendorKey = vendorKeyRaw ? encodeBase64Url(vendorKeyRaw) : '';
+            const contactTitle = truncateButtonTitle(`Contact ${vendor.business_name || vendor.tag || 'vendor'}`);
+
+            return {
+                message: `Here’s information about **${vendor.business_name || vendor.tag || 'this vendor'}**.`,
+                vendor,
+                whatsapp: {
+                    type: 'button',
+                    buttons: [
+                        { id: `__vendor:products:${vendorKey}__`, title: 'See products' },
+                        { id: `__vendor:contact:${vendorKey}__`, title: contactTitle }
+                    ]
+                }
+            };
         }
     },
     'vendor.getContactLink': {

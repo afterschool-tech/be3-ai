@@ -11,6 +11,11 @@
  * Ambiguous reference words that can be relative pronouns or temporal/discourse markers.
  * Only resolve these when context strongly suggests a product reference.
  */
+ 
+const {
+    MODEL_QUALIFIER_WORDS
+} = require('../config/contextResolverGuards');
+
 const AMBIGUOUS_REFERENCE_WORDS = new Set([
     'it', 'this', 'that', 'then', 'the_one', 'the ones', 'ones',
     'them', 'those', 'these'  // can be relative/demonstrative or temporal marker
@@ -47,6 +52,56 @@ function shouldSkipAmbiguousReference(text, matchIndex, matchedWord) {
 }
 
 /**
+ * Skip resolving generic brand tokens when they appear to be part of a new
+ * model/product mention (e.g. "iPhone 17", "Samsung S24 Ultra").
+ *
+ * This prevents collisions where reference_map contains generic keys like "iphone"
+ * that would otherwise be replaced inside new product mentions.
+ */
+function buildBrandTokenSet(storeContext) {
+    const brands = new Set();
+
+    const predefined = storeContext?.ATTRIBUTES?.brand?.predefined_values;
+    if (Array.isArray(predefined)) {
+        for (const b of predefined) {
+            const v = (b?.value ?? '').toString().toLowerCase().trim();
+            const l = (b?.label ?? '').toString().toLowerCase().trim();
+            if (v) brands.add(v);
+            if (l) brands.add(l);
+        }
+    }
+
+    // Fallback tokens: brand-like words that may exist in product names / reference_map
+    // but are not strictly "brands" in the storeContext attribute (e.g., iphone, macbook).
+    const fallback = ['iphone', 'macbook'];
+    fallback.forEach(x => brands.add(x));
+
+    return brands;
+}
+
+function shouldSkipBrandCollision(text, matchIndex, matchedWord, storeContext) {
+    const lower = matchedWord.toLowerCase().trim();
+
+    const brandTokens = buildBrandTokenSet(storeContext);
+    if (!brandTokens.has(lower)) return false;
+
+    const after = text.substring(matchIndex + matchedWord.length);
+
+    // If a model qualifier follows (numbers, sku-ish chunks, or common variant words),
+    // treat it as a new product mention and do NOT resolve the brand token.
+    const qualifierWords = MODEL_QUALIFIER_WORDS ? Array.from(MODEL_QUALIFIER_WORDS) : [];
+    const qualifierWordsPattern = qualifierWords.length > 0 ? `(?:${qualifierWords.map(escapeRegex).join('|')})` : '(?!)';
+    const modelQualifierPattern = new RegExp(`^\\s*(?:[0-9]+|[a-z]{1,3}[0-9]{1,4}|${qualifierWordsPattern})\\b`, 'i');
+
+    if (modelQualifierPattern.test(after)) {
+        console.log(`[ContextResolver] ⏭️ Skipping "${matchedWord}" (brand collision; model qualifier after) | after="${after.slice(0, 24)}"`);
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Resolve product ID to product name using search results from state.
  */
 function resolveIdToName(productId, state) {
@@ -64,7 +119,7 @@ function resolveIdToName(productId, state) {
  * Scans for known reference patterns, replaces with product names.
  * Returns { resolvedText, resolutions[] }.
  */
-function resolveReferences(text, state) {
+function resolveReferences(text, state, storeContext) {
     if (!state || !state.reference_map) {
         console.log(`[ContextResolver] resolveReferences: no state or reference_map, passing through`);
         return { resolvedText: text, resolutions: [] };
@@ -85,6 +140,10 @@ function resolveReferences(text, state) {
     resolvedText = text.replace(regex, (matched, offset, fullString) => {
         // Skip resolution when word is a relative pronoun or temporal/discourse marker
         if (shouldSkipAmbiguousReference(fullString, offset, matched)) return matched;
+
+        // Skip brand-token collisions like "iPhone 17" where "iphone" would otherwise
+        // be resolved to a previous product name from reference_map.
+        if (shouldSkipBrandCollision(fullString, offset, matched, storeContext)) return matched;
 
         const phrase = matched.toLowerCase();
         const refKey = phrase.replace(/ /g, '_');
@@ -130,4 +189,4 @@ function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-module.exports = { resolveReferences, resolveIdToName, shouldSkipAmbiguousReference };
+module.exports = { resolveReferences, resolveIdToName, shouldSkipAmbiguousReference, shouldSkipBrandCollision };

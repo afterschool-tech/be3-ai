@@ -1317,6 +1317,30 @@ function getLeanContext() {
     };
 }
 
+function getUltraLeanContext() {
+    const vendors = Object.values(VENDORS).map(v => ({
+        name: v.business_name,
+        phone: v.whatsapp_phone,
+        checkout: v.checkout_style
+    }));
+
+    const categories = Object.values(CATEGORIES).map(c => ({
+        name: c.label,
+        slug: c.slug,
+        count: c.total_count
+    }));
+
+    const brandValues = (ATTRIBUTES?.brand?.predefined_values || [])
+        .map(b => (b?.value ?? b?.label))
+        .filter(Boolean);
+
+    return {
+        vendors,
+        categories,
+        brands: brandValues
+    };
+}
+
 
 const CATEGORY_TREE = getCategoryTree();
 
@@ -1330,5 +1354,6 @@ module.exports = {
     CATEGORY_TREE,
     CATEGORY_TREE,
     getContextSummary,
-    getLeanContext
+    getLeanContext,
+    getUltraLeanContext
 };

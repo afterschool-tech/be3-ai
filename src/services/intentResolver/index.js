@@ -31,6 +31,7 @@ const parameterNormalizer = require('./pipeline/parameterNormalizer');
 const intentPorter = require('./pipeline/intentPorter');
 const toolMapper = require('./pipeline/toolMapper');
 const microstateRunner = require('./pipeline/microstateRunner');
+const stack = require('./pipeline/stack');
 const contextReconciler = require('./pipeline/contextReconciler');
 const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
 const { createPositionTracker } = require('./pipeline/extractionPositionTracker');
@@ -40,7 +41,9 @@ const { getParent, getSiblings, getPath, isRoot, findById } = require('../../con
 const intentRegistry = require('./config/intentRegistry');
 const microstateRegistry = require('./config/microstateRegistry');
 const stateManager = require('../../state/stateManager');
-const { resolveGroupedOrdinal, resolveOrdinal } = require('../../utils/responseResolver');
+const { resolveEngineeredToken, resolveGroupedOrdinal, resolveOrdinal } = require('../../utils/responseResolver');
+const { callBackendAPI } = require('../../utils/apiClient');
+const { processProductList } = require('../../utils/productUtility');
 
 // Build IDF map once at module load
 const idfMap = intentRegistry.buildIdfMap();
@@ -50,6 +53,366 @@ const idfMap = intentRegistry.buildIdfMap();
  */
 async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const userId = state.user_id;
+
+    // Stage 0a: Engineered pagination tokens (no microstate required)
+    // If user clicks a "See more" button, WA sends __nav:more__.
+    // We re-run the last product.search with page increment.
+    const rawEarly = String(userMessage || '').trim();
+    const engineeredEarly = resolveEngineeredToken(rawEarly);
+    if (engineeredEarly && engineeredEarly.namespace === 'nav' && (engineeredEarly.command === 'more' || engineeredEarly.command === 'prev') && userId) {
+        const last = state.product_context?.last_search;
+        let baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;
+
+        // Snapshot-aware pagination: __nav:more:<snapshotId>__
+        const snapshotId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (snapshotId) {
+            try {
+                const snap = await stateManager.getSearchSnapshot(userId, snapshotId);
+                if (snap?.filters && typeof snap.filters === 'object') {
+                    baseFilters = snap.filters;
+                }
+            } catch (_) {}
+        }
+
+        if (baseFilters) {
+            const currentPage = Number.isFinite(baseFilters.page) ? Number(baseFilters.page) : 1;
+            const delta = engineeredEarly.command === 'prev' ? -1 : 1;
+            const nextPage = Math.max(1, currentPage + delta);
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'product.search',
+                    params: {
+                        ...baseFilters,
+                        page: nextPage
+                    },
+                    reason: 'Engineered pagination'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_pagination: true
+            };
+        }
+    }
+
+    // Stage 0b: Engineered clause filter buttons (no microstate required)
+    // Clause buttons emitted by product.search use: __filter:clause:<attrCode>:<clauseName>__
+    // We re-run the last product.search with an attribute clause applied and reset to page 1.
+    if (engineeredEarly && engineeredEarly.namespace === 'filter' && engineeredEarly.command === 'clause' && userId) {
+        const last = state.product_context?.last_search;
+        let baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;
+        const arg = engineeredEarly.arg ? String(engineeredEarly.arg) : '';
+        const parts = arg.split(':').filter(Boolean);
+        let snapshotId = null;
+        let attrCode = parts[0] || null;
+        let clauseName = parts.slice(1).join(':') || null;
+
+        // Snapshot-aware clause token: __filter:clause:<snapshotId>:<attrCode>:<clauseName>__
+        if (parts.length >= 3) {
+            snapshotId = parts[0] || null;
+            attrCode = parts[1] || null;
+            clauseName = parts.slice(2).join(':') || null;
+        }
+        if (clauseName) {
+            try {
+                clauseName = decodeURIComponent(clauseName);
+            } catch (_) {}
+        }
+
+        if (snapshotId) {
+            try {
+                const snap = await stateManager.getSearchSnapshot(userId, snapshotId);
+                if (snap?.filters && typeof snap.filters === 'object') {
+                    baseFilters = snap.filters;
+                }
+            } catch (_) {}
+        }
+
+        if (baseFilters && attrCode && clauseName) {
+            const baseAttrs = (baseFilters.attributes && typeof baseFilters.attributes === 'object')
+                ? baseFilters.attributes
+                : {};
+
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'product.search',
+                    params: {
+                        ...baseFilters,
+                        page: 1,
+                        attributes: {
+                            ...baseAttrs,
+                            [`${attrCode}:${clauseName}`]: clauseName
+                        }
+                    },
+                    reason: 'Engineered clause filter'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_clause_filter: true
+            };
+        }
+    }
+
+    // Stage 0c: Engineered facet-value filter buttons (no microstate required)
+    // Value buttons emitted by product.search use: __filter:value:<attrCode>:<value>__
+    // We re-run the last product.search with an exact attribute value filter and reset to page 1.
+    if (engineeredEarly && engineeredEarly.namespace === 'filter' && engineeredEarly.command === 'value' && userId) {
+        const last = state.product_context?.last_search;
+        let baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;
+        const arg = engineeredEarly.arg ? String(engineeredEarly.arg) : '';
+        const parts = arg.split(':').filter(Boolean);
+        let snapshotId = null;
+        let attrCode = parts[0] || null;
+        let value = parts.slice(1).join(':') || null;
+
+        // Snapshot-aware value token: __filter:value:<snapshotId>:<attrCode>:<value>__
+        if (parts.length >= 3) {
+            snapshotId = parts[0] || null;
+            attrCode = parts[1] || null;
+            value = parts.slice(2).join(':') || null;
+        }
+        if (value) {
+            try {
+                value = decodeURIComponent(value);
+            } catch (_) {}
+        }
+
+        if (snapshotId) {
+            try {
+                const snap = await stateManager.getSearchSnapshot(userId, snapshotId);
+                if (snap?.filters && typeof snap.filters === 'object') {
+                    baseFilters = snap.filters;
+                }
+            } catch (_) {}
+        }
+
+        if (baseFilters && attrCode && value) {
+            const baseAttrs = (baseFilters.attributes && typeof baseFilters.attributes === 'object')
+                ? baseFilters.attributes
+                : {};
+
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'product.search',
+                    params: {
+                        ...baseFilters,
+                        page: 1,
+                        attributes: {
+                            ...baseAttrs,
+                            [attrCode]: value
+                        }
+                    },
+                    reason: 'Engineered facet value filter'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_value_filter: true
+            };
+        }
+    }
+
+    // Stage 0d: Engineered product details buttons (no microstate required)
+    // Product card "More info" uses: __product:details:<productId>__
+    if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'details' && userId) {
+        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (productId) {
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'product.getDetails',
+                    params: { product_id: productId },
+                    reason: 'Engineered product details'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_product_details: true
+            };
+        }
+    }
+
+    // Stage 0e: Engineered product compare buttons (no microstate required)
+    // Product details screen "Compare" uses: __product:compare:<productId>__
+    // This opens product_compare microstate with the first product pre-filled.
+    if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'compare' && userId) {
+        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (productId) {
+            const msObj = {
+                type: 'missing_products',
+                intent: 'product_compare',
+                sandbox: 'soft',
+                boostScore: 10.0,
+                params: {
+                    products: [productId]
+                },
+                entities: [],
+                options: [],
+                validators: {},
+                normalizers: {},
+                breakthrough: null,
+                fields: null,
+                currentFieldIndex: 0,
+                contract: {
+                    maxMessages: 3,
+                    messagesUsed: 0,
+                    onFulfilled: ['products'],
+                    onKeyword: ['cancel', 'nevermind', 'stop'],
+                    escalation: null,
+                    onFulfilledSpawn: null
+                }
+            };
+            await stateManager.setMicrostate(userId, msObj);
+
+            return {
+                intents: [{ intentName: 'product_compare', score: 0, parameters: msObj.params }],
+                tools: [{
+                    tool: 'microstate.collect',
+                    params: {
+                        paramName: 'products',
+                        message: 'What is the second product you want to compare with?',
+                        hint: 'e.g., "Galaxy S24"'
+                    },
+                    reason: 'Compare: collect second product'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                microstate_opened: true,
+                engineered_product_compare: true
+            };
+        }
+    }
+
+    // Stage 0f: Engineered cart add buttons (no microstate required)
+    // Product details screen "Add to cart" uses: __cart:add:<productId>__
+    if (engineeredEarly && engineeredEarly.namespace === 'cart' && engineeredEarly.command === 'add' && userId) {
+        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (productId) {
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'cart.add',
+                    params: { product_id: productId },
+                    reason: 'Engineered add to cart'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_cart_add: true
+            };
+        }
+    }
+
+    // Stage 0g: Engineered cart/view + checkout + continue shopping buttons
+    // cart.add returns: __cart:view__ / __order:checkout__ / __shop:continue__
+    if (engineeredEarly && userId) {
+        if (engineeredEarly.namespace === 'cart' && engineeredEarly.command === 'view') {
+            return {
+                intents: [],
+                tools: [{ tool: 'cart.view', params: {}, reason: 'Engineered view cart' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_cart_view: true
+            };
+        }
+
+        if (engineeredEarly.namespace === 'order' && engineeredEarly.command === 'checkout') {
+            return {
+                intents: [],
+                tools: [{ tool: 'order.checkout', params: {}, reason: 'Engineered checkout' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_checkout: true
+            };
+        }
+
+        if (engineeredEarly.namespace === 'shop' && engineeredEarly.command === 'continue') {
+            const last = state.product_context?.last_search;
+            const baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;
+            if (baseFilters) {
+                return {
+                    intents: [],
+                    tools: [{ tool: 'product.search', params: { ...baseFilters }, reason: 'Engineered continue shopping (repeat last search)' }],
+                    isMultiIntent: false,
+                    corrections: { original: userMessage },
+                    resolutions: [],
+                    engineered_continue_shopping: true
+                };
+            }
+
+            return {
+                intents: [],
+                tools: [{ tool: 'product.search', params: { query: 'popular', limit: 5 }, reason: 'Engineered continue shopping (default browse)' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_continue_shopping: true
+            };
+        }
+    }
+
+    // Stage 0h: Engineered vendor buttons (no microstate required)
+    // vendor.getInfo returns: __vendor:products:<vendorKey>__ / __vendor:contact:<vendorKey>__
+    // product.getDetails returns: __vendor:info:<vendorKey>__
+    if (engineeredEarly && userId && engineeredEarly.namespace === 'vendor') {
+        const vendorKeyRaw = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        let vendorKey = vendorKeyRaw;
+        if (vendorKey) {
+            const decodeBase64Url = (s) => {
+                const clean = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+                const pad = clean.length % 4 === 0 ? '' : '='.repeat(4 - (clean.length % 4));
+                return Buffer.from(clean + pad, 'base64').toString('utf8');
+            };
+            // Prefer base64url decoding (WhatsApp-safe). Fallback to decodeURIComponent for legacy tokens.
+            try {
+                vendorKey = decodeBase64Url(vendorKey);
+            } catch (_) {
+                try {
+                    vendorKey = decodeURIComponent(vendorKey);
+                } catch (_) {}
+            }
+        }
+
+        if (engineeredEarly.command === 'products' && vendorKey) {
+            return {
+                intents: [],
+                tools: [{ tool: 'vendor.getProducts', params: { vendor: vendorKey }, reason: 'Engineered vendor products' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_vendor_products: true
+            };
+        }
+
+        if (engineeredEarly.command === 'contact' && vendorKey) {
+            return {
+                intents: [],
+                tools: [{ tool: 'vendor.getContactLink', params: { vendor: vendorKey }, reason: 'Engineered vendor contact' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_vendor_contact: true
+            };
+        }
+
+        if (engineeredEarly.command === 'info' && vendorKey) {
+            return {
+                intents: [],
+                tools: [{ tool: 'vendor.getInfo', params: { vendor: vendorKey }, reason: 'Engineered vendor info' }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_vendor_info: true
+            };
+        }
+    }
 
     // ═══════════════════════════════════════════════
     // Stage 0: CHECK ACTIVE MICROSTATE
@@ -89,6 +452,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             type: activeMicrostate.type,
             reason: 'Message broke through soft sandbox'
         });
+        // Clear stack on breakthrough - user is starting fresh
+        await stateManager.clearStack(userId);
         // Fall through to normal pipeline
     }
 
@@ -103,7 +468,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     });
 
     // Stage 2: Context resolution (pronouns, ordinals, brand refs)
-    const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(afterFuzzy, state);
+    const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(afterFuzzy, state, storeContext);
     logDebug('PIPELINE:STAGE2_CONTEXT', {
         _desc: 'Reference resolution — pronouns/ordinals replaced from reference_map',
         _example: '"add the first one" → "add iPhone XS Max" (from ordinal_list)',
@@ -450,12 +815,31 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     });
 
     // ═══════════════════════════════════════════════
+    // STACK: Execute intents sequentially
+    // If multiple intents, execute one at a time and preserve remaining in stack
+    // ═══════════════════════════════════════════════
+    const stackResult = await stack.executeIntentStack(normalizedStatements, state, storeContext, state.session_id);
+    
+    // When stack is active, only process the FIRST intent
+    // Remaining intents stay in stack for later
+    let intentsToProcess = intents;
+    if (stackResult.stack_active) {
+        logDebug('PIPELINE:STACK_ACTIVATED', {
+            _desc: 'STACK activated — only processing first intent, remaining deferred',
+            currentIndex: stackResult.current_intent_index,
+            totalIntents: stackResult.total_intents
+        });
+        // Only process first intent
+        intentsToProcess = [intents[0]];
+    }
+
+    // ═══════════════════════════════════════════════
     // Stage 8a: SEARCH CONTEXT — Write & Read
     // Write: After search/discovery, capture semantic context.
     // Read: For cart/compare/availability, resolve references from context.
     // TTL: Decrement on every message.
     // ═══════════════════════════════════════════════
-    const winnerIntent = intents[0];
+    const winnerIntent = intentsToProcess[0];
     if (userId) {
         // Always decrement TTL on every message
         await stateManager.decrementSearchContextTTL(userId);
@@ -533,7 +917,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             params._context_grouped_ordinal = phraseStr;
                             params._from_context = true;
                             params._context_source = searchCtx.source_intent;
-                            params._context_query = searchCtx.query;
+                            params._context_query = searchCtx.query || '';
                             contextApplied = true;
                             logDebug('PIPELINE:STAGE8A_GROUPED_ORDINAL', {
                                 _desc: 'Grouped ordinal — "first two", "top three" → slice of context product_ids',
@@ -599,7 +983,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         params._context_single_ordinal = singleOrdinalPhrase || `#${oneBased}`;
                         params._from_context = true;
                         params._context_source = searchCtx.source_intent;
-                        params._context_query = searchCtx.query;
+                        params._context_query = searchCtx.query || '';
                         contextApplied = true;
                         logDebug('PIPELINE:STAGE8A_SINGLE_ORDINAL', {
                             _desc: 'Single ordinal — "first one", "the second one" → inject that product ID',
@@ -615,7 +999,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         params._context_single_ordinal = singleOrdinalPhrase || 'last';
                         params._from_context = true;
                         params._context_source = searchCtx.source_intent;
-                        params._context_query = searchCtx.query;
+                        params._context_query = searchCtx.query || '';
                         contextApplied = true;
                         logDebug('PIPELINE:STAGE8A_SINGLE_ORDINAL', {
                             _desc: 'Single ordinal — "last one" → inject last product ID',
@@ -902,7 +1286,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 if (contextApplied) {
                     params._from_context = true;
                     params._context_source = searchCtx.source_intent;
-                    params._context_query = searchCtx.query;
+                    params._context_query = searchCtx.query || '';
 
                     // If we have context product IDs, inject them into the main 'products' parameter
                     // to leverage the toolMapper's expansion logic (Phase 8b).
@@ -1058,7 +1442,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     }
 
     // Stage 8b: Map intents to tool calls
-    const tools = toolMapper.mapToTools(intents.map(i => ({
+    const tools = toolMapper.mapToTools(intentsToProcess.map(i => ({
         intentName: i.intentName,
         parameters: i.parameters || {},
         _ported_from: i._ported_from // Preserve _ported_from for tool mapping
@@ -1067,7 +1451,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     logDebug('PIPELINE:STAGE8_TOOL_MAPPING', {
         _desc: 'Tool mapping — map intents to tool calls via paramMap, expand product arrays',
         _example: 'add_to_cart → cart.add; product_search → product.search',
-        intents: intents.map(i => ({ intent: i.intentName, score: i.score, params: i.parameters })),
+        intents: intentsToProcess.map(i => ({ intent: i.intentName, score: i.score, params: i.parameters })),
         tools: tools.map(t => ({ tool: t.tool, params: t.params, reason: t.reason }))
     });
 
@@ -1078,7 +1462,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // After pipeline produces winner, check if it triggers a new microstate.
     // If triggered → open microstate, return prompt tool instead of original.
     // ═══════════════════════════════════════════════
-    const winner = intents[0];
+    const winner = intentsToProcess[0];
     if (winner && userId) {
         const entities = extractEntities(cleanText(userMessage), storeContext, idfMap).entities;
         const triggered = microstateRegistry.checkTriggers(
@@ -1089,6 +1473,50 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         if (triggered) {
             const msObj = triggered.buildMicrostate(winner);
+
+            // Special UX: compare microstate should open with 5 recommended products + More/Cancel buttons.
+            if (winner.intentName === 'product_compare' && triggered.triggerName === 'missing_products') {
+                try {
+                    const cats = Object.values(storeContext?.CATEGORIES || {})
+                        .filter(c => (c?.total_count || 0) > 0 && c?.slug)
+                        .map(c => c.slug);
+                    const seedCategories = cats.sort(() => Math.random() - 0.5).slice(0, 6);
+                    const categorySlug = seedCategories[0] || null;
+
+                    if (categorySlug) {
+                        const searchParams = new URLSearchParams({
+                            category: String(categorySlug),
+                            per_page: '5',
+                            page: '1'
+                        });
+                        const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
+                        if (result?.success) {
+                            const rawProducts = result?.data?.products || result?.data?.results || [];
+                            const products = await processProductList(rawProducts);
+                            const options = (products || [])
+                                .map(p => {
+                                    const id = p?.id || p?.handle || p?.product_id;
+                                    const label = p?.name || p?.title;
+                                    if (!id || !label) return null;
+                                    return { label: String(label), value: String(id), price: p?.price || p?.price_display || undefined };
+                                })
+                                .filter(Boolean);
+
+                            msObj.options = options;
+                            msObj.params = {
+                                ...(msObj.params || {}),
+                                _compare_rec: {
+                                    phase: 'seed',
+                                    seedCategories,
+                                    seedIndex: 0,
+                                    categorySlug,
+                                    page: 1
+                                }
+                            };
+                        }
+                    }
+                } catch (_) {}
+            }
 
             await stateManager.setMicrostate(userId, msObj);
 
@@ -1101,9 +1529,31 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 onFulfilled: msObj.contract.onFulfilled
             });
 
+            const openedPrompt = (winner.intentName === 'product_compare' && triggered.triggerName === 'missing_products')
+                ? {
+                    tool: 'microstate.disambiguate',
+                    params: {
+                        reason: 'compare_recommendations',
+                        message: (() => {
+                            const fallback = triggered.prompt?.params?.message || 'Which products would you like to compare?';
+                            const slug = msObj?.params?._compare_rec?.categorySlug;
+                            if (slug) {
+                                return `Here are some suggestions from **${slug}**. You can also type any product name to compare:`;
+                            }
+                            return `${fallback} (You can also type any product name — these are just suggestions.)`;
+                        })(),
+                        parentIntent: winner.intentName,
+                        options: msObj.options || [],
+                        controls: { more: true, cancel: true, recommendedIndex: 0 },
+                        missingParam: 'products'
+                    },
+                    reason: 'Compare: recommended products'
+                }
+                : triggered.prompt;
+
             return {
                 intents,
-                tools: [triggered.prompt],
+                tools: [openedPrompt],
                 isMultiIntent: false,
                 corrections: {
                     original: userMessage,
@@ -1117,15 +1567,17 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     }
 
     return {
-        intents,
+        intents: intentsToProcess,
         tools,
-        isMultiIntent,
+        isMultiIntent: stackResult.stack_active ? true : isMultiIntent,
         corrections: {
             original: userMessage,
             afterFuzzy,
             afterContext
         },
-        resolutions
+        resolutions,
+        stack_active: stackResult.stack_active || false,
+        stack_remaining: stackResult.stack_active ? stackResult.total_intents - 1 : 0
     };
 }
 

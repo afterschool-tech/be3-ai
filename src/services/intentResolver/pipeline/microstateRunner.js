@@ -19,13 +19,16 @@
 
 const { extractEntities } = require('./entityExtractor');
 const { resolveIntent } = require('./schemaResolver');
-const { resolveYesNo, resolveOrdinal, resolveSelection, resolveMultiSelection, isTerminationKeyword } = require('../../../utils/responseResolver');
+const { resolveEngineeredToken, resolveYesNo, resolveOrdinal, resolveSelection, resolveMultiSelection, isTerminationKeyword } = require('../../../utils/responseResolver');
 const { logDebug } = require('../../../utils/debugLogger');
 const stateManager = require('../../../state/stateManager');
 const intentRegistry = require('../config/intentRegistry');
 const toolMapper = require('./toolMapper');
 const parameterNormalizer = require('./parameterNormalizer');
+const stack = require('./stack');
 const { cleanText } = require('./nlpCleaner');
+const { callBackendAPI } = require('../../../utils/apiClient');
+const { processProductList } = require('../../../utils/productUtility');
 
 // IDF map for entity extraction (loaded once)
 let idfMap = null;
@@ -47,6 +50,9 @@ async function run(userMessage, microstate, state, storeContext) {
     const userId = state.user_id;
     const cleanedText = cleanText(userMessage).toLowerCase().trim();
 
+    // Engineered tokens must be resolved from RAW text because cleanText() strips underscores.
+    const engineeredToken = resolveEngineeredToken(String(userMessage || '').trim());
+
     logDebug('MICROSTATE:RUNNER_ENTER', {
         _desc: 'Microstate runner enter — process message in active microstate sandbox',
         _example: 'ordinal_choice active → run termination, response analysis, fulfillment',
@@ -60,6 +66,188 @@ async function run(userMessage, microstate, state, storeContext) {
     });
 
     // ── Step 1: Check termination keywords ──
+    // Explicit engineered cancel token is a deterministic termination (no breakthrough).
+    if (engineeredToken && engineeredToken.namespace === 'flow' && engineeredToken.command === 'cancel') {
+        logDebug('MICROSTATE:TERMINATED', {
+            _desc: 'Microstate termination — explicit engineered cancel token',
+            _example: '__flow:cancel__ → clear microstate, escalate or fall through',
+            reason: 'engineered_token',
+            token: engineeredToken.raw
+        });
+        console.log(`[MicrostateRunner] ❌ Terminated by engineered token: "${engineeredToken.raw}"`);
+
+        const escalation = microstate.contract.escalation;
+        await stateManager.clearMicrostate(userId);
+
+        if (escalation) {
+            const tools = toolMapper.mapToTools([{
+                intentName: escalation,
+                parameters: microstate.params
+            }]);
+            return {
+                handled: true,
+                result: {
+                    intents: [{ intentName: escalation, score: 0, parameters: microstate.params }],
+                    tools,
+                    isMultiIntent: false,
+                    corrections: { original: userMessage },
+                    microstate_escalated: true
+                }
+            };
+        }
+
+        return {
+            handled: true,
+            result: {
+                intents: [],
+                tools: [],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                microstate_cancelled: true
+            }
+        };
+    }
+
+    // Explicit engineered pagination tokens.
+    // For product_compare.missing_products, treat "More" as a recommendation cycle (category traversal),
+    // otherwise fall back to generic option pagination.
+    if (engineeredToken && engineeredToken.namespace === 'nav' && (engineeredToken.command === 'more' || engineeredToken.command === 'prev')) {
+        if (microstate && microstate.intent === 'product_compare' && microstate.type === 'missing_products') {
+            const next = await advanceCompareRecommendations({
+                userId,
+                microstate,
+                storeContext,
+                delta: engineeredToken.command === 'prev' ? -1 : 1
+            });
+
+            if (next) {
+                return {
+                    handled: true,
+                    result: {
+                        intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: next.params }],
+                        tools: [{
+                            tool: 'microstate.disambiguate',
+                            params: {
+                                reason: 'compare_recommendations',
+                                message: next.message,
+                                parentIntent: microstate.intent,
+                                options: next.window,
+                                baseIndex: 0,
+                                controls: { more: next.hasMore, cancel: true, recommendedIndex: 0 },
+                                missingParam: 'products'
+                            },
+                            reason: 'Compare recommendations: next'
+                        }],
+                        isMultiIntent: false,
+                        corrections: { original: userMessage },
+                        microstate_reprompt: true,
+                        microstate_compare_recommendations: true
+                    }
+                };
+            }
+        }
+
+        // Tool-driven pagination microstate: re-run underlying tool with updated paging params.
+        if (microstate && microstate.type === 'tool_pagination' && microstate.params && microstate.params.tool) {
+            const tool = String(microstate.params.tool);
+            const baseParams = (microstate.params.baseParams && typeof microstate.params.baseParams === 'object')
+                ? microstate.params.baseParams
+                : {};
+
+            const currentPage = Number.isFinite(microstate.params.page) ? Number(microstate.params.page) : 1;
+            const delta = engineeredToken.command === 'prev' ? -1 : 1;
+            const nextPage = Math.max(1, currentPage + delta);
+
+            const fullState = await stateManager.getState(userId);
+            if (fullState && fullState.microstate && fullState.microstate.id === microstate.id) {
+                fullState.microstate.params = {
+                    ...(fullState.microstate.params || {}),
+                    page: nextPage
+                };
+                await stateManager.setState(userId, fullState);
+            }
+
+            return {
+                handled: true,
+                result: {
+                    intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: microstate.params }],
+                    tools: [{
+                        tool,
+                        params: {
+                            ...baseParams,
+                            page: nextPage
+                        },
+                        reason: 'Tool pagination'
+                    }],
+                    isMultiIntent: false,
+                    corrections: { original: userMessage },
+                    microstate_tool_pagination: true
+                }
+            };
+        }
+
+        const allOptions = Array.isArray(microstate.params?._all_options) && microstate.params._all_options.length > 0
+            ? microstate.params._all_options
+            : (Array.isArray(microstate.options) ? microstate.options : []);
+
+        const pageSize = Number.isFinite(microstate.params?._page_size) ? microstate.params._page_size : 10;
+        const currentOffset = Number.isFinite(microstate.params?._page_offset) ? microstate.params._page_offset : 0;
+
+        const delta = engineeredToken.command === 'prev' ? -pageSize : pageSize;
+        let nextOffset = currentOffset + delta;
+        if (nextOffset < 0) nextOffset = Math.max(0, allOptions.length - (allOptions.length % pageSize || pageSize));
+        if (nextOffset >= allOptions.length) nextOffset = 0;
+
+        const nextWindow = allOptions.slice(nextOffset, nextOffset + pageSize);
+        const hasMore = allOptions.length > nextOffset + pageSize;
+
+        // Persist updated microstate options + paging params.
+        const fullState = await stateManager.getState(userId);
+        if (fullState && fullState.microstate && fullState.microstate.id === microstate.id) {
+            fullState.microstate.params = {
+                ...(fullState.microstate.params || {}),
+                _all_options: allOptions,
+                _page_size: pageSize,
+                _page_offset: nextOffset
+            };
+            fullState.microstate.options = nextWindow;
+            await stateManager.setState(userId, fullState);
+        }
+
+        const repromptMessage = buildReprompt({
+            ...microstate,
+            options: nextWindow,
+            params: {
+                ...microstate.params,
+                _all_options: allOptions,
+                _page_size: pageSize,
+                _page_offset: nextOffset
+            }
+        }, {}, { engineeredToken, rawText: cleanedText });
+
+        return {
+            handled: true,
+            result: {
+                intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: microstate.params }],
+                tools: [{
+                    tool: 'microstate.disambiguate',
+                    params: {
+                        reason: 'reprompt',
+                        message: repromptMessage,
+                        parentIntent: microstate.intent,
+                        options: nextWindow,
+                        baseIndex: nextOffset,
+                        controls: { more: hasMore, cancel: true, recommendedIndex: 0 }
+                    },
+                    reason: 'Microstate pagination'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                microstate_reprompt: true
+            }
+        };
+    }
+
     if (isTerminationKeyword(cleanedText, microstate.contract.onKeyword)) {
         logDebug('MICROSTATE:TERMINATED', {
             _desc: 'Microstate termination — user said cancel/stop keyword',
@@ -132,7 +320,16 @@ async function run(userMessage, microstate, state, storeContext) {
     const advanced = Object.keys(newParams).length > 0;
 
     const mergedParams = { ...microstate.params, ...newParams };
-    const fulfilled = checkFulfillment(microstate.contract.onFulfilled, mergedParams);
+    let fulfilled = checkFulfillment(microstate.contract.onFulfilled, mergedParams);
+
+    // Compare UX guard: require at least 2 products before fulfilling product_compare.
+    // Prevents generic tokens (e.g., "products") or single-item replies from triggering compare execution.
+    if (fulfilled && microstate.intent === 'product_compare') {
+        const p = mergedParams.products;
+        if (!Array.isArray(p) || p.length < 2) {
+            fulfilled = false;
+        }
+    }
 
     if (fulfilled) {
         logDebug('MICROSTATE:FULFILLED', {
@@ -164,6 +361,69 @@ async function run(userMessage, microstate, state, storeContext) {
             await stateManager.setMicrostate(userId, nextSpawn);
         }
 
+        // ── STACK: Check if there's a stack to resume ──
+        const stackData = await stateManager.getStack(userId);
+        if (stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0) {
+            logDebug('MICROSTATE:STACK_PRESERVED', {
+                _desc: 'Microstate fulfilled, preserving stack for sequential execution',
+                remainingIntents: stackData.remaining_intents.length
+            });
+            console.log(`[MicrostateRunner] 📚 Preserving stack with ${stackData.remaining_intents.length} remaining intents for sequential execution`);
+
+            // Mark current intent as executed ONLY if not already marked by stack loop
+            // The stack loop leaves intent at front of remaining_intents until executed
+            const alreadyInExecuted = stackData.executed_intents.some(
+                e => e.intentName === microstate.intent
+            );
+            if (!alreadyInExecuted) {
+                stackData.executed_intents.push({ intentName: microstate.intent, parameters: finalParams });
+            }
+
+            // Remove the fulfilled intent instance from remaining_intents.
+            // IMPORTANT: there may be multiple intents with the same intentName (e.g., vendor_contact twice).
+            // We match using the original microstate params (pre-fulfillment) to avoid removing the wrong intent.
+            const msParams = microstate?.params || {};
+            const msProductName = typeof msParams.product_name === 'string' ? msParams.product_name : null;
+            const matchIndex = stackData.remaining_intents.findIndex((ri) => {
+                if (!ri || ri.intentName !== microstate.intent) return false;
+                const riParams = ri.parameters || {};
+                if (msProductName) {
+                    return typeof riParams.product_name === 'string' && riParams.product_name === msProductName;
+                }
+                // Fallback: only remove the first intentName match if we have no stable discriminator.
+                return true;
+            });
+
+            if (matchIndex >= 0) {
+                stackData.remaining_intents.splice(matchIndex, 1);
+                console.log(`[MicrostateRunner] 📚 Removed fulfilled intent from remaining queue (index=${matchIndex})`);
+            }
+
+            // DO NOT re-resolve ordinals here - search context is not ready yet!
+            // Let server.js handle ordinal resolution after each intent executes
+
+            // Update stack but keep it active for server.js to continue
+            if (stackData.remaining_intents.length === 0) {
+                await stateManager.clearStack(userId);
+            } else {
+                await stateManager.setStack(userId, stackData);
+            }
+
+            // Return only the fulfilled microstate intent
+            // Server.js will detect the active stack and continue execution
+            return {
+                handled: true,
+                result: {
+                    intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: finalParams }],
+                    tools,
+                    isMultiIntent: false,
+                    corrections: { original: userMessage },
+                    microstate_fulfilled: true,
+                    stack_active: stackData.remaining_intents.length > 0
+                }
+            };
+        }
+
         return {
             handled: true,
             result: {
@@ -188,12 +448,20 @@ async function run(userMessage, microstate, state, storeContext) {
             messagesUsed: updated?.contract?.messagesUsed,
             confidence: updated?.confidence
         });
-        console.log(`[MicrostateRunner] ⏰ Microstate expired`);
+        const expiryReason = !updated ? 'null' : updated.confidence <= 0 ? 'confidence' : 'maxMessages';
+        console.log(`[MicrostateRunner] ⏰ Microstate expired | type=${microstate.type} | intent=${microstate.intent} | reason=${expiryReason}`);
 
         const escalation = microstate.contract.escalation;
         await stateManager.clearMicrostate(userId);
 
+        // If a stack exists, we should NOT kill it on microstate expiry.
+        // Expiry is not a "breakthrough" (user starting fresh). It's a termination of the current microstate.
+        const stackData = await stateManager.getStack(userId);
+        const stackActive = !!(stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0);
+        console.log(`[MicrostateRunner] 🧭 Expiry handling | escalation=${escalation ? escalation : 'none'} | stackActive=${stackActive} | remainingIntents=${stackData?.remaining_intents?.length || 0}`);
+
         if (escalation) {
+            console.log(`[MicrostateRunner] 🧭 Expiry action: escalate → ${escalation}`);
             const tools = toolMapper.mapToTools([{
                 intentName: escalation,
                 parameters: mergedParams
@@ -205,18 +473,33 @@ async function run(userMessage, microstate, state, storeContext) {
                     tools,
                     isMultiIntent: false,
                     corrections: { original: userMessage },
-                    microstate_escalated: true
+                    microstate_escalated: true,
+                    stack_active: stackActive
                 }
             };
         }
 
-        return { handled: false, result: null };
+        // No escalation: treat as handled so the pipeline doesn't interpret this as a breakthrough.
+        // Server/REPL can continue with any preserved stack.
+        console.log(`[MicrostateRunner] 🧭 Expiry action: continue stack (no escalation)`);
+        return {
+            handled: true,
+            result: {
+                intents: [],
+                tools: [],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                microstate_expired: true,
+                stack_active: stackActive
+            }
+        };
     }
 
 
 
     // ── Re-prompt the user ──
-    const repromptMessage = buildReprompt(microstate, newParams, responseAnalysis);
+    const msForReprompt = updated || microstate;
+    const repromptMessage = buildReprompt(msForReprompt, newParams, responseAnalysis);
     logDebug('MICROSTATE:REPROMPT', {
         _desc: 'Microstate reprompt — not fulfilled, ask for more info',
         _example: '"Which address?" when address missing',
@@ -233,7 +516,9 @@ async function run(userMessage, microstate, state, storeContext) {
                     reason: 'reprompt',
                     message: repromptMessage,
                     parentIntent: microstate.intent,
-                    options: microstate.options
+                    options: msForReprompt.options,
+                    controls: { more: true, cancel: true, recommendedIndex: 0 },
+                    missingParam: 'products'
                 },
                 reason: 'Microstate re-prompt'
             }],
@@ -241,6 +526,206 @@ async function run(userMessage, microstate, state, storeContext) {
             corrections: { original: userMessage },
             microstate_reprompt: true
         }
+    };
+}
+
+async function fetchCompareRecommendations({ storeContext, categorySlug, page = 1, limit = 5 }) {
+    if (!categorySlug) return null;
+
+    const searchParams = new URLSearchParams({
+        category: String(categorySlug),
+        per_page: String(limit),
+        page: String(page)
+    });
+
+    const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
+    if (!result?.success) return null;
+
+    const rawProducts = result?.data?.products || result?.data?.results || [];
+    const products = await processProductList(rawProducts);
+
+    const total = Number(result?.data?.pagination?.total || result?.data?.total || 0);
+    const hasNext = Number.isFinite(total) && total > 0
+        ? (page * limit) < total
+        : (Array.isArray(products) && products.length >= limit);
+
+    const options = (products || [])
+        .map(p => {
+            const id = p?.id || p?.handle || p?.product_id;
+            const label = p?.name || p?.title;
+            if (!id || !label) return null;
+            return { label: String(label), value: String(id), price: p?.price || p?.price_display || undefined };
+        })
+        .filter(Boolean);
+
+    return { options, hasNext, products };
+}
+
+function pickRandomActiveCategorySlug(storeContext) {
+    const cats = Object.values(storeContext?.CATEGORIES || {});
+    const active = cats.filter(c => (c?.total_count || 0) > 0 && c?.slug);
+    if (active.length === 0) return null;
+    return active[Math.floor(Math.random() * active.length)].slug;
+}
+
+function getSiblingCategorySlugs(storeContext, categoryId) {
+    if (!storeContext?.CATEGORIES || !categoryId) return [];
+    const catEntry = Object.values(storeContext.CATEGORIES).find(c => c?.id === categoryId);
+    if (!catEntry?.parent_id) return [];
+    return Object.values(storeContext.CATEGORIES)
+        .filter(c => c?.parent_id === catEntry.parent_id && c?.id !== categoryId && c?.slug)
+        .map(c => c.slug);
+}
+
+function findCategorySlugById(storeContext, categoryId) {
+    if (!storeContext?.CATEGORIES || !categoryId) return null;
+    const cat = Object.values(storeContext.CATEGORIES).find(c => c?.id === categoryId);
+    return cat?.slug || null;
+}
+
+async function advanceCompareRecommendations({ userId, microstate, storeContext, delta = 1 }) {
+    const ms = microstate || {};
+    const params = (ms.params && typeof ms.params === 'object') ? { ...ms.params } : {};
+
+    const currentProducts = Array.isArray(params.products) ? params.products : [];
+    const hasFirstProduct = currentProducts.length >= 1;
+    const firstProduct = hasFirstProduct ? currentProducts[0] : null;
+
+    // Keep recommendation state in microstate params.
+    const rec = (params._compare_rec && typeof params._compare_rec === 'object') ? { ...params._compare_rec } : {};
+    const limit = 5;
+
+    // Phase A: no products picked yet → random categories rotation
+    if (!hasFirstProduct) {
+        const seed = Array.isArray(rec.seedCategories) ? rec.seedCategories : [];
+        const idx = Number.isFinite(rec.seedIndex) ? rec.seedIndex : 0;
+
+        let seedCategories = seed;
+        if (seedCategories.length === 0) {
+            const cats = Object.values(storeContext?.CATEGORIES || {})
+                .filter(c => (c?.total_count || 0) > 0 && c?.slug)
+                .map(c => c.slug);
+            // Small random sample to rotate through.
+            seedCategories = cats.sort(() => Math.random() - 0.5).slice(0, 6);
+        }
+
+        const nextIndex = seedCategories.length > 0
+            ? (idx + (delta >= 0 ? 1 : -1) + seedCategories.length) % seedCategories.length
+            : 0;
+
+        const categorySlug = seedCategories[nextIndex] || pickRandomActiveCategorySlug(storeContext);
+        if (!categorySlug) return null;
+
+        const page = 1;
+        const fetched = await fetchCompareRecommendations({ storeContext, categorySlug, page, limit });
+        if (!fetched || !Array.isArray(fetched.options) || fetched.options.length === 0) return null;
+
+        rec.phase = 'seed';
+        rec.seedCategories = seedCategories;
+        rec.seedIndex = nextIndex;
+        rec.categorySlug = categorySlug;
+        rec.page = page;
+
+        params._compare_rec = rec;
+
+        // Persist options directly on microstate so ordinal selection works.
+        const fullState = await stateManager.getState(userId);
+        if (fullState?.microstate && fullState.microstate.id === ms.id) {
+            fullState.microstate.params = { ...(fullState.microstate.params || {}), _compare_rec: rec };
+            fullState.microstate.options = fetched.options;
+            await stateManager.setState(userId, fullState);
+        }
+
+        return {
+            message: `Here are some suggestions from **${categorySlug}**. You can also type any product name to compare:`,
+            window: fetched.options,
+            hasMore: fetched.hasNext || seedCategories.length > 1,
+            params
+        };
+    }
+
+    // Phase B: first product picked → recommend from its category then siblings.
+    if (!rec.phase || rec.phase === 'seed') {
+        rec.phase = 'by_category';
+        rec.baseCategoryId = rec.baseCategoryId || null;
+        rec.baseCategorySlug = rec.baseCategorySlug || null;
+        rec.siblingSlugs = Array.isArray(rec.siblingSlugs) ? rec.siblingSlugs : [];
+        rec.siblingIndex = Number.isFinite(rec.siblingIndex) ? rec.siblingIndex : 0;
+        rec.page = Number.isFinite(rec.page) ? rec.page : 1;
+    }
+
+    // Determine base category from first product if needed.
+    if (!rec.baseCategoryId && firstProduct) {
+        try {
+            const details = await callBackendAPI(`/products/storefront/products/${firstProduct}`);
+            const catIds = details?.data?.product?.metadata?.category_ids || [];
+            if (Array.isArray(catIds) && catIds.length > 0) {
+                rec.baseCategoryId = catIds[0];
+            }
+        } catch (_) {}
+    }
+
+    if (!rec.baseCategorySlug && rec.baseCategoryId) {
+        rec.baseCategorySlug = findCategorySlugById(storeContext, rec.baseCategoryId);
+    }
+
+    if (rec.siblingSlugs.length === 0 && rec.baseCategoryId) {
+        rec.siblingSlugs = getSiblingCategorySlugs(storeContext, rec.baseCategoryId);
+        rec.siblingIndex = 0;
+    }
+
+    const traversal = [rec.baseCategorySlug, ...(rec.siblingSlugs || [])].filter(Boolean);
+    if (traversal.length === 0) return null;
+
+    // Paging within current category first; if no next page, move to next category.
+    let currentCatIndex = Number.isFinite(rec.siblingIndex) ? rec.siblingIndex : 0;
+    let currentCatSlug = traversal[Math.min(currentCatIndex, traversal.length - 1)];
+    let page = Number.isFinite(rec.page) ? rec.page : 1;
+
+    if (delta >= 0) {
+        // Try next page; if exhausted, advance category.
+        const probe = await fetchCompareRecommendations({ storeContext, categorySlug: currentCatSlug, page, limit });
+        if (probe && probe.hasNext) {
+            page = page + 1;
+        } else {
+            currentCatIndex = (currentCatIndex + 1) % traversal.length;
+            currentCatSlug = traversal[currentCatIndex];
+            page = 1;
+        }
+    } else {
+        // Prev page; if at start, go to previous category.
+        if (page > 1) {
+            page = Math.max(1, page - 1);
+        } else {
+            currentCatIndex = (currentCatIndex - 1 + traversal.length) % traversal.length;
+            currentCatSlug = traversal[currentCatIndex];
+            page = 1;
+        }
+    }
+
+    const fetched = await fetchCompareRecommendations({ storeContext, categorySlug: currentCatSlug, page, limit });
+    if (!fetched || !Array.isArray(fetched.options) || fetched.options.length === 0) {
+        return null;
+    }
+
+    rec.siblingIndex = currentCatIndex;
+    rec.categorySlug = currentCatSlug;
+    rec.page = page;
+    params._compare_rec = rec;
+
+    const fullState = await stateManager.getState(userId);
+    if (fullState?.microstate && fullState.microstate.id === ms.id) {
+        fullState.microstate.params = { ...(fullState.microstate.params || {}), _compare_rec: rec };
+        fullState.microstate.options = fetched.options;
+        await stateManager.setState(userId, fullState);
+    }
+
+    const firstLabel = String(firstProduct || '').trim();
+    return {
+        message: `Pick the second product to compare with **${firstLabel}** (recommended from **${currentCatSlug}**):`,
+        window: fetched.options,
+        hasMore: fetched.hasNext || traversal.length > 1,
+        params
     };
 }
 
@@ -254,6 +739,7 @@ async function run(userMessage, microstate, state, storeContext) {
  */
 function analyzeResponse(text, microstate) {
     const analysis = {
+        engineeredToken: resolveEngineeredToken(text),
         yesNo: resolveYesNo(text),
         ordinal: resolveOrdinal(text),
         selection: null,
@@ -286,7 +772,38 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
     // ── 2. Generic selection mapping for microstates ──
     if (responseAnalysis.selection && onFulfilled.length > 0 && !newParams.attributes) {
         const targetParam = onFulfilled[0]; // Primary param we're waiting for
-        newParams[targetParam] = responseAnalysis.selection.match;
+
+        // Special-case: product_compare collects a LIST; option picks should append to products.
+        if (microstate.intent === 'product_compare' && targetParam === 'products') {
+            const picked = responseAnalysis.selection.match;
+            const existing = Array.isArray(microstate?.params?.products) ? microstate.params.products : [];
+            const combined = [...existing, picked];
+            const deduped = [];
+            const seen = new Set();
+            for (const x of combined) {
+                const key = (x ?? '').toString().trim();
+                if (!key) continue;
+                const k = key.toLowerCase();
+                if (seen.has(k)) continue;
+                seen.add(k);
+                deduped.push(key);
+            }
+            newParams.products = deduped;
+            newParams.product_name = null;
+
+            const idx = Number.isFinite(responseAnalysis.selection.index) ? responseAnalysis.selection.index : null;
+            const opt = (idx != null && Array.isArray(microstate.options)) ? microstate.options[idx] : null;
+            const label = opt && typeof opt === 'object' ? opt.label : null;
+            const key = (picked ?? '').toString().trim();
+            if (label && key) {
+                const prev = (microstate?.params?._compare_labels && typeof microstate.params._compare_labels === 'object')
+                    ? microstate.params._compare_labels
+                    : {};
+                newParams._compare_labels = { ...prev, [key]: String(label) };
+            }
+        } else {
+            newParams[targetParam] = responseAnalysis.selection.match;
+        }
     }
 
     // ── 2b. Ordinal-choice microstate: user said "2" or "first one" → pick that product from list ──
@@ -387,7 +904,23 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
                     separator: splitSource.match(splitRegex)?.[0]?.trim() || 'none'
                 });
 
-                newParams.products = items;
+                // IMPORTANT: If the microstate was seeded with existing products (e.g. compare button
+                // __product:compare:<id>__ sets products: [firstProductId]), do NOT overwrite.
+                // Append the newly collected product(s) and dedupe.
+                const existing = Array.isArray(microstate?.params?.products) ? microstate.params.products : [];
+                const combined = [...existing, ...items];
+                const deduped = [];
+                const seen = new Set();
+                for (const x of combined) {
+                    const key = (x ?? '').toString().trim();
+                    if (!key) continue;
+                    const k = key.toLowerCase();
+                    if (seen.has(k)) continue;
+                    seen.add(k);
+                    deduped.push(key);
+                }
+
+                newParams.products = deduped;
             }
         }
     }
@@ -527,6 +1060,23 @@ function buildReprompt(microstate, newParams, responseAnalysis) {
 
     // Determine which param is still pending (first missing)
     const mergedPreview = { ...(microstate.params || {}), ...newParams };
+
+    // Special UX: product_compare should ask for the second product once the first is captured.
+    // Avoids confusing generic prompts like "which products?" after the user already gave one.
+    if (microstate.intent === 'product_compare') {
+        const products = mergedPreview.products;
+        if (Array.isArray(products) && products.length === 1) {
+            const first = String(products[0] || '').trim();
+            if (first) {
+                const labelMap = (mergedPreview._compare_labels && typeof mergedPreview._compare_labels === 'object')
+                    ? mergedPreview._compare_labels
+                    : null;
+                const display = labelMap && labelMap[first] ? String(labelMap[first]) : first;
+                return `Got it — you want to compare **${display}**. What’s the second product? (You can type any product name.)`;
+            }
+            return `Got it. What’s the second product you want to compare? (You can type any product name.)`;
+        }
+    }
     const pendingParam = onFulfilled.find(p => {
         const val = mergedPreview[p];
         if (val === null || val === undefined) return true;

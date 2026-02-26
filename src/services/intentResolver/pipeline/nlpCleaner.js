@@ -57,7 +57,7 @@ function cleanQuery(text) {
     doc.match('#Modal').remove(); // Removes "can", "could", "should", etc.
 
     // Remove specific navigation/action verbs that are noise for search
-    const actionNoise = ['get', 'show', 'find', 'view', 'search', 'give', 'want', 'need', 'buy'];
+    const actionNoise = ['get', 'show', 'find', 'view', 'see', 'search', 'give', 'want', 'need', 'buy'];
     actionNoise.forEach(v => doc.match(v).remove());
 
     // Remove social greetings

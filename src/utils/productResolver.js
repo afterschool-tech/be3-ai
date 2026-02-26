@@ -17,6 +17,21 @@ async function resolveProduct(identifier, context) {
     const { sessionId } = context;
     const { logDebug } = require('./debugLogger');
 
+    // Guard: do not attempt to resolve generic nouns as products.
+    // These frequently appear in compare prompts ("compare products") and can accidentally resolve
+    // to some arbitrary catalog item via search fallback.
+    try {
+        const generic = String(identifier).toLowerCase().trim();
+        if (['product', 'products', 'item', 'items'].includes(generic)) {
+            logDebug('TOOL:PRODUCT_RESOLUTION', {
+                _desc: 'Product resolution — blocked generic identifier',
+                identifier,
+                method: 'blocked_generic'
+            });
+            return null;
+        }
+    } catch (_) {}
+
     // 1. Check if it's already a UUID/Handle (Simple check)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
     if (isUuid) {
@@ -50,6 +65,38 @@ async function resolveProduct(identifier, context) {
         }
     }
 
+    // 2.5 Try to resolve directly from last_search snapshot (common in compare microstate flows)
+    if (sessionId) {
+        try {
+            const state = await stateManager.getState(sessionId);
+            const last = state?.product_context?.last_search?.results;
+            if (Array.isArray(last) && last.length > 0) {
+                const needle = String(identifier).toLowerCase().trim();
+                const exact = last.find(p => {
+                    const name = (p?.name || p?.title || '').toString().toLowerCase().trim();
+                    const handle = (p?.metadata?.handle || p?.handle || '').toString().toLowerCase().trim();
+                    return (name && name === needle) || (handle && handle === needle);
+                });
+                const loose = exact || last.find(p => {
+                    const name = (p?.name || p?.title || '').toString().toLowerCase();
+                    return name && (name.includes(needle) || needle.includes(name));
+                });
+                const fromSnapshot = loose?.id || loose?.handle || loose?.product_id || loose?.metadata?.handle || null;
+                if (fromSnapshot) {
+                    logDebug('TOOL:PRODUCT_RESOLUTION', {
+                        _desc: 'Product resolution — last_search snapshot match',
+                        identifier,
+                        resolvedId: fromSnapshot,
+                        method: 'last_search_snapshot'
+                    });
+                    return fromSnapshot;
+                }
+            }
+        } catch (e) {
+            console.warn(`[ProductResolver] Snapshot resolution failed: ${e.message}`);
+        }
+    }
+
     // 3. Fallback: Search by name to find the best ID match
     try {
         const searchParams = new URLSearchParams({
@@ -59,9 +106,11 @@ async function resolveProduct(identifier, context) {
 
         const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
 
-        const products = result.data?.products || result.data?.results || [];
+        const products = result?.data?.products || result?.data?.results || [];
         if (products.length > 0) {
-            const resolvedId = products[0].id;
+            const first = products[0];
+            const resolvedId = first?.id || first?.handle || first?.product_id || first?.metadata?.handle || null;
+            if (!resolvedId) return null;
             logDebug('TOOL:PRODUCT_RESOLUTION', {
                 _desc: 'Product resolution — search fallback → find product by name',
                 _example: '"Samsung s26 Ultra" → search API → uuid',

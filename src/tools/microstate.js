@@ -21,11 +21,15 @@ const microstateTools = {
             reason: { type: 'string', required: true, description: 'Why disambiguation is needed (category_match, multiple_results, etc.)' },
             message: { type: 'string', required: true, description: 'Human-readable question to ask' },
             options: { type: 'array', required: false, description: 'Structured options: [{ label, value }]' },
+            baseIndex: { type: 'number', required: false, description: '0-based index offset for global numbering (pagination)' },
+            controls: { type: 'dict', required: false, description: 'Optional controls: { more: boolean, cancel: boolean, skip: boolean, recommendedIndex: number }' },
             parentIntent: { type: 'string', required: false, description: 'The intent that opened this microstate' },
             missingParam: { type: 'string', required: false, description: 'The parameter we need' }
         },
         handler: async (params, context) => {
-            const { reason, message, options, parentIntent, missingParam } = params;
+            const { reason, message, options, baseIndex, controls, parentIntent, missingParam } = params;
+            const offset = Number.isFinite(baseIndex) ? baseIndex : 0;
+            const ctrl = controls || null;
 
             // Build numbered option list if options provided
             let formattedMessage = message;
@@ -33,9 +37,37 @@ const microstateTools = {
                 const optionList = options.map((opt, i) => {
                     const label = typeof opt === 'string' ? opt : opt.label;
                     const price = opt.price ? ` — ${opt.price}` : '';
-                    return `${i + 1}. ${label}${price}`;
+                    return `${offset + i + 1}. ${label}${price}`;
                 }).join('\n');
                 formattedMessage = `${message}\n\n${optionList}`;
+            }
+
+            let whatsapp = null;
+            if (Array.isArray(options) && options.length > 0) {
+                if (options.length <= 3 && !ctrl) {
+                    whatsapp = {
+                        type: 'button',
+                        buttons: options.slice(0, 3).map((opt, i) => {
+                            const label = typeof opt === 'string' ? opt : opt.label;
+                            return { id: String(offset + i + 1), title: label };
+                        })
+                    };
+                } else if (ctrl) {
+                    const buttons = [];
+                    const recIndex = Number.isFinite(ctrl.recommendedIndex) ? ctrl.recommendedIndex : 0;
+                    const rec = options[recIndex];
+                    if (rec) {
+                        const label = typeof rec === 'string' ? rec : rec.label;
+                        buttons.push({ id: String(offset + recIndex + 1), title: label });
+                    }
+                    if (ctrl.more) buttons.push({ id: '__nav:more__', title: 'More' });
+                    if (ctrl.cancel) buttons.push({ id: '__flow:cancel__', title: 'Cancel' });
+                    if (ctrl.skip) buttons.push({ id: '__flow:skip__', title: 'Skip' });
+                    whatsapp = {
+                        type: 'button',
+                        buttons: buttons.slice(0, 3)
+                    };
+                }
             }
 
             return {
@@ -46,7 +78,8 @@ const microstateTools = {
                 reason,
                 parentIntent,
                 missingParam,
-                updateHistory: true
+                updateHistory: true,
+                whatsapp
             };
         }
     },
@@ -118,6 +151,32 @@ const microstateTools = {
                 paramName,
                 parentIntent,
                 updateHistory: true
+            };
+        }
+    },
+
+    'microstate.buttons': {
+        description: 'Send an interactive WhatsApp button prompt (up to 3 buttons).',
+        params: {
+            message: { type: 'string', required: true, description: 'Prompt text to show above the buttons' },
+            buttons: { type: 'array', required: true, description: 'Buttons: [{ id, title }]. Max 3.' }
+        },
+        handler: async (params) => {
+            const { message, buttons } = params;
+            const safeButtons = Array.isArray(buttons) ? buttons.slice(0, 3) : [];
+
+            return {
+                directResponse: true,
+                message,
+                action: 'buttons_requested',
+                updateHistory: true,
+                whatsapp: {
+                    type: 'button',
+                    buttons: safeButtons.map(b => ({
+                        id: String(b.id ?? ''),
+                        title: String(b.title ?? b.id ?? '')
+                    }))
+                }
             };
         }
     }

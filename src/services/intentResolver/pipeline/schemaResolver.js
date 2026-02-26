@@ -68,6 +68,15 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const { entities, residualWords } = extractionResult;
     const allIntents = intentRegistry.getAll();
 
+    const textLower = String(text || '').toLowerCase();
+
+    // Heuristic: comparison/advice requests often don't include an explicit "compare" verb,
+    // but do include strong comparison signals ("comparison", "which one should I get").
+    // If multiple product-like mentions exist, prefer product_compare over product_search.
+    const hasComparisonSignal = /\b(comparison|compare|vs\.?|versus|difference between|difference|between|side by side|which one should i|get based on)\b/i.test(textLower);
+    const productLikeMentions = (textLower.match(/\b(iphone|galaxy|samsung|infinix|tecno|itel|pixel|macbook|ipad|air|pro|max|ultra)\b/g) || []).length;
+    const likelyMultiProductRequest = productLikeMentions >= 2;
+
     // ── Phase 1: Build entity-to-param map ──
     const entityParams = {};  // paramName → entity value
     const entityTypes = new Set();
@@ -105,6 +114,14 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const actionCategories = new Set(actionEntities.map(a => a.category));
     const specificCartOps = ['cart_add', 'cart_remove', 'cart_update'];
     const hasSpecificCartOp = specificCartOps.some(op => actionCategories.has(op));
+
+    const hasCartRemoveAction = actionCategories.has('cart_remove');
+
+    // Compare action should dominate ambiguous discovery signals.
+    // Example: "Compare them" may expand into product names containing brand tokens (e.g. "Infinix")
+    // which can look like a search refinement. If the user explicitly said "compare", we should
+    // strongly prefer product_compare over product_search.
+    const hasCompareAction = actionCategories.has('compare');
 
     for (const action of actionEntities) {
         // Skip generic cart_view when a specific cart operation is present
@@ -176,7 +193,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3d. IDF Keyword Match (beyond action verbs): Check intent keywords against text words
-        const textWords = text.toLowerCase().split(/\s+/);
+        const textWords = textLower.split(/\s+/);
         for (const kw of (intent.keywords || [])) {
             const kwLower = kw.toLowerCase();
             if (textWords.includes(kwLower) && !matchedKeywords.includes(kwLower)) {
@@ -198,6 +215,31 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // ── Phase 3f: Intent-Specific Signal Rules ──
+
+        // [Cart Remove Dominance Rule]: if the user explicitly says remove, prioritize remove_from_cart.
+        // This prevents false positives where incidental tokens cause product_search to win.
+        if (hasCartRemoveAction) {
+            if (intentName === 'remove_from_cart') score += 6.0;
+            if (intentName === 'product_search' || intentName === 'discovery_sentinel' || intentName === 'browse_collection') score -= 4.0;
+        }
+
+        // [Compare-by-signal Rule]: If the user asks for advice "based on comparison" or "which one should I get",
+        // and the message looks like it contains multiple product mentions, treat it as compare-first.
+        if (hasComparisonSignal && likelyMultiProductRequest) {
+            if (intentName === 'product_compare') score += 5.0;
+            if (intentName === 'product_search') score -= 2.5;
+        }
+
+        // [Compare Dominance Rule]: When the user uses a compare verb, do not let discovery/search
+        // intents steal the win just because a brand token or clause is present in the text.
+        if (hasCompareAction) {
+            if (intentName === 'product_compare') {
+                score += 6.0;
+            }
+            if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
+                score -= 4.0;
+            }
+        }
 
         // [Search-Discovery Rule]: If we have a category AND a clause (e.g. "cheap smartphones"),
         // this is a very strong signal for product_search even without an action verb.

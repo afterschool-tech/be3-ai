@@ -155,7 +155,8 @@ Reply ONLY with the "slug" of the category. No other text.`;
                         });
 
                         if (products.length > 0) {
-                            await stateManager.updateReferenceMap(context.sessionId, products);
+                            const scope = context && context.microstate_active ? 'microstate' : 'global';
+                            await stateManager.updateReferenceMap(context.sessionId, products, { scope });
 
                             // Populate search_context with recovery product IDs, attributes map, and category
                             const existingCtx = await stateManager.getSearchContext(context.sessionId);

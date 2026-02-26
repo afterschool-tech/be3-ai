@@ -17,6 +17,11 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false) {
     const cats = context || CATEGORIES;
     let catLower = cat.trim().toLowerCase();
 
+    // Guard: avoid partial-matching extremely short tokens (e.g., "in", "on", "at")
+    // which can accidentally match inside real category labels ("All in one PCs").
+    // Still allow exact-match resolution (keys/labels/slugs/ids).
+    const isTooShortForPartial = catLower.length < 3;
+
     // 1. Handle breadcrumbs
     if (catLower.includes('>')) {
         catLower = catLower.split('>').pop().trim();
@@ -37,7 +42,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false) {
             score = 100;
         }
         // Partial match with word boundary check
-        else if (!exactMatchOnly) {
+        else if (!exactMatchOnly && !isTooShortForPartial) {
             const regex = new RegExp(`\\b${catLower}\\b`, 'i');
             if (regex.test(labelLower) || regex.test(slugLower)) {
                 score = 10;
