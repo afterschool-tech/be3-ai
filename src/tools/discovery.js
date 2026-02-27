@@ -9,6 +9,7 @@ const { performSemanticSearch } = require('../utils/searchUtility');
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
+const crypto = require('crypto');
 
 const discoveryTools = {
     'discovery.ensureSuggestions': {
@@ -204,10 +205,13 @@ Reply ONLY with the "slug" of the category. No other text.`;
         description: '100% deterministic search shadow. Verifies product.search results using string matching. Falls back to category browsing when results are empty or irrelevant. No AI calls.',
         params: {
             query: { type: 'string', description: 'The discovery/browse query' },
-            category: { type: 'string', description: 'Category hint (if provided)' }
+            category: { type: 'string', description: 'Category hint (if provided)' },
+            limit: { type: 'number', description: 'Max results (default 5)' },
+            page: { type: 'number', description: 'Pagination page (1-indexed, default 1)' },
+            sort: { type: 'string', description: 'price_asc, price_desc, date_desc, relevance' }
         },
         handler: async (params, context, accumulatedResults = []) => {
-            const { query, category } = params;
+            const { query, category, limit = 5, page = 1, sort = 'relevance' } = params;
 
             console.log(`[Sentinel-D] Deterministic check for: "${query || category || 'browse'}"`);
 
@@ -409,7 +413,20 @@ Reply ONLY with the "slug" of the category. No other text.`;
 
             // 4. Fetch fallback products deterministically
             try {
-                const result = await callBackendAPI(`/search/products?category=${bestCategory.slug}&per_page=5`);
+                const snapshotId = crypto.randomBytes(4).toString('hex');
+                try {
+                    if (context.sessionId) {
+                        await stateManager.setSearchSnapshot(context.sessionId, snapshotId, {
+                            query: query || null,
+                            category: bestCategory.slug,
+                            page,
+                            limit,
+                            sort
+                        });
+                    }
+                } catch (_) {}
+
+                const result = await callBackendAPI(`/search/products?category=${bestCategory.slug}&per_page=${limit}&page=${page}&sort=${encodeURIComponent(sort)}`);
                 let rawProducts = result.data?.products || result.data?.results || [];
                 
                 // Extract attributes BEFORE processProductList (attributes are stripped)
@@ -480,6 +497,49 @@ Reply ONLY with the "slug" of the category. No other text.`;
                     });
                 }
 
+                const ordinalSuffix = (n) => {
+                    if (n === 1) return 'st';
+                    if (n === 2) return 'nd';
+                    if (n === 3) return 'rd';
+                    return 'th';
+                };
+
+                const pickedForCards = Array.isArray(products) ? products.filter(Boolean) : [];
+                const buildCardText = (p) => {
+                    const priceText = (p.price !== undefined && p.price !== null) ? `₦${p.price}` : 'Price unavailable';
+                    return `*${p.name || p.title || 'Product'}*\n💰 ${priceText}`;
+                };
+                const cards = pickedForCards.map((p, idx) => {
+                    const n = idx + 1;
+                    const suffix = ordinalSuffix(n);
+                    const imageUrl = p.image_url || p.metadata?.image_url || null;
+                    return {
+                        id: p.id,
+                        content_type: 'product',
+                        sponsor: {
+                            type: 'product',
+                            product_id: p.id,
+                            name: p.name || p.title || null,
+                            ordinal: n
+                        },
+                        image_url: imageUrl,
+                        text: buildCardText(p),
+                        buttons: [
+                            { id: `add the ${n}${suffix} one`, title: 'Add to cart' },
+                            { id: `__product:details:${p.id}__`, title: 'More info' }
+                        ]
+                    };
+                });
+
+                const globalButtons = [];
+                if (hasNextPage) {
+                    globalButtons.push({
+                        id: `__nav:more:${snapshotId}__`,
+                        title: 'See more',
+                        priority: 100
+                    });
+                }
+
                 const reason = searchProducts.length > 0 ? 'irrelevant_results' : 'no_results';
                 return {
                     message: query
@@ -488,7 +548,13 @@ Reply ONLY with the "slug" of the category. No other text.`;
                     products,
                     target_category: bestCategory.label,
                     suggestion_type: 'discovery',
-                    recovery_reason: reason
+                    recovery_reason: reason,
+                    whatsapp_product_cards: (cards.length > 0)
+                        ? { type: 'button', transaction: 'product_card', cards }
+                        : undefined,
+                    whatsapp: (globalButtons.length > 0)
+                        ? { type: 'button', buttons: globalButtons }
+                        : undefined
                 };
             } catch (err) {
                 console.error(`[Sentinel-D] Fallback fetch failed: ${err.message}`);

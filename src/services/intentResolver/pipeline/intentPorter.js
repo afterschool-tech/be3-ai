@@ -11,8 +11,43 @@
 
 const { logDebug } = require('../../../utils/debugLogger');
 
-const purchaseVerbs = ['buy', 'purchase', 'get', 'grab', 'take', 'order', 'add', 'cart', 'cop', 'take it', 'want'];
+const purchaseVerbs = ['buy', 'purchase', 'get', 'grab', 'take', 'order', 'add', 'cart', 'cop', 'take it', 'want', 'need'];
 const discoveryVerbs = ['show', 'see', 'find', 'search', 'look', 'browse', 'details', 'info', 'specs', 'check out'];
+
+function getResolvedProductIdsFromStage2(stage2Resolutions) {
+    if (!Array.isArray(stage2Resolutions) || stage2Resolutions.length === 0) return [];
+    const ids = [];
+    for (const r of stage2Resolutions) {
+        const id = r?.productId || r?.product_id || r?.productID || null;
+        if (!id) continue;
+        const s = String(id).trim();
+        if (!s) continue;
+        ids.push(s);
+    }
+    // Dedupe while preserving order
+    const out = [];
+    const seen = new Set();
+    for (const id of ids) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+    }
+    return out;
+}
+
+function hasPurchasePhrasing(intent) {
+    const keywords = (intent?.matchedKeywords || []).map(k => String(k || '').toLowerCase());
+    if (keywords.some(k => purchaseVerbs.includes(k))) return true;
+
+    const t = String(intent?.statementText || '').toLowerCase();
+    if (!t) return false;
+    // Light heuristic: purchase verbs + common patterns
+    const patterns = [
+        /\b(buy|purchase|order|add to cart|add it|add this|add that|grab|cop|get)\b/i,
+        /\b(i want|i need|i'll take|i would like|gimme|give me)\b/i
+    ];
+    return patterns.some(re => re.test(t));
+}
 
 /** True if statement looks like a question (don't port "what about X" to add). */
 function isQuestionPhrase(text) {
@@ -39,6 +74,9 @@ async function portIntents(intents, state) {
     if (!intents || intents.length === 0) return intents;
 
     const referenceMap = state.reference_map || {};
+    const lastSearchResults = Array.isArray(state?.product_context?.last_search?.results)
+        ? state.product_context.last_search.results
+        : [];
     const result = [];
     let prevIntentName = null;
 
@@ -83,6 +121,42 @@ async function portIntents(intents, state) {
                 result.push(out);
                 continue;
             }
+
+            // NEW: Stage2 resolved productId + purchase phrasing → port to add_to_cart gated by confirmation.
+            const stage2Ids = getResolvedProductIdsFromStage2(out.stage2Resolutions);
+            if (stage2Ids.length === 1 && hasPurchasePhrasing(out) && !isQuestionPhrase(out.statementText)) {
+                const pid = stage2Ids[0];
+                const pObj = lastSearchResults.find(p => (p?.id === pid || p?.handle === pid)) || null;
+                const confirmContext = pObj ? {
+                    product: pObj?.name || pObj?.title || null,
+                    price: pObj?.price_display || pObj?.price || null,
+                    vendor: pObj?.vendor || pObj?.metadata?.vendor || null
+                } : null;
+                logDebug('PIPELINE:STAGE7.5_STAGE2_CONFIRM_PORT', {
+                    _desc: 'Stage2 porting — resolved productId + purchase phrasing → add_to_cart (confirmation microstate required)',
+                    _example: '"i want the cheapest one" (resolved) → confirm → add_to_cart',
+                    from: 'product_search',
+                    to: 'add_to_cart',
+                    reason: 'Stage2 resolved productId',
+                    productId: pid,
+                    statementText: (out.statementText || '').slice(0, 80)
+                });
+                result.push({
+                    ...out,
+                    intentName: 'add_to_cart',
+                    score: (out.score || 0) + 1,
+                    parameters: {
+                        ...out.parameters,
+                        product_id: pid,
+                        products: [pid],
+                        _require_confirmation: true,
+                        _confirm_context: confirmContext
+                    },
+                    _ported_from: 'product_search'
+                });
+                continue;
+            }
+
             const hasPurchaseVerb = keywords.some(k => purchaseVerbs.includes(k));
             if (!hasPurchaseVerb) {
                 result.push(out);

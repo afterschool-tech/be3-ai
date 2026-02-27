@@ -276,6 +276,20 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
 
             const r = tr?.result || {};
 
+            // Suggested products (product.search fallbacks)
+            if (Array.isArray(r.suggested_products) && r.suggested_products.length > 0) {
+                base.suggestion_message = r.suggestion_message || null;
+                base.suggested_total = r.suggested_total ?? r.suggested_products.length;
+                base.suggested_products = r.suggested_products.slice(0, MAX_PRODUCTS_FOR_LLM).map(p => ({
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    whatsapp_link: p?.whatsapp_link || null,
+                    checkout_url: p?.checkout_url || null
+                }));
+            }
+
             // Cart view items: preserve full line items for grounded cart responses.
             // cart.view returns r.items (not r.products), so we explicitly summarize it.
             if (Array.isArray(r.items) && (tool === 'cart.view' || tool === 'cart.get' || tool === 'cart')) {
@@ -385,12 +399,15 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         inputToolCount: toolResults.length
     });
     const optimizedResults = toolResults.map(tr => {
-        if (tr.result && (tr.result.products || tr.result.results || tr.result.items)) {
+        if (tr.result && (tr.result.products || tr.result.results || tr.result.items || tr.result.suggested_products)) {
             const isCartView = tr.tool === 'cart.view' || tr.tool === 'cart.get' || tr.tool === 'cart';
             const rawProducts = tr.result.products || tr.result.results || (isCartView ? tr.result.items : null);
             const limitedProducts = Array.isArray(rawProducts)
                 ? (isCartView ? rawProducts : rawProducts.slice(0, MAX_PRODUCTS_FOR_LLM))
                 : rawProducts;
+
+            const rawSuggested = tr.result.suggested_products;
+            const limitedSuggested = Array.isArray(rawSuggested) ? rawSuggested.slice(0, MAX_PRODUCTS_FOR_LLM) : rawSuggested;
             return {
                 ...tr,
                 result: {
@@ -407,7 +424,16 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                         price: p.price,
                         whatsapp_link: p.whatsapp_link,
                         checkout_url: p.checkout_url
-                    })))
+                    }))),
+                    suggested_products: (Array.isArray(limitedSuggested) ? limitedSuggested : []).map(p => ({
+                        id: p?.id || null,
+                        name: p?.name || p?.title || null,
+                        price: p?.price ?? null,
+                        whatsapp_link: p?.whatsapp_link || null,
+                        checkout_url: p?.checkout_url || null
+                    })),
+                    suggestion_message: tr.result.suggestion_message || null,
+                    suggested_total: tr.result.suggested_total ?? null
                 }
             };
         }
@@ -456,7 +482,7 @@ PERSONALITY:
 
 CRITICAL GROUNDING RULES:
 1. TRUTHFULNESS: Only mention products provided in the "Tool Results" below. 
-2. NO HALLUCINATIONS: If no products are found, admit it warmly and suggest help.
+2. NO HALLUCINATIONS: If no products are found (and no suggested_products are provided), admit it warmly and suggest help. If suggested_products are provided, present them clearly as suggestions.
 3. PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
 4. LINKS: Always include the "whatsapp_link" or "checkout_url" for products you recommend.
 5. FORMATTING: Use lists/bullet points. NO markdown tables (poor display on WhatsApp).

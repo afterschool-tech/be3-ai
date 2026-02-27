@@ -23,4 +23,9 @@ module.exports = {
         'cellphone',
         'cellphones'
     ],
+
+    'laptops_&_computers': [
+        'laptop',
+        'laptops'
+    ],
 };

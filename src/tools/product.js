@@ -749,23 +749,161 @@ const productTools = {
             // --- DATA STRIPPING & IMAGE CACHING ---
             let products = await processProductList(rawProducts);
 
+            let suggestedProducts = [];
+            let suggestedMeta = null;
+
+            const buildSearchCall = async (opts) => {
+                const {
+                    queryOverride,
+                    dropQuery,
+                    dropOtherFilters,
+                    snapshotIdOverride
+                } = opts || {};
+
+                const sParams = new URLSearchParams({
+                    per_page: limit,
+                    page: page,
+                    sort: sort
+                });
+
+                const finalQuery = (dropQuery ? null : (queryOverride !== undefined ? queryOverride : query));
+                if (finalQuery) sParams.append('q', finalQuery);
+
+                if (!dropOtherFilters) {
+                    if (price_min) sParams.append('price_min', price_min);
+                    if (price_max) sParams.append('price_max', price_max);
+                    if (tag) sParams.append('tag', tag);
+
+                    const safeAttrs = attributes || {};
+                    Object.entries(safeAttrs).forEach(([key, val]) => {
+                        const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
+                        sParams.append(`attribute.${key}`, finalVal);
+                    });
+                }
+
+                if (catId) {
+                    sParams.append('category', cat?.slug || catId);
+                }
+
+                const hasAttrs = !dropOtherFilters && attributes && typeof attributes === 'object' && Object.keys(attributes).length > 0;
+                let res;
+                if (hasAttrs) {
+                    const searchQuery = new URLSearchParams(sParams);
+                    searchQuery.delete('category');
+                    if (catId) searchQuery.append('category_id', cat?.slug || catId);
+                    searchQuery.append('type', 'product');
+                    res = await callBackendAPI(`/search?${searchQuery.toString()}`);
+                } else {
+                    res = await callBackendAPI(`/search/products?${sParams.toString()}`);
+                }
+
+                if (!res?.success) {
+                    return { success: false, res };
+                }
+
+                const sRaw = res.data.products || res.data.results || [];
+                const sProducts = await processProductList(sRaw);
+
+                const currentPage = Number.isFinite(Number(res?.data?.pagination?.page))
+                    ? Number(res.data.pagination.page)
+                    : Number(page);
+                const perPage = Number.isFinite(Number(res?.data?.pagination?.perPage))
+                    ? Number(res.data.pagination.perPage)
+                    : Number(limit);
+                const totalCount = Number.isFinite(Number(res?.data?.pagination?.total))
+                    ? Number(res.data.pagination.total)
+                    : (Number.isFinite(Number(res?.data?.total)) ? Number(res.data.total) : (Array.isArray(sProducts) ? sProducts.length : 0));
+                const totalPages = Number.isFinite(Number(res?.data?.pagination?.totalPages))
+                    ? Number(res.data.pagination.totalPages)
+                    : (perPage > 0 ? Math.ceil(totalCount / perPage) : 1);
+                const hasNextPage = currentPage < totalPages;
+
+                if (context.sessionId && snapshotIdOverride) {
+                    try {
+                        await stateManager.setSearchSnapshot(context.sessionId, snapshotIdOverride, {
+                            ...params,
+                            page,
+                            query: finalQuery || undefined,
+                            price_min: dropOtherFilters ? undefined : price_min,
+                            price_max: dropOtherFilters ? undefined : price_max,
+                            tag: dropOtherFilters ? undefined : tag,
+                            attributes: dropOtherFilters ? {} : (attributes || {})
+                        });
+                    } catch (_) {}
+                }
+
+                return {
+                    success: true,
+                    res,
+                    products: sProducts,
+                    meta: {
+                        total: totalCount,
+                        hasNextPage,
+                        currentPage,
+                        totalPages
+                    }
+                };
+            };
+
+            if (products.length === 0) {
+                const { logDebug } = require('../utils/debugLogger');
+
+                const suggestionSnapshotId = crypto.randomBytes(4).toString('hex');
+                const attempt1 = await buildSearchCall({ dropQuery: true, dropOtherFilters: false, snapshotIdOverride: suggestionSnapshotId });
+                if (attempt1.success && Array.isArray(attempt1.products) && attempt1.products.length > 0) {
+                    suggestedProducts = attempt1.products;
+                    suggestedMeta = {
+                        strategy: 'retry_without_query',
+                        total: attempt1.meta.total,
+                        hasNextPage: attempt1.meta.hasNextPage,
+                        snapshotId: suggestionSnapshotId
+                    };
+                    logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
+                        _desc: 'No-result fallback — retry without query (keep filters)',
+                        original: { query, category, price_min, price_max, tag, attributes },
+                        fallback: { query: null },
+                        suggestedCount: suggestedProducts.length,
+                        total: attempt1.meta.total
+                    });
+                } else {
+                    const attempt2 = await buildSearchCall({ dropQuery: true, dropOtherFilters: true, snapshotIdOverride: suggestionSnapshotId });
+                    if (attempt2.success && Array.isArray(attempt2.products) && attempt2.products.length > 0) {
+                        suggestedProducts = attempt2.products;
+                        suggestedMeta = {
+                            strategy: 'retry_without_query_and_filters',
+                            total: attempt2.meta.total,
+                            hasNextPage: attempt2.meta.hasNextPage,
+                            snapshotId: suggestionSnapshotId
+                        };
+                        logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
+                            _desc: 'No-result fallback — retry without query and without other filters',
+                            original: { query, category, price_min, price_max, tag, attributes },
+                            fallback: { query: null, price_min: null, price_max: null, tag: null, attributes: {} },
+                            suggestedCount: suggestedProducts.length,
+                            total: attempt2.meta.total
+                        });
+                    }
+                }
+            }
+
             // --- STAGE 2: Reference Mapping (Phase 8) ---
-            if (products.length > 0 && context.sessionId) {
+            const productsForContext = (products.length > 0) ? products : (suggestedProducts.length > 0 ? suggestedProducts : []);
+            if (productsForContext.length > 0 && context.sessionId) {
                 const { logDebug } = require('../utils/debugLogger');
                 logDebug('TOOL:REFERENCE_MAP_UPDATE [product.search]', {
                     _desc: 'Reference map update — add product aliases (name, handle, vendor) to reference_map',
                     _example: 'Product "Rattan 2 Drawers" → keys: rattan_2_drawers, the_drawer, etc.',
-                    productCount: products.length,
+                    productCount: productsForContext.length,
                     sessionId: context.sessionId
                 });
                 const scope = context && context.microstate_active ? 'microstate' : 'global';
-                await stateManager.updateReferenceMap(context.sessionId, products, { scope });
+                await stateManager.updateReferenceMap(context.sessionId, productsForContext, { scope });
                 
                 // Update user_query_map: Store user's query -> products found
                 // This is volatile (session-only) and respects user's terminology
                 const queryForMap = typeof query === 'string' ? query : (query?.query ?? null);
                 if (queryForMap && queryForMap.trim()) {
-                    await stateManager.updateUserQueryMap(context.sessionId, queryForMap, products);
+                    await stateManager.updateUserQueryMap(context.sessionId, queryForMap, productsForContext);
                 }
 
                 // Populate search_context with actual product IDs, attributes map, and discovered category
@@ -781,9 +919,11 @@ const productTools = {
                     };
                 }
                 
-                const productIds = products.slice(0, 10).map(p => p.id || p.handle || p.product_id);
+                const productIds = productsForContext.slice(0, 10).map(p => p.id || p.handle || p.product_id);
                 existingCtx.product_ids = productIds;
-                existingCtx.result_count = result.data.pagination?.total || result.data.total || products.length;
+                existingCtx.result_count = (products.length > 0)
+                    ? (result.data.pagination?.total || result.data.total || products.length)
+                    : (suggestedMeta?.total || suggestedProducts.length);
                 existingCtx.product_attributes_map = productAttrsMap;
                 logDebug('TOOL:SEARCH_CONTEXT_UPDATE [product.search]', {
                     _desc: 'Search context update — fill product_ids and product_attributes_map',
@@ -812,10 +952,13 @@ const productTools = {
 
             // --- STAGE 3: State Syncing (Phase 17) ---
             if (context.sessionId) {
-                await stateManager.updateLastSearch(context.sessionId, query || category, params, products, result.data.pagination?.total || result.data.total || 0);
+                const totalForLast = (products.length > 0)
+                    ? (result.data.pagination?.total || result.data.total || 0)
+                    : (suggestedMeta?.total || 0);
+                await stateManager.updateLastSearch(context.sessionId, query || category, params, productsForContext, totalForLast);
 
-                if (products.length > 0) {
-                    const firstId = products[0].handle || products[0].id || products[0].product_id;
+                if (productsForContext.length > 0) {
+                    const firstId = productsForContext[0].handle || productsForContext[0].id || productsForContext[0].product_id;
                     await stateManager.setCurrentlyViewing(context.sessionId, firstId);
                 }
 
@@ -826,8 +969,8 @@ const productTools = {
                 });
 
                 let learnedCategory = category;
-                if (!learnedCategory && products.length > 0 && products[0].categories && products[0].categories.length > 0) {
-                    learnedCategory = products[0].categories[0];
+                if (!learnedCategory && productsForContext.length > 0 && productsForContext[0].categories && productsForContext[0].categories.length > 0) {
+                    learnedCategory = productsForContext[0].categories[0];
                 }
 
                 await stateManager.learnFromBehavior(context.sessionId, 'search', { query, category: learnedCategory });
@@ -978,7 +1121,7 @@ const productTools = {
             };
 
             // Transactional product cards (sent separately by WA layer)
-            const pickedForCards = Array.isArray(products) ? products.filter(Boolean) : [];
+            const pickedForCards = Array.isArray(productsForContext) ? productsForContext.filter(Boolean) : [];
             const buildCardText = (p) => {
                 const priceText = (p.price !== undefined && p.price !== null) ? `₦${p.price}` : 'Price unavailable';
                 return `*${p.name || p.title || 'Product'}*\n💰 ${priceText}`;
@@ -1049,10 +1192,24 @@ const productTools = {
                 if (refiners.length > 0) globalButtons.push(...refiners);
             }
 
+            const suggestionButtons = [];
+            if (products.length === 0 && suggestedProducts.length > 0 && suggestedMeta?.hasNextPage && suggestedMeta?.snapshotId) {
+                suggestionButtons.push({
+                    id: `__nav:more:${suggestedMeta.snapshotId}__`,
+                    title: 'See more',
+                    priority: 100
+                });
+            }
+
             return {
                 products,
                 total: result.data.pagination?.total || result.data.total || 0,
                 facets: result.data.facets,
+                suggested_products: (products.length === 0 && suggestedProducts.length > 0) ? suggestedProducts : undefined,
+                suggested_total: (products.length === 0 && suggestedProducts.length > 0) ? (suggestedMeta?.total || suggestedProducts.length) : undefined,
+                suggestion_message: (products.length === 0 && suggestedProducts.length > 0)
+                    ? "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
+                    : undefined,
                 whatsapp_product_cards: (cards.length > 0)
                     ? {
                         type: 'button',
@@ -1060,10 +1217,10 @@ const productTools = {
                         cards
                     }
                     : undefined,
-                whatsapp: (globalButtons.length > 0)
+                whatsapp: ((globalButtons.length > 0) || (suggestionButtons.length > 0))
                     ? {
                         type: 'button',
-                        buttons: globalButtons
+                        buttons: [...globalButtons, ...suggestionButtons]
                     }
                     : undefined
             };

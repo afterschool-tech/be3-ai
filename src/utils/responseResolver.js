@@ -56,14 +56,16 @@ const YES_WORDS = new Set([
     'absolutely', 'definitely', 'of course', 'go ahead', 'proceed',
     'do it', 'confirm', 'correct', 'right', 'true', 'affirmative',
     'please', 'lets go', "let's go", 'why not', 'sounds good',
-    'alright', 'fine', 'bet', 'cool', 'done', 'approved', 'accept'
+    'alright', 'fine', 'bet', 'cool', 'done', 'approved', 'accept',
+    'ms_yes'
 ]);
 
 const NO_WORDS = new Set([
     'no', 'nah', 'nope', 'never', 'cancel', 'stop', 'dont', "don't",
     'negative', 'wrong', 'false', 'nevermind', 'forget it', 'back',
     'exit', 'quit', 'abort', 'not', 'decline', 'skip', 'pass',
-    'no thanks', 'nah fam', 'naw'
+    'no thanks', 'nah fam', 'naw',
+    'ms_no'
 ]);
 
 /**

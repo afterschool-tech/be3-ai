@@ -670,7 +670,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         resolvedStatements.push({
             ...reconciledStmt,
             extractedParams,
-            statementText: statement.text
+            statementText: statement.text,
+            stage2Resolutions: resolutions
         });
 
         // [TEST] Residual chunk analysis — background, log-only, product_search with residuals
@@ -933,6 +934,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
                 // Ordinal-choice microstate: bare "one"/"ones" in message OR unresolved/out-of-range ordinal
                 if (!contextApplied && searchCtx.product_ids.length > 1) {
+                    // Guard: if we already have a single concrete product resolved for add_to_cart
+                    // (e.g. Stage2 reference resolution + porter set product_id/products), do NOT open ordinal_choice.
+                    // This prevents cases like "the cheapest" → "<product name> one" from triggering ordinal_choice.
+                    const hasConcreteSingleProduct = !!params.product_id ||
+                        (Array.isArray(params.products) && params.products.length === 1 && typeof params.products[0] === 'string' && params.products[0].trim().length > 0);
+                    if (hasConcreteSingleProduct && params._require_confirmation === true) {
+                        // Keep contextApplied=false so later stages (microstate triggers) can run normally.
+                    } else {
                     const msg = (userMessage || '').toLowerCase();
                     const hasOrdinalPrefix = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|twelvth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|11th|12th|last)\s+(?:one|ones)\b/i.test(msg);
                     const hasBareOneInMessage = /\b(?:the\s+)?(one|ones)\b/i.test(msg) && !hasOrdinalPrefix;
@@ -956,6 +965,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             oneBased,
                             intent: intent.intentName
                         });
+                    }
                     }
                 }
 
@@ -1291,7 +1301,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     // If we have context product IDs, inject them into the main 'products' parameter
                     // to leverage the toolMapper's expansion logic (Phase 8b).
                     if (params._context_product_ids && params._context_product_ids.length > 0) {
-                        params.products = params._context_product_ids;
+                        // Guard: do NOT overwrite a confirmation-gated single-product add.
+                        // (e.g. Stage2 resolved "the cheapest" → productId, porter set product_id/products)
+                        const hasConcreteSingleProduct = !!params.product_id ||
+                            (Array.isArray(params.products) && params.products.length === 1 && typeof params.products[0] === 'string' && params.products[0].trim().length > 0);
+                        if (!(params._require_confirmation === true && hasConcreteSingleProduct)) {
+                            params.products = params._context_product_ids;
+                        }
                         
                         // Filter out pronouns from products array (e.g., "ones", "white ones")
                         const PRONOUNS = ['ones', 'one', 'it', 'them', 'that', 'this', 'those', 'these', 'the_one', 'the_ones', 'the_products'];
@@ -1550,6 +1566,22 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     reason: 'Compare: recommended products'
                 }
                 : triggered.prompt;
+
+            // Enrich confirm prompts (e.g. Stage2 porting confirm_add_ported) with product context when available.
+            if (openedPrompt && openedPrompt.tool === 'microstate.confirm') {
+                const ctx = msObj?.params?._confirm_context;
+                if (ctx && typeof ctx === 'object') {
+                    openedPrompt.params = {
+                        ...(openedPrompt.params || {}),
+                        context: ctx
+                    };
+
+                    const productLabel = ctx.product ? String(ctx.product) : null;
+                    if (productLabel && typeof openedPrompt?.params?.question === 'string') {
+                        openedPrompt.params.question = `Add **${productLabel}** to your cart?`;
+                    }
+                }
+            }
 
             return {
                 intents,

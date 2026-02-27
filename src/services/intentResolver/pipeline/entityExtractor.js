@@ -63,6 +63,7 @@ for (const [clauseId, clause] of Object.entries(CLAUSES)) {
 const ACTION_VERBS = {
     // Purchase signals (user wants to acquire something)
     'buy': 'purchase', 'purchase': 'purchase', 'grab': 'purchase', 'cop': 'purchase',
+    'want': 'purchase', 'need': 'purchase',
     // Cart ADD specifically
     'add': 'cart_add',
     // Cart VIEW specifically
@@ -124,7 +125,7 @@ const FILLERS = new Set([
     'ok', 'okay', 'hi', 'hello', 'hey', 'yo', 'sup',
     'yeah', 'yes', 'yep', 'yup', 'nope', 'nah',
     'thanks', 'thank', 'thx', 'ty', 'cool', 'great', 'sure',
-    'need', 'want', 'show', 'find', 'get', 'give', 'tell', 'look', 'looking', 'about',
+    'show', 'find', 'get', 'give', 'tell', 'look', 'looking', 'about',
     "i'm", "i'd", "i'll", "i've", "let's", "don't", "doesn't",
     "can't", "won't", "shouldn't", "wouldn't", "couldn't"
 ]);
@@ -188,7 +189,27 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         }
     }
 
-    // ── 2. Category Detection (N-gram, reuses normalizeCategory) ──
+    // ── 2. Action Verb Detection (with IDF weights) ──
+    for (let i = 0; i < words.length; i++) {
+        if (consumed.has(i)) continue;
+        const word = words[i];
+        if (FILLERS.has(word)) continue;
+
+        const actionCategory = ACTION_VERBS[word];
+        if (actionCategory) {
+            entities.push({
+                type: 'action',
+                verb: word,
+                category: actionCategory,
+                idf: idfMap[word] || 1.0,
+                source: 'ACTION_VERBS',
+                wordIndices: [i]
+            });
+            consumed.add(i);
+        }
+    }
+
+    // ── 3. Category Detection (N-gram, reuses normalizeCategory) ──
     if (storeContext.CATEGORIES) {
         const textLower = text.toLowerCase();
         // Build word position map for accurate context detection
@@ -201,7 +222,14 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         
         for (let size = 3; size >= 1; size--) {
             for (let i = 0; i <= words.length - size; i++) {
-                if (consumed.has(i)) continue;
+                let overlaps = false;
+                for (let j = i; j < i + size; j++) {
+                    if (consumed.has(j)) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+                if (overlaps) continue;
                 const phrase = words.slice(i, i + size).join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
@@ -249,7 +277,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         }
     }
 
-    // ── 3. Brand Detection (with Category Scoping) ──
+    // ── 4. Brand Detection (with Category Scoping) ──
     // Identify supported attributes for the detected category (if any)
     const detectedCategory = entities.find(e => e.type === 'category');
     const categoryId = detectedCategory?.id;
@@ -286,7 +314,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         }
     }
 
-    // ── 3b. Clause Detection (non-brand: with Category Scoping) ──
+    // ── 4b. Clause Detection (non-brand: with Category Scoping) ──
     // Resolves diverse user words ("cheap", "budget", "inexpensive") to their
     // generic clause type ("affordable"), enabling [clause] slot matching.
     for (let i = 0; i < words.length; i++) {
@@ -353,26 +381,6 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 source: 'regex',
                 wordIndices: []
             });
-        }
-    }
-
-    // ── 7. Action Verb Detection (with IDF weights) ──
-    for (let i = 0; i < words.length; i++) {
-        if (consumed.has(i)) continue;
-        const word = words[i];
-        if (FILLERS.has(word)) continue;
-
-        const actionCategory = ACTION_VERBS[word];
-        if (actionCategory) {
-            entities.push({
-                type: 'action',
-                verb: word,
-                category: actionCategory,
-                idf: idfMap[word] || 1.0,
-                source: 'ACTION_VERBS',
-                wordIndices: [i]
-            });
-            consumed.add(i);
         }
     }
 

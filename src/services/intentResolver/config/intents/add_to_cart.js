@@ -61,6 +61,29 @@ module.exports = {
      *   termination: { maxMessages, onFulfilled, onKeyword, escalation }
      */
     microstates: {
+        confirm_add_ported: {
+            trigger: (params, entities) => {
+                return params && params._require_confirmation === true;
+            },
+            sandbox: 'hard',
+            boostScore: 10.0,
+            validators: {
+                confirmation: (v) => v === true
+            },
+            prompt: {
+                tool: 'microstate.confirm',
+                params: {
+                    question: 'Do you want me to add this to your cart?'
+                }
+            },
+            termination: {
+                maxMessages: 2,
+                onFulfilled: ['confirmation'],
+                onKeyword: ['no', 'nah', 'nope', 'cancel', 'nevermind', 'stop', 'ms_no'],
+                escalation: null
+            }
+        },
+
         product_is_category: {
             trigger: (params, entities) => {
                 // If context reconciler already resolved specific products, skip
