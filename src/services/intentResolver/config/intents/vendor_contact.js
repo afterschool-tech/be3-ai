@@ -8,7 +8,7 @@ module.exports = {
 
     keywords: [
         'contact', 'message', 'whatsapp', 'reach', 'talk', 'vendor', 'seller',
-        'email', 'phone', 'support', 'help', 'address', 'location', 'number'
+        'email', 'support', 'help', 'address', 'location', 'number'
     ],
 
     synonyms: [

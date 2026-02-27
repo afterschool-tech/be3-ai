@@ -1,0 +1,197 @@
+{
+  "counts": {
+    "seriously": 12,
+    "actually": 15,
+    "please": 263,
+    "thank": 13,
+    "ty": 2,
+    "thx": 19,
+    "okay": 7,
+    "pls": 83,
+    "hey": 16,
+    "yeah": 2,
+    "ok": 4,
+    "yo": 5,
+    "really": 2,
+    "plz": 3
+  },
+  "countsByIntent": {
+    "add_to_cart": {
+      "actually": 2,
+      "please": 22,
+      "thank": 2,
+      "thx": 5,
+      "okay": 2,
+      "pls": 2
+    },
+    "browse_collection": {
+      "please": 3,
+      "pls": 2
+    },
+    "cancel_order": {
+      "please": 20
+    },
+    "check_availability": {
+      "hey": 3,
+      "please": 4,
+      "pls": 17,
+      "thx": 2
+    },
+    "confirm_order": {
+      "please": 54,
+      "yeah": 2,
+      "pls": 2,
+      "ok": 3
+    },
+    "discovery_sentinel": {
+      "please": 2
+    },
+    "end_conversation": {
+      "please": 2
+    },
+    "get_advice": {
+      "pls": 8,
+      "thx": 3,
+      "please": 4
+    },
+    "get_help": {
+      "please": 10,
+      "pls": 3
+    },
+    "give_feedback": {
+      "please": 13,
+      "pls": 8,
+      "really": 2,
+      "seriously": 3,
+      "actually": 7
+    },
+    "list_orders": {
+      "please": 9,
+      "pls": 2
+    },
+    "list_vendors": {
+      "please": 6
+    },
+    "order_status": {
+      "hey": 3,
+      "please": 8,
+      "pls": 17
+    },
+    "product_compare": {
+      "please": 2
+    },
+    "product_search": {
+      "hey": 2,
+      "please": 2
+    },
+    "remove_from_cart": {
+      "hey": 2,
+      "please": 29,
+      "thank": 2
+    },
+    "set_delivery": {
+      "please": 6,
+      "pls": 3
+    },
+    "start_checkout": {
+      "please": 14
+    },
+    "update_cart_quantity": {
+      "please": 19,
+      "okay": 3
+    },
+    "vendor_contact": {
+      "please": 6,
+      "pls": 8,
+      "thx": 2
+    },
+    "vendor_identity": {
+      "please": 3
+    },
+    "vendor_info": {
+      "pls": 2,
+      "please": 2
+    },
+    "vendor_products": {
+      "please": 12
+    },
+    "view_cart": {
+      "hey": 5,
+      "seriously": 2,
+      "pls": 7,
+      "please": 11,
+      "actually": 2,
+      "thx": 3
+    }
+  },
+  "examples": {
+    "seriously": [
+      "seriously, add [product] to cart",
+      "seriously, do you have [product]?",
+      "let's finalize this [product] order once and for all, seriously"
+    ],
+    "actually": [
+      "actually, can you add [product] to cart?",
+      "actually, i want [product] in my cart",
+      "actually, is [product] still available?"
+    ],
+    "please": [
+      "put [product] in my cart, please",
+      "can you add [product] to my cart, please?",
+      "put [product] in my basket, please"
+    ],
+    "thank": [
+      "put [product] in my cart, please and thank you",
+      "i'd be delighted if you could add [product] to my cart, thank you",
+      "please advise on [product] availability, thank you"
+    ],
+    "ty": [
+      "let me grab [product] and add to cart, ty",
+      "can you show me whats in my cart, ty"
+    ],
+    "thx": [
+      "gonna need [product] in my cart, thx",
+      "cop [product] and put it in my cart, thx",
+      "i'll take [product] and add it to cart, thx"
+    ],
+    "okay": [
+      "let me add [product] to cart, okay",
+      "let me get [product] and add it to my cart, okay?",
+      "i just wanna make sure [product] is okay, you feel me?"
+    ],
+    "pls": [
+      "hook me up with [product] in my cart, pls",
+      "let me get [product] and add it to cart, pls",
+      "get me caught up on the latest [product] trends, pls"
+    ],
+    "hey": [
+      "hey, is [product] available?",
+      "hey, can you check [product] availability?",
+      "hey, is [product] still around?"
+    ],
+    "yeah": [
+      "yeah go ahead and confirm it",
+      "yeah, confirm [product] order, i'm ready for it"
+    ],
+    "ok": [
+      "ok to confirm [product] order now",
+      "ok, i'm ready, confirm [product] order now",
+      "ok, i'm confirming [product] order, go ahead"
+    ],
+    "yo": [
+      "yo, what's good with [product], can you help a newbie out?",
+      "yo, where's the [product] review section at?",
+      "whass good with my [product] orders, yo?"
+    ],
+    "really": [
+      "lowkey really unhappy with [product], can someone help?",
+      "i've got some feedback about [product] that i think could really help them improve."
+    ],
+    "plz": [
+      "can i has my [product] order history, plz",
+      "ship [product] to my amazon locker, plz",
+      "shop products from this store, plz"
+    ]
+  },
+  "updatedAt": "2026-02-25T06:43:07.865Z"
+}

@@ -65,41 +65,212 @@ const productTools = {
                 // Handle query as either string or array (from products param mapping)
                 const queryStr = Array.isArray(query) ? query[0] : query;
                 if (!queryStr) return; // Empty array case - skip auto-discovery
-                const words = queryStr.toLowerCase().split(/\s+/);
+                const words = queryStr.toLowerCase().split(/\s+/).filter(Boolean);
                 const queryLower = queryStr.toLowerCase();
-                // Build word position map for accurate context detection
                 let currentPos = 0;
                 const wordPositions = words.map(w => {
                     const pos = queryLower.indexOf(w, currentPos);
                     currentPos = pos >= 0 ? pos + w.length : currentPos;
                     return pos;
                 });
-                
+
+                const inferWords = [];
                 for (let i = 0; i < words.length; i++) {
                     const word = words[i];
                     const wordIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                     if (isOrdinalOrReferencePhrase(word, queryLower, wordIndex)) continue;
-                    let discoveredId = normalizeCategory(word, context.CATEGORIES);
-                    if (!discoveredId) {
-                        // Lightweight plural handling: foods -> food, dresses -> dress
-                        const singular = word.endsWith('es')
-                            ? word.slice(0, -2)
-                            : (word.endsWith('s') ? word.slice(0, -1) : word);
-                        if (singular && singular !== word) {
-                            discoveredId = normalizeCategory(singular, context.CATEGORIES);
+                    const cleaned = word.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+                    if (cleaned) inferWords.push(cleaned);
+                }
+
+                const makeVariants = (w) => {
+                    const out = new Set();
+                    if (!w) return [];
+                    out.add(w);
+                    if (!w.endsWith('s')) out.add(`${w}s`);
+                    if (w.endsWith('s') && w.length > 2) out.add(w.slice(0, -1));
+                    if (!w.endsWith('es')) out.add(`${w}es`);
+                    if (w.endsWith('es') && w.length > 3) out.add(w.slice(0, -2));
+                    return Array.from(out).filter(Boolean);
+                };
+
+                const tokenize = (s) => {
+                    return String(s || '')
+                        .toLowerCase()
+                        .split(/[\s\-_\/]+/g)
+                        .map(t => t.trim())
+                        .filter(Boolean);
+                };
+
+                const byId = {};
+                for (const c of Object.values(context.CATEGORIES || {})) {
+                    if (c && c.id) byId[c.id] = c;
+                }
+
+                const getDepth = (cat) => {
+                    let depth = 0;
+                    const seen = new Set();
+                    let cur = cat;
+                    while (cur && cur.parent_id && !seen.has(cur.parent_id)) {
+                        seen.add(cur.parent_id);
+                        const parent = byId[cur.parent_id];
+                        if (!parent) break;
+                        depth += 1;
+                        cur = parent;
+                        if (depth > 20) break;
+                    }
+                    return depth;
+                };
+
+                const invBonus = (n) => {
+                    const x = Number(n || 0);
+                    if (!Number.isFinite(x) || x <= 0) return 0;
+                    return 8 * Math.log10(1 + x);
+                };
+
+                const scored = [];
+                const categories = Object.values(context.CATEGORIES || {});
+                for (const cat of categories) {
+                    if (!cat) continue;
+                    const label = String(cat.label || '').toLowerCase().trim();
+                    const slug = String(cat.slug || '').toLowerCase().trim();
+                    if (!label && !slug) continue;
+
+                    const labelTokens = tokenize(label);
+                    const slugTokens = tokenize(slug);
+                    const allTokens = [...new Set([...labelTokens, ...slugTokens])];
+
+                    const wordMatches = [];
+                    for (const w of inferWords) {
+                        const variants = makeVariants(w);
+                        let bestTier = 0;
+                        let bestTierScore = 0;
+                        let bestDetails = null;
+
+                        // Tier 4: exact query token equals whole label/slug (rare, but keep)
+                        if (label === w || slug === w) {
+                            bestTier = 4;
+                            bestTierScore = 100;
+                            bestDetails = { type: 'exact_query', word: w, variant: w };
+                        }
+
+                        for (const v of variants) {
+                            // Tier 4: exact token match
+                            if (bestTier < 4 && allTokens.includes(v)) {
+                                bestTier = 4;
+                                bestTierScore = 95;
+                                bestDetails = { type: 'token_exact', word: w, variant: v };
+                                break;
+                            }
+                        }
+
+                        // Tier 3: compound prefix/suffix match (keeps phone->smartphone and phone->iphones strong)
+                        if (bestTier < 3) {
+                            for (const v of variants) {
+                                for (const t of allTokens) {
+                                    if (!t) continue;
+                                    if (t === v) continue;
+                                    if (t.startsWith(v) || t.endsWith(v)) {
+                                        bestTier = 3;
+                                        bestTierScore = 75;
+                                        bestDetails = { type: 'token_compound', word: w, variant: v, token: t };
+                                        break;
+                                    }
+                                }
+                                if (bestTier === 3) break;
+                            }
+                        }
+
+                        // Tier 2: raw substring match
+                        if (bestTier < 2) {
+                            for (const v of variants) {
+                                if ((label && label.includes(v)) || (slug && slug.includes(v))) {
+                                    bestTier = 2;
+                                    bestTierScore = 35;
+                                    bestDetails = { type: 'substring', word: w, variant: v };
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (bestTier > 0) {
+                            wordMatches.push({ word: w, tier: bestTier, score: bestTierScore, details: bestDetails });
                         }
                     }
-                    if (discoveredId) {
-                        catId = discoveredId;
-                        logDebug('TOOL:CATEGORY_AUTO_DISCOVERY [product.search]', {
-                            _desc: 'Category auto-discovery — infer category from query when not provided',
-                            _example: '"I want spaghetti" → auto-discover Food / Pasta category',
-                            queryWord: word,
-                            discoveredCategoryId: discoveredId
-                        });
-                        console.log(`[ProductTool] Auto-discovered category from word "${word}": ${discoveredId}`);
-                        break;
-                    }
+
+                    if (wordMatches.length === 0) continue;
+
+                    wordMatches.sort((a, b) => b.score - a.score);
+                    const best = wordMatches[0];
+                    const top2Sum = (wordMatches[0]?.score || 0) + Math.floor((wordMatches[1]?.score || 0) * 0.35);
+                    const matchedWords = wordMatches.length;
+                    const coverageBonus = Math.min(20, Math.max(0, (matchedWords - 1) * 8));
+                    const lexScore = top2Sum + coverageBonus;
+                    const lexTier = best.tier;
+
+                    const depth = getDepth(cat);
+                    const depthBonus = Math.min(4, depth) * 6;
+                    const inventoryBonus = invBonus(cat.total_count);
+                    const finalScore = lexScore + depthBonus + inventoryBonus;
+
+                    scored.push({
+                        id: cat.id,
+                        label: cat.label,
+                        slug: cat.slug,
+                        total_count: cat.total_count,
+                        parent_id: cat.parent_id,
+                        score: finalScore,
+                        lexTier,
+                        lexScore,
+                        match: best.details,
+                        depth,
+                        bonuses: { depth: depthBonus, inventory: inventoryBonus, coverage: coverageBonus }
+                    });
+                }
+
+                scored.sort((a, b) => {
+                    if (b.lexTier !== a.lexTier) return b.lexTier - a.lexTier;
+                    if (b.lexScore !== a.lexScore) return b.lexScore - a.lexScore;
+                    if (b.depth !== a.depth) return b.depth - a.depth;
+                    if (b.score !== a.score) return b.score - a.score;
+                    const bl = String(b.label || '').length;
+                    const al = String(a.label || '').length;
+                    if (bl !== al) return bl - al;
+                    return String(a.id || '').localeCompare(String(b.id || ''));
+                });
+
+                if (scored.length > 0) {
+                    const winner = scored[0];
+                    catId = winner.id;
+                    logDebug('TOOL:CATEGORY_AUTO_DISCOVERY [product.search]', {
+                        _desc: 'Category auto-discovery — competition scoring across categories',
+                        query: queryStr,
+                        inferWords,
+                        winner: {
+                            id: winner.id,
+                            label: winner.label,
+                            slug: winner.slug,
+                            score: winner.score,
+                            lexTier: winner.lexTier,
+                            lexScore: winner.lexScore,
+                            match: winner.match,
+                            bonuses: winner.bonuses,
+                            depth: winner.depth,
+                            total_count: winner.total_count
+                        },
+                        topCandidates: scored.slice(0, 5).map(c => ({
+                            id: c.id,
+                            label: c.label,
+                            score: c.score,
+                            lexTier: c.lexTier,
+                            lexScore: c.lexScore,
+                            match: c.match,
+                            bonuses: c.bonuses,
+                            depth: c.depth,
+                            total_count: c.total_count
+                        }))
+                    });
+                    console.log(`[ProductTool] Auto-discovered category via competition: ${winner.label} (${winner.id}) score=${winner.score}`);
                 }
             }
 
@@ -122,9 +293,12 @@ const productTools = {
 
             const hasAttributeFilters = attributes && typeof attributes === 'object' && Object.keys(attributes).length > 0;
             const hasStructuredFilters = hasAttributeFilters || tag || price_min || price_max;
-            const shouldUseSemantic = !hasStructuredFilters && Number(page) === 1;
+            const shouldUseSemantic = Number(page) === 1;
 
             // --- STAGE 0.5: Semantic Search (The "Power" step via Util) ---
+            // Run semantic search FIRST whenever we have a category + query on page 1.
+            // This is intentionally allowed even when structured filters exist, so clauseResolver
+            // remains a safety net for queries like "cheap smartphones".
             if (cat && shouldUseSemantic) {
                 const { logDebug } = require('../utils/debugLogger');
                 logDebug('TOOL:SEMANTIC_SEARCH [product.search]', {

@@ -263,10 +263,122 @@ Reply ONLY with the "slug" of the category. No other text.`;
             const categories = Object.values(context.CATEGORIES || {})
                 .filter(c => c.total_count > 0 && !c.label.toLowerCase().includes('all'));
 
+            const allCats = Object.values(context.CATEGORIES || {});
+            const resolveCategoryHint = (hint) => {
+                if (!hint) return null;
+                const h = String(hint).trim();
+                if (!h) return null;
+                const hLower = h.toLowerCase();
+
+                // Try keyed access first (storeContext is keyed by category key like "smartphones")
+                if (context.CATEGORIES && context.CATEGORIES[h] && context.CATEGORIES[h].id) {
+                    return context.CATEGORIES[h];
+                }
+
+                // Match by ID / slug / label
+                return allCats.find(c => {
+                    if (!c) return false;
+                    const id = String(c.id || '').toLowerCase();
+                    const slug = String(c.slug || '').toLowerCase();
+                    const label = String(c.label || '').toLowerCase();
+                    return (id && id === hLower) || (slug && slug === hLower) || (label && label === hLower);
+                }) || null;
+            };
+
+            const resolveChildCategory = (parentCat) => {
+                if (!parentCat) return null;
+                const children = Array.isArray(parentCat.children) ? parentCat.children : [];
+                if (children.length === 0) return null;
+
+                const childObjs = children
+                    .map(k => {
+                        if (context.CATEGORIES && context.CATEGORIES[k] && context.CATEGORIES[k].id) return context.CATEGORIES[k];
+                        const kLower = String(k || '').toLowerCase();
+                        return allCats.find(c => String(c?.id || '').toLowerCase() === kLower || String(c?.slug || '').toLowerCase() === kLower) || null;
+                    })
+                    .filter(Boolean);
+
+                // Pick highest inventory child
+                childObjs.sort((a, b) => (Number(b.total_count || b.product_count || 0)) - (Number(a.total_count || a.product_count || 0)));
+                const best = childObjs[0] || null;
+                const bestInv = best ? Number(best.total_count || best.product_count || 0) : 0;
+                if (best && bestInv > 0) return best;
+                return null;
+            };
+
+            const resolveParentCategory = (childCat) => {
+                if (!childCat || !childCat.parent_id) return null;
+                const pidLower = String(childCat.parent_id || '').toLowerCase();
+                if (!pidLower) return null;
+                const parent = allCats.find(c => String(c?.id || '').toLowerCase() === pidLower) || null;
+                return parent;
+            };
+
+            const resolveBestSibling = (childCat, parentCat) => {
+                const p = parentCat || resolveParentCategory(childCat);
+                if (!p) return null;
+                const siblings = Array.isArray(p.children) ? p.children : [];
+                if (siblings.length === 0) return null;
+
+                const sibObjs = siblings
+                    .map(k => {
+                        if (context.CATEGORIES && context.CATEGORIES[k] && context.CATEGORIES[k].id) return context.CATEGORIES[k];
+                        const kLower = String(k || '').toLowerCase();
+                        return allCats.find(c => String(c?.id || '').toLowerCase() === kLower || String(c?.slug || '').toLowerCase() === kLower) || null;
+                    })
+                    .filter(Boolean)
+                    .filter(c => String(c.id || '') !== String(childCat?.id || ''));
+
+                sibObjs.sort((a, b) => (Number(b.total_count || b.product_count || 0)) - (Number(a.total_count || a.product_count || 0)));
+                const best = sibObjs[0] || null;
+                const bestInv = best ? Number(best.total_count || best.product_count || 0) : 0;
+                if (best && bestInv > 0) return best;
+                return null;
+            };
+
             // Score each category by word overlap
             const searchTerms = (query || category || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
             let bestCategory = null;
             let bestScore = 0;
+
+            // If pipeline passed a specific category hint (uuid/slug/label/key), honor it.
+            // If that category has no inventory, browse its best child with inventory.
+            if (!query && category) {
+                const hinted = resolveCategoryHint(category);
+                if (hinted) {
+                    const hintedInv = Number(hinted.total_count || hinted.product_count || 0);
+                    if (hintedInv > 0) {
+                        bestCategory = hinted;
+                        bestScore = 999;
+                    } else {
+                        const parent = resolveParentCategory(hinted);
+                        const parentInv = parent ? Number(parent.total_count || parent.product_count || 0) : 0;
+                        if (parent && parentInv > 0) {
+                            bestCategory = parent;
+                            bestScore = 998;
+                        } else {
+                            const sibling = resolveBestSibling(hinted, parent);
+                            if (sibling) {
+                                bestCategory = sibling;
+                                bestScore = 997;
+                            }
+                        }
+                    }
+
+                    logDebug('TOOL:SENTINEL_CATEGORY_HINT [discovery.sentinel]', {
+                        _desc: 'Sentinel recovery — resolve and honor pipeline category hint (with best-child fallback)',
+                        hint: category,
+                        query,
+                        resolved: hinted ? { id: hinted.id, label: hinted.label, slug: hinted.slug, total_count: hinted.total_count, product_count: hinted.product_count } : null,
+                        chosen: bestCategory ? { id: bestCategory.id, label: bestCategory.label, slug: bestCategory.slug, total_count: bestCategory.total_count, product_count: bestCategory.product_count } : null,
+                        reason: bestCategory
+                            ? (bestCategory.id === hinted?.id
+                                ? 'hint_category_has_inventory'
+                                : (bestCategory.id === parent?.id ? 'hint_category_empty_used_parent' : 'hint_category_empty_used_best_sibling'))
+                            : 'hint_not_resolved_or_no_inventory'
+                    });
+                }
+            }
 
             for (const cat of categories) {
                 const catWords = cat.label.toLowerCase().split(/\s+/);

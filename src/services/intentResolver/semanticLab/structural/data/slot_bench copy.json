@@ -7934,9 +7934,7 @@
       "i'm on the lookout for [product] that are rare and unique",
       "i wanna see [product] that are inspired by art",
       "i'm looking for [product] that are suitable for a gifts",
-      "do you have [product] that are designed for outdoor enthusiasts?",
-      "i am looking for cheap [product]"
-      
+      "do you have [product] that are designed for outdoor enthusiasts?"
     ],
     "slot_templates": [
       "i'm looking for a new [product]",
@@ -8304,8 +8302,7 @@
       "i'm on the lookout for [product] that are rare and unique",
       "i wanna see [product] that are inspired by art",
       "i'm looking for [product] that are suitable for a gifts",
-      "do you have [product] that are designed for outdoor enthusiasts?",
-      "i am looking for [clause] [product]"
+      "do you have [product] that are designed for outdoor enthusiasts?"
     ],
     "metadata": {
       "runs": 6,

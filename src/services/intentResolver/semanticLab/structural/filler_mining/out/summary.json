@@ -1,0 +1,17 @@
+{
+  "input": "src/services/intentResolver/semanticLab/structural/data/slot_bench copy.json",
+  "outDir": "src/services/intentResolver/semanticLab/structural/filler_mining/out",
+  "params": {
+    "minCount": 2,
+    "includeExamples": true,
+    "maxExamplesPerKey": 3,
+    "includeCommonWords": false,
+    "includePhrases": true
+  },
+  "totals": {
+    "strict": 14,
+    "stopwordLike": 24,
+    "scaffoldingPhrases": 20
+  },
+  "updatedAt": "2026-02-25T06:43:07.869Z"
+}

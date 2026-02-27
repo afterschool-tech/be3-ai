@@ -1,0 +1,53 @@
+{
+  "counts": {
+    "the": 6,
+    "my": 1,
+    "your": 4,
+    "please": 1
+  },
+  "countsByIntent": {
+    "browse_collection": {
+      "the": 6,
+      "my": 1,
+      "your": 4,
+      "please": 1
+    }
+  },
+  "candidates": {
+    "i'm": 15,
+    "can": 2,
+    "on": 6,
+    "what's": 15,
+    "asap": 1,
+    "to": 1,
+    "finest": 1,
+    "up": 1,
+    "let's": 10,
+    "lead": 1,
+    "poppin": 1,
+    "some": 5,
+    "haps": 1,
+    "out": 1,
+    "already": 1
+  },
+  "candidatesByIntent": {
+    "browse_collection": {
+      "i'm": 15,
+      "can": 2,
+      "on": 6,
+      "what's": 15,
+      "asap": 1,
+      "to": 1,
+      "finest": 1,
+      "up": 1,
+      "let's": 10,
+      "lead": 1,
+      "poppin": 1,
+      "some": 5,
+      "haps": 1,
+      "out": 1,
+      "already": 1
+    }
+  },
+  "updatedAt": "2026-02-25T06:05:22.914Z"
+}

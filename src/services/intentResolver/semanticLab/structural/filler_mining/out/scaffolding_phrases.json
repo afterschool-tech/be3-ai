@@ -1,0 +1,370 @@
+{
+  "counts": {
+    "i need": 305,
+    "can you": 831,
+    "i want to buy": 8,
+    "i want": 170,
+    "gimme": 52,
+    "let me get": 13,
+    "let me": 54,
+    "grab": 20,
+    "cop": 36,
+    "i'll take": 6,
+    "please": 264,
+    "hook me up with": 33,
+    "i would like": 2,
+    "can i get": 174,
+    "i wanna": 43,
+    "help me": 203,
+    "could you": 65,
+    "i want to purchase": 2,
+    "can i buy": 5,
+    "i gotta": 3
+  },
+  "countsByIntent": {
+    "add_to_cart": {
+      "i need": 16,
+      "can you": 54,
+      "i want to buy": 3,
+      "i want": 19,
+      "gimme": 12,
+      "let me get": 6,
+      "let me": 12,
+      "grab": 13,
+      "cop": 9,
+      "i'll take": 5,
+      "please": 22,
+      "hook me up with": 4,
+      "i would like": 2,
+      "can i get": 6,
+      "i wanna": 4,
+      "help me": 4,
+      "could you": 13
+    },
+    "browse_collection": {
+      "i need": 14,
+      "i want": 14,
+      "can you": 32,
+      "help me": 12,
+      "please": 3,
+      "hook me up with": 4
+    },
+    "cancel_order": {
+      "can i get": 4,
+      "can you": 20,
+      "please": 20,
+      "i need": 11,
+      "help me": 4,
+      "i want": 13,
+      "could you": 3
+    },
+    "check_availability": {
+      "cop": 6,
+      "i need": 12,
+      "gimme": 3,
+      "can i get": 20,
+      "can you": 46,
+      "i want": 4,
+      "can i buy": 2,
+      "hook me up with": 2,
+      "let me": 6,
+      "help me": 3,
+      "please": 4,
+      "could you": 2
+    },
+    "confirm_order": {
+      "can you": 26,
+      "please": 54,
+      "i need": 20,
+      "can i get": 9,
+      "let me": 7,
+      "could you": 4,
+      "i want": 4
+    },
+    "discovery_sentinel": {
+      "i need": 19,
+      "can you": 37,
+      "help me": 8,
+      "hook me up with": 4,
+      "i want": 23,
+      "can i get": 2,
+      "please": 2
+    },
+    "end_conversation": {
+      "i need": 20,
+      "can i get": 2,
+      "please": 2
+    },
+    "get_advice": {
+      "cop": 7,
+      "can you": 72,
+      "help me": 13,
+      "i need": 22,
+      "could you": 4,
+      "gimme": 4,
+      "hook me up with": 2,
+      "i want": 2,
+      "please": 4
+    },
+    "get_help": {
+      "can you": 105,
+      "help me": 31,
+      "please": 10,
+      "i need": 29,
+      "could you": 5,
+      "i want": 3,
+      "can i get": 7
+    },
+    "give_feedback": {
+      "can i get": 13,
+      "help me": 17,
+      "please": 13,
+      "can you": 3,
+      "i need": 5,
+      "i want": 6
+    },
+    "list_orders": {
+      "can you": 26,
+      "i need": 7,
+      "please": 9,
+      "help me": 4,
+      "hook me up with": 2,
+      "gimme": 5,
+      "i want": 4,
+      "can i get": 5,
+      "could you": 3
+    },
+    "list_vendors": {
+      "i need": 8,
+      "can you": 27,
+      "can i get": 10,
+      "i wanna": 2,
+      "hook me up with": 3,
+      "please": 6,
+      "gimme": 6,
+      "help me": 5,
+      "i want": 3,
+      "could you": 2
+    },
+    "order_status": {
+      "gimme": 2,
+      "can you": 30,
+      "i need": 15,
+      "please": 8,
+      "can i get": 19,
+      "i wanna": 2,
+      "help me": 6
+    },
+    "product_compare": {
+      "can you": 100,
+      "i need": 6,
+      "please": 2,
+      "i want": 2,
+      "help me": 31
+    },
+    "product_search": {
+      "can you": 43,
+      "i want": 25,
+      "help me": 27,
+      "i need": 18,
+      "gimme": 8,
+      "let me": 18,
+      "please": 3,
+      "cop": 6,
+      "let me get": 5,
+      "hook me up with": 4,
+      "can i get": 4,
+      "i wanna": 3,
+      "i want to buy": 2,
+      "could you": 2
+    },
+    "remove_from_cart": {
+      "can you": 20,
+      "i need": 4,
+      "i want": 3,
+      "please": 29,
+      "can i get": 3,
+      "could you": 4
+    },
+    "set_delivery": {
+      "can you": 35,
+      "i need": 10,
+      "please": 6,
+      "i want": 4,
+      "can i get": 27,
+      "could you": 2
+    },
+    "start_checkout": {
+      "can you": 17,
+      "i need": 13,
+      "please": 14,
+      "i want": 10,
+      "help me": 15,
+      "i want to buy": 3,
+      "could you": 4,
+      "can i get": 3
+    },
+    "update_cart_quantity": {
+      "could you": 8,
+      "please": 19,
+      "can you": 22,
+      "i want": 9,
+      "can i get": 4,
+      "i need": 3,
+      "help me": 4
+    },
+    "vendor_contact": {
+      "help me": 11,
+      "i need": 9,
+      "i wanna": 6,
+      "could you": 5,
+      "please": 6,
+      "i want": 3,
+      "can you": 12,
+      "can i get": 12,
+      "i gotta": 2,
+      "hook me up with": 3
+    },
+    "vendor_identity": {
+      "i need": 8,
+      "can you": 13,
+      "i wanna": 5,
+      "i want": 2,
+      "gimme": 2,
+      "hook me up with": 2,
+      "can i get": 3,
+      "please": 3
+    },
+    "vendor_info": {
+      "i need": 13,
+      "can you": 34,
+      "i wanna": 8,
+      "please": 2,
+      "i want": 6
+    },
+    "vendor_products": {
+      "can you": 35,
+      "i wanna": 5,
+      "please": 12,
+      "i need": 16,
+      "can i buy": 2,
+      "i want": 8,
+      "help me": 6,
+      "can i get": 6
+    },
+    "view_cart": {
+      "gimme": 7,
+      "can you": 21,
+      "i need": 7,
+      "cop": 3,
+      "grab": 2,
+      "please": 11,
+      "i wanna": 4,
+      "can i get": 12,
+      "let me": 4,
+      "i want": 2,
+      "could you": 2
+    }
+  },
+  "examples": {
+    "i need": [
+      "i need [product] in my cart",
+      "add [product] to cart, i need it",
+      "i need [product], can you add to cart?"
+    ],
+    "can you": [
+      "can you add [product] to my bag?",
+      "actually, can you add [product] to cart?",
+      "i'm looking for [product], can you add to cart?"
+    ],
+    "i want to buy": [
+      "i want to buy [product]",
+      "put [product] in my cart, i want to buy",
+      "add [product] to cart, i want to buy it"
+    ],
+    "i want": [
+      "i want to buy [product]",
+      "actually, i want [product] in my cart",
+      "put [product] in my cart, i want to buy"
+    ],
+    "gimme": [
+      "gimme [product] in my cart",
+      "gimme [product] and put in cart",
+      "gimme [product] and throw it in"
+    ],
+    "let me get": [
+      "let me get [product]",
+      "i want [product], let me get it",
+      "let me get [product], and put in cart"
+    ],
+    "let me": [
+      "let me get [product]",
+      "let me buy [product] and add to cart",
+      "i want [product], let me get it"
+    ],
+    "grab": [
+      "grab [product] for me",
+      "grab [product] and add to cart",
+      "can you grab [product] for me and add to cart"
+    ],
+    "cop": [
+      "cop [product] and add to cart",
+      "i'm trying to cop [product], can you add it",
+      "cop [product] for me, and add to cart"
+    ],
+    "i'll take": [
+      "i'll take [product], add to cart",
+      "i'll take [product] and add it to my cart, please",
+      "i'll take [product] and add it to cart, thx"
+    ],
+    "please": [
+      "put [product] in my cart, please",
+      "can you add [product] to my cart, please?",
+      "put [product] in my basket, please"
+    ],
+    "hook me up with": [
+      "can you hook me up with [product] in my cart?",
+      "hook me up with [product] in my cart, pls",
+      "hook me up with [product], i'm checking out now"
+    ],
+    "i would like": [
+      "i would like to order [product]",
+      "it seems i would like to add [product] to my cart now"
+    ],
+    "can i get": [
+      "can i get [product] added to my bag",
+      "can i get [product] added to cart",
+      "i want [product], can i get it in my cart?"
+    ],
+    "i wanna": [
+      "i wanna buy [product], add to cart",
+      "i wanna add [product] to my cart",
+      "i wanna grab [product] and add to cart asap"
+    ],
+    "help me": [
+      "i'm trying to buy [product], can you help me?",
+      "i'm having some trouble adding [product] to my cart, can you help me out?",
+      "now, about adding [product] to my cart, can you help me out?"
+    ],
+    "could you": [
+      "could you please put [product] in my shopping basket",
+      "could you grab [product] and add to my cart",
+      "could you add [product] to my cart, thanks"
+    ],
+    "i want to purchase": [
+      "i want to purchase [product], can you add it to my cart?",
+      "i want to purchase a [product] online"
+    ],
+    "can i buy": [
+      "can i buy [product] now?",
+      "can i buy [product] online and pick it up in store if it's available?",
+      "who makes [product] and where can i buy it"
+    ],
+    "i gotta": [
+      "i gotta get in touch with the seller asap",
+      "i gotta get a hold of the vendor asap",
+      "i gotta see what i threw in my cart"
+    ]
+  },
+  "updatedAt": "2026-02-25T06:43:07.865Z"
+}

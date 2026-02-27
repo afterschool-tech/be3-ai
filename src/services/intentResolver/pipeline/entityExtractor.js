@@ -78,7 +78,7 @@ const ACTION_VERBS = {
     'products': 'discovery',
     // Contact/communication actions
     'contact': 'contact', 'message': 'contact', 'reach': 'contact', 'talk': 'contact', 'whatsapp': 'contact',
-    'email': 'contact', 'phone': 'contact', 'call': 'contact',
+    'email': 'contact', 'call': 'contact',
     // Tracking actions
     'track': 'tracking', 'tracking': 'tracking', 'status': 'tracking',
     // Checkout
@@ -205,7 +205,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 const phrase = words.slice(i, i + size).join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catId = normalizeCategory(phrase, storeContext.CATEGORIES);
+                const catId = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5 });
                 if (catId) {
                     entities.push({
                         type: 'category',
@@ -215,12 +215,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                         wordIndices: Array.from({ length: size }, (_, j) => i + j)
                     });
 
-                    // Plural Hardening: if the word is plural (ends in 's'), don't consume it
-                    // so it can still be picked up as a product_name candidate.
-                    const isPlural = phrase.endsWith('s');
-                    if (!isPlural) {
-                        for (let j = i; j < i + size; j++) consumed.add(j);
-                    }
+                    // Consume all category words
+                    for (let j = i; j < i + size; j++) consumed.add(j);
                     break; // Only one category per statement
                 }
             }

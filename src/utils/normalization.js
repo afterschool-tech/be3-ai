@@ -4,6 +4,8 @@
  */
 
 const { CATEGORIES, VENDORS } = require('../context/storeContext');
+const { logDebug } = require('./debugLogger');
+const CATEGORY_ALIASES = require('../context/categoryAliases');
 
 /**
  * Normalizes a category string (label, slug, or breadcrumb) to a valid Category ID.
@@ -12,10 +14,13 @@ const { CATEGORIES, VENDORS } = require('../context/storeContext');
  * @param {boolean} [exactMatchOnly=false] - If true, only returns IDs for exact label/slug matches.
  * @returns {string|null} - The Category UUID or null.
  */
-function normalizeCategory(cat, context = null, exactMatchOnly = false) {
+function normalizeCategory(cat, context = null, exactMatchOnly = false, options = {}) {
     if (!cat) return null;
     const cats = context || CATEGORIES;
     let catLower = cat.trim().toLowerCase();
+
+    const debug = !!options?.debug;
+    const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
 
     // Guard: avoid partial-matching extremely short tokens (e.g., "in", "on", "at")
     // which can accidentally match inside real category labels ("All in one PCs").
@@ -30,48 +35,409 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false) {
     // 2. Direct match with key
     if (cats[catLower]) return cats[catLower].id;
 
-    // 3. Find all potential candidate categories
-    const candidates = Object.values(cats).map(c => {
-        if (!c || (!c.label && !c.slug)) return null;
-        let score = 0;
+    const normalizeLoose = (s) => String(s || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const singularize = (w) => {
+        const x = String(w || '').toLowerCase().trim();
+        if (x.endsWith('ies') && x.length > 4) return x.slice(0, -3) + 'y';
+        if (x.endsWith('es') && x.length > 3) return x.slice(0, -2);
+        if (x.endsWith('s') && x.length > 3) return x.slice(0, -1);
+        return x;
+    };
+
+    const pluralize = (w) => {
+        const x = String(w || '').toLowerCase().trim();
+        if (!x) return x;
+        if (x.endsWith('y') && x.length > 2) return x.slice(0, -1) + 'ies';
+        if (x.endsWith('s')) return x;
+        return x + 's';
+    };
+
+    const tokenize = (s) => String(s || '')
+        .toLowerCase()
+        .split(/[\s\-_\/]+/g)
+        .map(t => t.trim())
+        .filter(Boolean);
+
+    // ── Alias Inventory Override ──
+    // If any token/variant is explicitly aliased to a category, short-circuit.
+    // This supersedes Layer 2 scoring ("human truth" mapping).
+    const resolveAliasTargetId = (keyOrId) => {
+        if (!keyOrId) return null;
+        const k = String(keyOrId).trim();
+        if (!k) return null;
+        const direct = Object.values(cats).find(c => c && (c.id === k || c.slug === k));
+        if (direct && direct.id) return direct.id;
+        if (cats[k] && cats[k].id) return cats[k].id;
+        // Fallback: lookup by label (case-insensitive)
+        const byLabel = Object.values(cats).find(c => c && String(c.label || '').toLowerCase().trim() === k.toLowerCase());
+        return byLabel?.id || null;
+    };
+
+    const inputTokens = tokenize(catLower);
+    const inputLoose = normalizeLoose(catLower);
+
+    // Alias matching should not consider ultra-short / filler tokens (e.g. "i"),
+    // but it should still allow full-phrase alias hits via inputLoose.
+    const MIN_ALIAS_TOKEN_LEN = 3;
+    const ALIAS_STOPWORDS = new Set([
+        'i', 'me', 'my', 'we', 'us', 'you', 'your',
+        'the', 'a', 'an',
+        'is', 'are', 'was', 'were', 'am',
+        'to', 'of', 'in', 'for', 'on', 'at', 'by', 'with', 'from',
+        'this', 'that', 'these', 'those',
+        'and', 'or', 'but',
+        'need', 'want', 'show', 'find', 'get', 'give', 'tell', 'look', 'looking'
+    ]);
+
+    const tokenVariants = new Set();
+    for (const t of inputTokens) {
+        if (!t) continue;
+        if (t.length < MIN_ALIAS_TOKEN_LEN) continue;
+        if (ALIAS_STOPWORDS.has(t)) continue;
+        tokenVariants.add(t);
+        tokenVariants.add(singularize(t));
+        tokenVariants.add(pluralize(singularize(t)));
+    }
+
+    if (CATEGORY_ALIASES && typeof CATEGORY_ALIASES === 'object') {
+        for (const [targetKeyOrId, aliases] of Object.entries(CATEGORY_ALIASES)) {
+            if (!Array.isArray(aliases) || aliases.length === 0) continue;
+            const targetId = resolveAliasTargetId(targetKeyOrId);
+            if (!targetId) continue;
+            for (const a of aliases) {
+                const alias = normalizeLoose(a);
+                if (!alias) continue;
+                if (tokenVariants.has(alias) || (inputLoose && inputLoose === alias)) {
+                    if (debug) {
+                        const resolved = Object.values(cats).find(c => c && c.id === targetId);
+                        logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
+                            _desc: 'normalizeCategory — alias inventory override',
+                            input: cat,
+                            inputLower: catLower,
+                            exactMatchOnly,
+                            matchedAlias: a,
+                            matchedAliasLoose: alias,
+                            tokenVariants: Array.from(tokenVariants).slice(0, 50),
+                            inputLoose,
+                            target: {
+                                keyOrId: targetKeyOrId,
+                                id: targetId,
+                                label: resolved?.label,
+                                slug: resolved?.slug
+                            }
+                        });
+                    }
+                    return targetId;
+                }
+            }
+        }
+    }
+
+    const editDistance = (a, b, max = 2) => {
+        const s = String(a || '');
+        const t = String(b || '');
+        if (s === t) return 0;
+        const n = s.length;
+        const m = t.length;
+        if (Math.abs(n - m) > max) return max + 1;
+        if (n === 0) return m;
+        if (m === 0) return n;
+
+        const v0 = new Array(m + 1);
+        const v1 = new Array(m + 1);
+        for (let j = 0; j <= m; j++) v0[j] = j;
+
+        for (let i = 0; i < n; i++) {
+            v1[0] = i + 1;
+            let rowMin = v1[0];
+            const si = s.charCodeAt(i);
+            for (let j = 0; j < m; j++) {
+                const cost = si === t.charCodeAt(j) ? 0 : 1;
+                const del = v0[j + 1] + 1;
+                const ins = v1[j] + 1;
+                const sub = v0[j] + cost;
+                const val = Math.min(del, ins, sub);
+                v1[j + 1] = val;
+                if (val < rowMin) rowMin = val;
+            }
+            if (rowMin > max) return max + 1;
+            for (let j = 0; j <= m; j++) v0[j] = v1[j];
+        }
+        return v0[m];
+    };
+
+    const catLoose = normalizeLoose(catLower);
+    const catLooseSing = singularize(catLoose);
+    const catLoosePlural = pluralize(catLooseSing);
+    const layer1Queries = Array.from(new Set([catLower, catLoose, catLooseSing, catLoosePlural].filter(Boolean)));
+
+    const layer1ScoreFor = (query, target) => {
+        const q = normalizeLoose(query);
+        const t = normalizeLoose(target);
+        if (!q || !t) return 0;
+        if (q === t) return 100;
+        const qSing = singularize(q);
+        const tSing = singularize(t);
+        if (qSing && tSing && qSing === tSing) return 98;
+        const maxEd = Math.min(2, Math.floor(Math.max(qSing.length, tSing.length) / 6));
+        if (maxEd > 0) {
+            const d = editDistance(qSing, tSing, maxEd);
+            if (d <= maxEd) return 96 - (d * 2);
+        }
+        return 0;
+    };
+
+    const idToCat = {};
+    for (const c of Object.values(cats)) {
+        if (c && c.id) idToCat[c.id] = c;
+    }
+
+    const layer1Candidates = [];
+    for (const c of Object.values(cats)) {
+        if (!c || (!c.label && !c.slug && !c.id)) continue;
         const labelLower = (c.label || '').toLowerCase();
         const slugLower = (c.slug || '').toLowerCase();
+        const idLower = (c.id || '').toLowerCase();
 
-        // Exact match (highest priority)
-        if (c.id === catLower || slugLower === catLower || labelLower === catLower) {
-            score = 100;
-        }
-        // Partial match with word boundary check
-        else if (!exactMatchOnly && !isTooShortForPartial) {
-            const regex = new RegExp(`\\b${catLower}\\b`, 'i');
-            if (regex.test(labelLower) || regex.test(slugLower)) {
-                score = 10;
+        let best = 0;
+        let bestQuery = null;
+        let bestField = null;
+        for (const q of layer1Queries) {
+            const s1 = layer1ScoreFor(q, labelLower);
+            if (s1 > best) {
+                best = s1;
+                bestQuery = q;
+                bestField = 'label';
+            }
+            const s2 = layer1ScoreFor(q, slugLower);
+            if (s2 > best) {
+                best = s2;
+                bestQuery = q;
+                bestField = 'slug';
+            }
+            if (idLower && normalizeLoose(q) === normalizeLoose(idLower)) {
+                if (100 > best) {
+                    best = 100;
+                    bestQuery = q;
+                    bestField = 'id';
+                }
             }
         }
 
-        if (score === 0) return null;
+        if (best > 0) {
+            const inv = Number(c.total_count || c.product_count || 0);
+            const invBonus = inv > 0 ? Math.min(20, 8 * Math.log10(1 + inv)) : 0;
+            layer1Candidates.push({
+                id: c.id,
+                score: best + invBonus,
+                match: { field: bestField, query: bestQuery, baseScore: best, inv, invBonus }
+            });
+        }
+    }
 
-        // --- TIE BREAKERS & SMART BOOSTS ---
+    if (layer1Candidates.length > 0) {
+        layer1Candidates.sort((a, b) => b.score - a.score);
+        const winner = layer1Candidates[0];
+        if (winner && winner.id) return winner.id;
+    }
 
-        // Boost populated categories (CRITICAL: prevents picking empty niches)
-        if ((c.total_count || c.product_count) > 0) score += 50;
+    if (exactMatchOnly) return null;
 
-        // Boost broad categories (Top level parents)
-        if (!c.parent_id) score += 20;
+    const MIN_LAYER2_TOKEN_LEN = 3;
+    const LAYER2_STOPWORDS = new Set([
+        'i', 'me', 'my', 'we', 'us', 'you', 'your',
+        'the', 'a', 'an',
+        'is', 'are', 'was', 'were', 'am',
+        'to', 'of', 'in', 'for', 'on', 'at', 'by', 'with', 'from',
+        'this', 'that', 'these', 'those',
+        'and', 'or', 'but',
+        'need', 'want', 'show', 'find', 'get', 'give', 'tell', 'look', 'looking'
+    ]);
 
-        // Boost for label similarity (e.g. "laptops" vs "business laptops")
-        // If the user word is exactly the label, it's better than if it's just part of it
-        if (labelLower === catLower) score += 30;
+    const makeVariants = (w) => {
+        const x = String(w || '').toLowerCase().trim();
+        if (x.length < MIN_LAYER2_TOKEN_LEN) return [];
+        const out = new Set([x, singularize(x), pluralize(x)]);
+        return Array.from(out).filter(Boolean);
+    };
 
-        return { id: c.id, score };
-    }).filter(Boolean);
+    const getDepth = (catObj) => {
+        let depth = 0;
+        const seen = new Set();
+        let cur = catObj;
+        while (cur && cur.parent_id && !seen.has(cur.parent_id)) {
+            seen.add(cur.parent_id);
+            const parent = idToCat[cur.parent_id];
+            if (!parent) break;
+            depth += 1;
+            cur = parent;
+            if (depth > 20) break;
+        }
+        return depth;
+    };
 
-    if (candidates.length === 0) return null;
+    const invBonus = (n) => {
+        const x = Number(n || 0);
+        if (!Number.isFinite(x) || x <= 0) return 0;
+        return 8 * Math.log10(1 + x);
+    };
 
-    // Sort by score descending
-    candidates.sort((a, b) => b.score - a.score);
+    const inferWordsRaw = tokenize(catLower);
+    const inferWords = inferWordsRaw.filter(w => w.length >= MIN_LAYER2_TOKEN_LEN && !LAYER2_STOPWORDS.has(w));
+    if (inferWords.length === 0) return null;
+    const scored = [];
+    for (const c of Object.values(cats)) {
+        if (!c || (!c.label && !c.slug)) continue;
+        const label = String(c.label || '').toLowerCase().trim();
+        const slug = String(c.slug || '').toLowerCase().trim();
+        if (!label && !slug) continue;
 
-    return candidates[0].id;
+        const labelTokens = tokenize(label);
+        const slugTokens = tokenize(slug);
+        const allTokens = [...new Set([...labelTokens, ...slugTokens])];
+
+        const wordMatches = [];
+        for (const w of inferWords) {
+            const variants = makeVariants(w);
+            let bestTier = 0;
+            let bestTierScore = 0;
+            let bestDetails = null;
+
+            if (label === w || slug === w) {
+                bestTier = 4;
+                bestTierScore = 100;
+                bestDetails = { type: 'exact_query', word: w, variant: w };
+            }
+
+            if (bestTier < 4) {
+                for (const v of variants) {
+                    if (allTokens.includes(v)) {
+                        bestTier = 4;
+                        bestTierScore = 95;
+                        bestDetails = { type: 'token_exact', word: w, variant: v };
+                        break;
+                    }
+                }
+            }
+
+            if (bestTier < 3) {
+                for (const v of variants) {
+                    for (const t of allTokens) {
+                        if (!t) continue;
+                        if (t === v) continue;
+                        if (t.startsWith(v) || t.endsWith(v)) {
+                            bestTier = 3;
+                            bestTierScore = 75;
+                            bestDetails = { type: 'token_compound', word: w, variant: v, token: t };
+                            break;
+                        }
+                    }
+                    if (bestTier === 3) break;
+                }
+            }
+
+            if (bestTier < 2) {
+                for (const v of variants) {
+                    if ((label && label.includes(v)) || (slug && slug.includes(v))) {
+                        bestTier = 2;
+                        bestTierScore = 35;
+                        bestDetails = { type: 'substring', word: w, variant: v };
+                        break;
+                    }
+                }
+            }
+
+            if (bestTier > 0) {
+                wordMatches.push({ word: w, tier: bestTier, score: bestTierScore, details: bestDetails });
+            }
+        }
+
+        if (wordMatches.length === 0) continue;
+        wordMatches.sort((a, b) => b.score - a.score);
+
+        const top2Sum = (wordMatches[0]?.score || 0) + Math.floor((wordMatches[1]?.score || 0) * 0.35);
+        const matchedWords = wordMatches.length;
+        const coverageBonus = Math.min(20, Math.max(0, (matchedWords - 1) * 8));
+        const lexScore = top2Sum + coverageBonus;
+        const lexTier = wordMatches[0]?.tier || 0;
+
+        const depth = getDepth(c);
+        const depthBonus = Math.min(4, depth) * 6;
+        const inventoryBonus = invBonus(c.total_count || c.product_count);
+        const finalScore = lexScore + depthBonus + inventoryBonus;
+
+        scored.push({
+            id: c.id,
+            label: c.label,
+            slug: c.slug,
+            score: finalScore,
+            lexTier,
+            lexScore,
+            depth,
+            total_count: c.total_count,
+            product_count: c.product_count,
+            match: wordMatches[0]?.details,
+            bonuses: { depth: depthBonus, inventory: inventoryBonus, coverage: coverageBonus }
+        });
+    }
+
+    scored.sort((a, b) => {
+        if (b.lexTier !== a.lexTier) return b.lexTier - a.lexTier;
+        if (b.lexScore !== a.lexScore) return b.lexScore - a.lexScore;
+        if (b.depth !== a.depth) return b.depth - a.depth;
+        if (b.score !== a.score) return b.score - a.score;
+        const bl = String(b.label || '').length;
+        const al = String(a.label || '').length;
+        if (bl !== al) return bl - al;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+
+    if (scored.length === 0) return null;
+
+    if (debug) {
+        const winner = scored[0];
+        logDebug('NORMALIZE_CATEGORY:LAYER2', {
+            _desc: 'normalizeCategory — layer2 scoring fallback',
+            input: cat,
+            inputLower: catLower,
+            exactMatchOnly,
+            inferWords,
+            winner: winner ? {
+                id: winner.id,
+                label: winner.label,
+                slug: winner.slug,
+                score: winner.score,
+                lexTier: winner.lexTier,
+                lexScore: winner.lexScore,
+                depth: winner.depth,
+                match: winner.match,
+                bonuses: winner.bonuses,
+                total_count: winner.total_count,
+                product_count: winner.product_count
+            } : null,
+            topCandidates: scored.slice(0, topK).map(x => ({
+                id: x.id,
+                label: x.label,
+                slug: x.slug,
+                score: x.score,
+                lexTier: x.lexTier,
+                lexScore: x.lexScore,
+                depth: x.depth,
+                match: x.match,
+                bonuses: x.bonuses,
+                total_count: x.total_count,
+                product_count: x.product_count
+            }))
+        });
+    }
+
+    return scored[0].id;
 }
 
 /**

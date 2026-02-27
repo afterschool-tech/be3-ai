@@ -7,7 +7,7 @@ module.exports = {
     name: 'product_search',
 
     keywords: [
-        'search', 'explore', 'discover', 'find', 'show'
+        'search', 'find', 'show'
     ],
 
     synonyms: [

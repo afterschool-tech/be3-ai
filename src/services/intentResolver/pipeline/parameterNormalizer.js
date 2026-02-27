@@ -18,6 +18,7 @@ const { CLAUSES } = require('../../../context/clauses');
 function normalizeParameters(resolvedIntents, storeContext) {
     const categoriesContext = storeContext?.CATEGORIES;
     const vendorsContext = storeContext?.VENDORS;
+    const attributesContext = storeContext?.ATTRIBUTES;
 
     return resolvedIntents.map(intent => {
         const params = intent.parameters;
@@ -71,12 +72,60 @@ function normalizeParameters(resolvedIntents, storeContext) {
                 const clause = CLAUSES[clauseId];
                 
                 if (clause && clause.attribute) {
-                    params.attributes[clause.attribute] = clauseWord;
+                    let mapped = false;
+
+                    // Prefer backend clause-filter encoding when we have ATTRIBUTES metadata.
+                    // Example: price_tier affordable -> attribute.p:p=budget,midrange
+                    try {
+                        const attrKey = clause.attribute;
+                        const attrMeta = attributesContext ? attributesContext[attrKey] : null;
+                        const attrCode = attrMeta?.code;
+
+                        const clauseLabelLower = String(clause.label || clauseId).toLowerCase().trim();
+                        const attrClauseDefs = Array.isArray(attrMeta?.clauses) ? attrMeta.clauses : [];
+                        const matchingAttrClause = attrClauseDefs.find(def =>
+                            String(def?.label || '').toLowerCase().trim() === clauseLabelLower
+                        );
+
+                        if (attrCode && matchingAttrClause && matchingAttrClause.name) {
+                            const matches = Array.isArray(matchingAttrClause.matches) ? matchingAttrClause.matches : [];
+                            const csv = matches.map(x => String(x).trim()).filter(Boolean).join(',');
+                            const compositeKey = `${attrCode}:${matchingAttrClause.name}`;
+
+                            if (csv) {
+                                params.attributes[compositeKey] = csv;
+                                mapped = true;
+                            }
+                        }
+                    } catch (_) {}
+
+                    // Fallback: map to attribute raw key, but canonicalize against predefined values when possible.
+                    if (!mapped) {
+                        let finalValue = clauseWord;
+                        try {
+                            const attrMeta = attributesContext ? attributesContext[clause.attribute] : null;
+                            const predefined = Array.isArray(attrMeta?.predefined_values) ? attrMeta.predefined_values : [];
+                            const supportedValues = predefined
+                                .map(v => (v && v.value !== undefined && v.value !== null) ? String(v.value).toLowerCase().trim() : null)
+                                .filter(Boolean);
+
+                            const clauseWordLower = String(clauseWord).toLowerCase().trim();
+                            if (!supportedValues.includes(clauseWordLower)) {
+                                const clauseMatches = Array.isArray(clause.matches) ? clause.matches : [];
+                                const canonical = clauseMatches
+                                    .map(m => String(m).toLowerCase().trim())
+                                    .find(m => supportedValues.includes(m));
+                                if (canonical) finalValue = canonical;
+                            }
+                        } catch (_) {}
+
+                        params.attributes[clause.attribute] = finalValue;
+                    }
                     console.log(`[ParameterNormalizer] 🔄 Mapped clause to attribute:`, {
                         clauseId: clauseId,
                         clauseWord: clauseWord,
                         attribute: clause.attribute,
-                        attributeValue: clauseWord,
+                        attributeValue: params.attributes,
                         resulting_attributes: params.attributes
                     });
                 } else {
@@ -130,7 +179,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
         // ── 3. Category Shifting (Exact Matches) ──
         if (params.product_name) {
-            const resolvedCatId = normalizeCategory(params.product_name, categoriesContext, true);
+            const resolvedCatId = normalizeCategory(params.product_name, categoriesContext, true, { debug: true, topK: 5 });
             if (resolvedCatId) {
                 params.category = resolvedCatId;
                 params.product_name = null;
@@ -151,7 +200,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
         if (params.products && Array.isArray(params.products)) {
             const newProducts = [];
             for (const p of params.products) {
-                const resolvedCatId = normalizeCategory(p, categoriesContext, true);
+                const resolvedCatId = normalizeCategory(p, categoriesContext, true, { debug: true, topK: 5 });
                 if (resolvedCatId) {
                     params.category = resolvedCatId;
                 } else {

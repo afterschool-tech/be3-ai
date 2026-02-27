@@ -1,0 +1,384 @@
+{
+  "counts": {
+    "into": 32,
+    "could": 118,
+    "shall": 3,
+    "we": 31,
+    "if": 267,
+    "but": 83,
+    "over": 43,
+    "so": 41,
+    "at": 96,
+    "or": 117,
+    "too": 21,
+    "some": 314,
+    "an": 80,
+    "through": 82,
+    "off": 33,
+    "under": 10,
+    "yet": 19,
+    "has": 76,
+    "been": 61,
+    "being": 10,
+    "had": 12,
+    "our": 13,
+    "were": 4,
+    "each": 3
+  },
+  "countsByIntent": {
+    "add_to_cart": {
+      "into": 6,
+      "could": 24,
+      "we": 2,
+      "if": 14,
+      "but": 3,
+      "over": 2,
+      "so": 6,
+      "at": 2,
+      "or": 6,
+      "too": 2,
+      "some": 2
+    },
+    "browse_collection": {
+      "through": 10,
+      "off": 7,
+      "at": 6,
+      "some": 21,
+      "into": 2,
+      "over": 2
+    },
+    "cancel_order": {
+      "an": 9,
+      "yet": 2,
+      "but": 5,
+      "if": 23,
+      "has": 2,
+      "through": 3,
+      "could": 5,
+      "too": 2,
+      "been": 2,
+      "being": 2,
+      "at": 3,
+      "some": 2
+    },
+    "check_availability": {
+      "yet": 4,
+      "if": 107,
+      "or": 41,
+      "at": 23,
+      "over": 4,
+      "an": 2,
+      "but": 8,
+      "into": 2,
+      "could": 4,
+      "so": 2
+    },
+    "confirm_order": {
+      "being": 2,
+      "if": 20,
+      "could": 7,
+      "has": 8,
+      "been": 9,
+      "an": 9,
+      "over": 3,
+      "through": 2,
+      "but": 2
+    },
+    "discovery_sentinel": {
+      "some": 26,
+      "through": 7,
+      "at": 4,
+      "under": 4,
+      "off": 3
+    },
+    "end_conversation": {
+      "if": 9,
+      "had": 2,
+      "we": 14,
+      "our": 12,
+      "or": 5,
+      "so": 4,
+      "been": 12,
+      "has": 12,
+      "at": 4,
+      "an": 3,
+      "over": 2
+    },
+    "get_advice": {
+      "off": 3,
+      "some": 46,
+      "at": 2,
+      "or": 5,
+      "could": 5,
+      "through": 7,
+      "but": 8,
+      "been": 4,
+      "so": 5,
+      "if": 7,
+      "were": 3,
+      "an": 2
+    },
+    "get_help": {
+      "through": 15,
+      "if": 3,
+      "some": 85,
+      "but": 12,
+      "could": 6,
+      "or": 3,
+      "into": 6,
+      "an": 2,
+      "so": 2,
+      "over": 2
+    },
+    "give_feedback": {
+      "some": 22,
+      "has": 6,
+      "been": 8,
+      "an": 2,
+      "or": 7,
+      "if": 19,
+      "could": 4,
+      "through": 6,
+      "had": 6,
+      "but": 19,
+      "so": 3,
+      "at": 3,
+      "being": 3
+    },
+    "list_orders": {
+      "at": 8,
+      "could": 11,
+      "over": 2,
+      "so": 4,
+      "some": 5,
+      "an": 4,
+      "if": 6,
+      "been": 4,
+      "through": 4
+    },
+    "list_vendors": {
+      "could": 2
+    },
+    "order_status": {
+      "at": 13,
+      "an": 17,
+      "has": 16,
+      "yet": 12,
+      "if": 10,
+      "been": 12,
+      "or": 20,
+      "too": 2,
+      "but": 4,
+      "some": 6,
+      "over": 2,
+      "into": 5
+    },
+    "product_compare": {
+      "or": 21,
+      "each": 3,
+      "over": 7,
+      "has": 15,
+      "through": 5,
+      "into": 2
+    },
+    "product_search": {
+      "some": 73,
+      "under": 4,
+      "off": 4,
+      "if": 2,
+      "could": 3
+    },
+    "remove_from_cart": {
+      "off": 8,
+      "over": 4,
+      "had": 2,
+      "could": 5,
+      "if": 5,
+      "an": 3
+    },
+    "set_delivery": {
+      "if": 12,
+      "off": 3,
+      "could": 2,
+      "over": 2,
+      "an": 3,
+      "or": 2
+    },
+    "start_checkout": {
+      "over": 6,
+      "through": 9,
+      "if": 3,
+      "could": 6,
+      "at": 4
+    },
+    "update_cart_quantity": {
+      "could": 18,
+      "if": 19,
+      "an": 7,
+      "or": 5,
+      "we": 12,
+      "been": 2,
+      "too": 12,
+      "so": 6,
+      "but": 12,
+      "off": 3,
+      "at": 2
+    },
+    "vendor_contact": {
+      "could": 8,
+      "but": 9,
+      "an": 3,
+      "at": 2,
+      "through": 3
+    },
+    "vendor_identity": {
+      "if": 2
+    },
+    "vendor_info": {
+      "some": 7,
+      "into": 4,
+      "through": 4,
+      "an": 3
+    },
+    "vendor_products": {
+      "at": 3,
+      "an": 4,
+      "has": 11,
+      "some": 14,
+      "through": 2
+    },
+    "view_cart": {
+      "at": 14,
+      "so": 6,
+      "been": 5,
+      "some": 3,
+      "through": 3,
+      "if": 5,
+      "could": 5,
+      "over": 2
+    }
+  },
+  "examples": {
+    "into": [
+      "throw [product] into my shopping bag",
+      "throw [product] into my cart, will you",
+      "throw [product] into my bag, i'm ready to checkout"
+    ],
+    "could": [
+      "could you please put [product] in my shopping basket",
+      "could you grab [product] and add to my cart",
+      "could you add [product] to my cart, thanks"
+    ],
+    "shall": [
+      "let's get [product] in the cart, shall we",
+      "let's go on a shopping adventure, shall we?",
+      "the [product] i received was, shall we say, less than satisfactory"
+    ],
+    "we": [
+      "let's get [product] in the cart, shall we",
+      "let's get [product] in the cart, can we do that?",
+      "are we confirmed on the [product] order"
+    ],
+    "if": [
+      "add this [product] to cart, if you don't mind",
+      "i'd appreciate it if you could add [product] to my cart",
+      "it would be wonderful if you could add [product] to my shopping cart"
+    ],
+    "but": [
+      "i'm trying to add [product] to my cart, but",
+      "i'm not sure how, but i want to add [product] to my cart",
+      "do pardon me, but could you add [product] to my cart now?"
+    ],
+    "over": [
+      "add [product] to cart and let's get this over with",
+      "put [product] in my cart and let's get this over with",
+      "what [product] should i be obsessing over?"
+    ],
+    "so": [
+      "i'd like to purchase [product], so add it to my cart",
+      "could you be so kind as to add [product] to my cart?",
+      "i'd be ever so grateful if you could add [product] to my cart"
+    ],
+    "at": [
+      "is it feasible to add [product] to my cart at this time?",
+      "if i may, i'd like to add [product] to my cart at this time",
+      "take a look at your [product] best sellers, please"
+    ],
+    "or": [
+      "mind if i add [product] to my cart, or should i ask?",
+      "may i add [product] to my cart, or is that not allowed?",
+      "do you think i could add [product] to my cart, or is it too late?"
+    ],
+    "too": [
+      "do you think i could add [product] to my cart, or is it too late?",
+      "if it's not too much trouble, could you add [product] to my cart?",
+      "is it too late to cancel my order for [product]?"
+    ],
+    "some": [
+      "i'm having some trouble adding [product] to my cart, can you help me out?",
+      "my next step is adding [product] to my cart, can i get some assistance?",
+      "i'm hankering for some [product] goodness, satiate my cravings"
+    ],
+    "an": [
+      "could i add [product] to my cart, or is that not an option?",
+      "give me an overview of your [product] lineup",
+      "what are the steps to cancel an order that hasn't shipped yet?"
+    ],
+    "through": [
+      "i want to browse through your [product] catalog",
+      "can you walk me through your newest [product] arrivals?",
+      "can you guide me through your [product] catalog?"
+    ],
+    "off": [
+      "what [product] products are flying off the shelves?",
+      "enlighten me on the [product] that's flying off the shelves",
+      "show me the [product] that's flying off the shelves"
+    ],
+    "under": [
+      "what's the [product] that's flying under the radar?",
+      "i'm a [product] newbie, take me under your wing and show me around",
+      "what [product] do you have that's flying under the radar?"
+    ],
+    "yet": [
+      "what are the steps to cancel an order that hasn't shipped yet?",
+      "can i cancel [product] if it hasn't shipped yet?",
+      "is [product] back in stock yet?"
+    ],
+    "has": [
+      "can i still cancel if the [product] has already shipped?",
+      "my mind has changed regarding [product]",
+      "has my [product] order been successfully placed?"
+    ],
+    "been": [
+      "can i cancel [product] if it's already been processed?",
+      "what are the steps to take to void a [product] order that's been placed?",
+      "has my [product] order been successfully placed?"
+    ],
+    "being": [
+      "stop [product] from being processed",
+      "how do i stop a [product] order from being fulfilled?",
+      "what's the likelihood of [product] being available soon?"
+    ],
+    "had": [
+      "i've had a change of heart, cancel [product].",
+      "that's all the questions i had, appreciate it",
+      "i've had enough chat for today, thanks"
+    ],
+    "our": [
+      "let's get our [product] on",
+      "i believe that concludes our conversation",
+      "i'm ready to conclude our chat, if you are"
+    ],
+    "were": [
+      "which [product] would you cop if you were me",
+      "if you were in my shoes, which [product] would you choose?",
+      "what [product] would you choose if you were me?"
+    ],
+    "each": [
+      "stack [product] and [product] up against each other in terms of performance",
+      "how do [product] and [product] stack up against each other",
+      "can you match [product] and [product] against each other in a feature by feature comparison"
+    ]
+  },
+  "updatedAt": "2026-02-25T06:43:07.865Z"
+}

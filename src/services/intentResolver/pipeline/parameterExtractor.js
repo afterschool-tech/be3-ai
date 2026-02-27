@@ -99,9 +99,12 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm",
         'to', 'its', 'my', 'your', 'get', 'based', 'own', 'which', 'one', 'two',
         'can', 'you', 'could', 'would',
-        'so', "i'll", "ibcll", 'ill', 'of', 'on',
+        'so', "i'll", "i'll", 'ill', 'of', 'on',
         'advice', 'advise', 'recommend', 'recommendation', 'suggest', 'suggestion', 'guidance', 'help',
-        'product', 'products', 'item', 'items', 'gadget', 'gadgets'
+        'product', 'products', 'item', 'items', 'gadget', 'gadgets',
+        // Action verbs that should never be product names
+        'looking', 'look', 'find', 'search', 'browse', 'explore', 'discover', 'view', 'see', 'seek',
+        'buy', 'purchase', 'order', 'grab', 'add', 'remove', 'delete', 'update', 'change', 'modify'
     ]);
 
     // Add deterministic parameter values to excludeSet to prevent them leaking into product_name
@@ -321,9 +324,9 @@ function extractStructural(text, candidates = [], categoryId = null, storeContex
             let invalidWordFound = false;
 
             for (const w of cWords) {
-                const clauseId = clauseWordToId.get(w);
-                if (clauseId) {
-                    foundClauses.push({ word: w, clauseId });
+                const match = clauseWordToId.get(w);
+                if (match && match.clauseId) {
+                    foundClauses.push({ word: w, clauseId: match.clauseId });
                 } else {
                     invalidWordFound = true;
                 }
@@ -489,6 +492,15 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     // Merge base results (entities + structural + deterministic) with array awareness
     const combinedBase = { ...baseFromEntities, ...deterministic, ...structural };
 
+    // Identify supported attributes for scoping (used by clause stripping)
+    const supportedAttributes = new Set();
+    if (categoryId && storeContext.CATEGORIES) {
+        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+        if (catObj) {
+            (catObj.attributes || []).forEach(a => supportedAttributes.add(a));
+        }
+    }
+
     // Concatenate arrays instead of clobbering
     if (baseFromEntities.clause_words || deterministic.clause_words || structural.clause_words) {
         combinedBase.clause_words = [
@@ -506,6 +518,27 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     }
     if (deterministic.products || structural.products) {
         combinedBase.products = Array.from(new Set([...(deterministic.products || []), ...(structural.products || [])]));
+    }
+
+    // Final polish: clause-strip merged products (covers deterministic-only products like "cheap phone")
+    if (combinedBase.products && Array.isArray(combinedBase.products) && combinedBase.products.length > 0) {
+        const extractedClauses = [];
+        const polishedProducts = combinedBase.products.map(p => {
+            const words = String(p).split(/\s+/).filter(Boolean);
+            const { productName, clauses } = performClauseStripping(words, categoryId, supportedAttributes);
+            if (clauses && clauses.length > 0) extractedClauses.push(...clauses);
+            return productName;
+        }).filter(Boolean);
+
+        if (polishedProducts.length > 0) {
+            combinedBase.products = polishedProducts;
+            combinedBase.product_name = polishedProducts[0];
+        }
+
+        if (extractedClauses.length > 0) {
+            if (!combinedBase.clause_words) combinedBase.clause_words = [];
+            combinedBase.clause_words.push(...extractedClauses);
+        }
     }
 
     // Check which params still need AI
