@@ -6,17 +6,55 @@ fs.writeFileSync(LOG_FILE, `=== START SESSION ${new Date().toISOString()} ===\n`
 
 const readline = require('readline');
 const { resolveAndMap } = require('../src/services/intentResolver');
+const { resolveDeterministic } = require('../src/core/deterministicResolver');
 const stateManager = require('../src/state/stateManager');
 const { executeTools } = require('../src/core/orchestrator');
 const stack = require('../src/services/intentResolver/pipeline/stack');
 const storeContext = require('../src/context/storeContext');
 const { CLAUSES } = require('../src/context/clauses');
+const axios = require('axios');
 
 // ═══════════════════════════════════════════════════
 //  Constants & Config
 // ═══════════════════════════════════════════════════
 const TEST_SESSION_ID = 'repl_test_session';
+const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
+const TENANT_ID = process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713';
 let verbose = false;
+
+async function clearBackendCart(sessionId) {
+    const headers = {
+        'X-Tenant-ID': TENANT_ID,
+        'Content-Type': 'application/json'
+    };
+
+    try {
+        const cartRes = await axios({
+            url: `${BACKEND_URL}/cart?session_id=${encodeURIComponent(sessionId)}`,
+            method: 'GET',
+            headers
+        });
+
+        const items = cartRes?.data?.items || [];
+        let removed = 0;
+        for (const item of items) {
+            if (!item?.id) continue;
+            await axios({
+                url: `${BACKEND_URL}/cart/items/${item.id}`,
+                method: 'DELETE',
+                headers
+            });
+            removed++;
+        }
+        return { removed, hadItems: items.length };
+    } catch (err) {
+        console.error(`${C.red}  Error clearing backend cart: ${err.message}${C.reset}`);
+        return { removed: 0, hadItems: 0 };
+    }
+}
+let filePerMessage = false;
+const { startRun, logDebug } = require('../src/utils/debugLogger');
+
 
 // Accumulate tool executions across turns so the final stack-completion summary
 // includes tools that ran during earlier microstate turns.
@@ -343,7 +381,8 @@ async function printState() {
 
     console.log(`${C.dim}  Cart items: ${state.cart?.item_count || 0}${C.reset}`);
     console.log(`${C.dim}  Viewing: ${state.product_context?.currently_viewing || 'none'}${C.reset}`);
-    console.log(`${C.dim}  Verbose: ${verbose ? 'on' : 'off'}${C.reset}\n`);
+    console.log(`${C.dim}  Verbose: ${verbose ? 'on' : 'off'}${C.reset}`);
+    console.log(`${C.dim}  FileLog: ${filePerMessage ? 'on' : 'off'}${C.reset}\n`);
 }
 
 async function initializeSession() {
@@ -391,18 +430,85 @@ ${C.bold}${C.cyan}╔═══════════════════�
             console.log(`${C.green}  ✓ Verbose: ${verbose ? 'on' : 'off'}${C.reset}\n`);
             rl.prompt(); return;
         }
+        if (input === ':filelog') {
+            filePerMessage = !filePerMessage;
+            console.log(`${C.green}  ✓ FileLog (per-message logging): ${filePerMessage ? 'on' : 'off'}${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === '.clearcache' || input === '.clearcahe') {
+            await stateManager.clearState(TEST_SESSION_ID);
+            await stateManager.setLastTools(TEST_SESSION_ID, []);
+            console.log(`${C.green}  ✓ State cache cleared!${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === '.clearcart') {
+            const { removed } = await clearBackendCart(TEST_SESSION_ID);
+            await stateManager.updateCart(TEST_SESSION_ID, { item_count: 0, total: 0 });
+            console.log(`${C.green}  ✓ Cart cleared locally! Removed ${removed} item${removed === 1 ? '' : 's'} from API backend.${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === '.clearall') {
+            const { removed } = await clearBackendCart(TEST_SESSION_ID);
+            await stateManager.clearState(TEST_SESSION_ID);
+            await stateManager.setLastTools(TEST_SESSION_ID, []);
+            await stateManager.updateCart(TEST_SESSION_ID, { item_count: 0, total: 0 });
+            console.log(`${C.green}  ✓ State + cart cleared locally! Removed ${removed} item${removed === 1 ? '' : 's'} from API backend.${C.reset}\n`);
+            rl.prompt(); return;
+        }
 
         try {
             const start = Date.now();
+            let runId;
             const state = await stateManager.getState(TEST_SESSION_ID);
 
+            if (filePerMessage) {
+                runId = `req_repl_${Date.now()}`;
+                startRun(runId);
+                logDebug('REPL:REQUEST_RECEIVED', {
+                    _desc: 'Request received — REPL simulation, start run',
+                    runId,
+                    sessionId: TEST_SESSION_ID,
+                    message: input,
+                    messageLength: input.length,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Dump state telemetry so visualizer has full context for this turn
+                logDebug('SERVER:STATE_BEFORE', {
+                    _desc: 'State retrieval — load user state from Redis/memory before processing',
+                    session_id: state.session_id,
+                    user_id: state.user_id,
+                    current_intent: state.current_intent,
+                    active_flow: state.active_flow,
+                    expecting_input: state.expecting_input,
+                    conversation_history: state.conversation_history,
+                    conversation_summary: state.conversation_summary,
+                    product_context: state.product_context,
+                    reference_map: state.reference_map,
+                    ordinal_list: state.ordinal_list,
+                    cart: state.cart,
+                    checkout: state.checkout,
+                    preferences: state.preferences,
+                    session: state.session,
+                    microstate: state.microstate,
+                    last_bot_suggestion: state.last_bot_suggestion,
+                    last_tools: state.last_tools,
+                    paused_context: state.paused_context,
+                    created_at: state.created_at,
+                    updated_at: state.updated_at,
+                    version: state.version
+                });
+            }
+
             // Zero AI: deterministic + structural extraction only, no AI fallback
-            const result = await resolveAndMap(input, state, null, storeContext);
+            // We use resolveDeterministic (like server.js) so we get the DETERMINISTIC_RESOLVER log traces
+            const resolverOutput = await resolveDeterministic(input, state);
+            const result = resolverOutput.result || { intents: [], tools: [] };
 
             let executionResults = [];
-            if (result.tools.length > 0) {
+            if (resolverOutput.tools.length > 0) {
                 // Mute tool execution for pure intent testing if needed, but keeping for now
-                executionResults = await executeTools(result.tools, TEST_SESSION_ID);
+                executionResults = await executeTools(resolverOutput.tools, TEST_SESSION_ID);
             }
 
             // STACK-SCOPED SEARCH CONTEXT: if product.search ran, snapshot search_context into the stack
@@ -427,6 +533,16 @@ ${C.bold}${C.cyan}╔═══════════════════�
 
             // Keep a running log across turns.
             accumulatedExecutionResults.push(...executionResults);
+
+            if (filePerMessage) {
+                logDebug('REPL:INTENT_RESOLVED', {
+                    _desc: 'Intent resolved — deterministic pipeline output, tools selected',
+                    intent: result.intents.length > 0 ? result.intents[0].intentName : 'unknown',
+                    toolCount: result.tools.length,
+                    toolsSelected: result.tools,
+                    executionResults: executionResults
+                });
+            }
 
             const ms = Date.now() - start;
 
@@ -460,60 +576,60 @@ ${C.bold}${C.cyan}╔═══════════════════�
             // even though stack still exists in state.
             if (!microstateIsOpenNow && (result.stack_active || result.microstate_fulfilled || hasPersistedStack)) {
                 let stackData = persistedStack;
-                
+
                 console.log(`${C.cyan}[STACK DEBUG] Initial state | remaining: ${stackData?.remaining_intents?.length || 0} | executed: ${stackData?.executed_intents?.length || 0} | index: ${stackData?.current_intent_index}${C.reset}`);
 
                 let pausedForMicrostate = false;
-                
+
                 while (stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0) {
                     console.log(`${C.yellow}📚 Executing remaining stack intents: ${stackData.remaining_intents.length}${C.reset}`);
-                    
+
                     // Show pending intents
                     stackData.remaining_intents.forEach((intent, i) => {
                         const params = JSON.stringify(intent.parameters).slice(0, 60);
                         console.log(`${C.dim}  [${i}] ${intent.intentName}: ${params}...${C.reset}`);
                     });
-                    
+
                     // Re-resolve ordinals with fresh search_context before each intent
                     console.log(`${C.magenta}[STACK DEBUG] Re-resolving ordinals...${C.reset}`);
                     await stack.reResolveOrdinalsForRemainingIntents(stackData.remaining_intents, state, storeContext);
-                    
+
                     // Get next intent
                     const nextIntent = stackData.remaining_intents[0];
-                    
+
                     // ═══════════════════════════════════════════════
                     // Check if this intent needs a microstate
                     // ═══════════════════════════════════════════════
                     const microstateRegistry = require('../src/services/intentResolver/config/microstateRegistry');
                     const triggered = microstateRegistry.checkTriggers(nextIntent.intentName, nextIntent.parameters || {}, []);
-                    
+
                     console.log(`${C.dim}[STACK DEBUG] Microstate check: ${nextIntent.intentName} | triggered: ${triggered ? 'YES' : 'NO'}${C.reset}`);
                     if (triggered) {
                         console.log(`${C.dim}[STACK DEBUG]   trigger: ${triggered.triggerName}${C.reset}`);
                     }
-                    
+
                     if (triggered) {
                         // Open microstate and pause stack execution
                         console.log(`${C.yellow}[STACK DEBUG] Microstate needed for: ${nextIntent.intentName} → ${triggered.triggerName}${C.reset}`);
-                        
+
                         const microstate = triggered.buildMicrostate(nextIntent);
                         await stateManager.setMicrostate(TEST_SESSION_ID, microstate);
-                        
+
                         // Update stack - intent stays at front of remaining (not executed yet)
                         // Just save current state, don't advance
                         await stateManager.setStack(TEST_SESSION_ID, stackData);
-                        
+
                         // Show the microstate prompt
                         const promptText = triggered.triggerDef.prompt?.text || `Please provide ${triggered.triggerName}`;
                         console.log(`\n${C.yellow}🔒 MICROSTATE OPENED: ${triggered.triggerName}${C.reset}`);
                         console.log(`${C.yellow}   Intent: ${nextIntent.intentName}${C.reset}`);
                         console.log(`${C.white}  Bot: ${promptText}${C.reset}\n`);
-                        
+
                         // Break out to wait for user input
                         pausedForMicrostate = true;
                         break;
                     }
-                    
+
                     // No microstate needed - execute normally
                     const toolMapper = require('../src/services/intentResolver/pipeline/toolMapper');
                     const nextTools = toolMapper.mapToTools([{
@@ -521,7 +637,7 @@ ${C.bold}${C.cyan}╔═══════════════════�
                         parameters: nextIntent.parameters || {},
                         _ported_from: nextIntent._ported_from
                     }]);
-                    
+
                     console.log(`${C.yellow}📚 Executing: ${nextIntent.intentName}${C.reset}`);
                     const nextExecutionResults = await executeTools(nextTools, TEST_SESSION_ID);
                     executionResults.push(...nextExecutionResults);
@@ -545,19 +661,19 @@ ${C.bold}${C.cyan}╔═══════════════════�
                             await stateManager.setStack(TEST_SESSION_ID, stackData);
                         }
                     }
-                    
+
                     // Update stack progress - ONLY advance if we actually executed
                     stackData.executed_intents.push(nextIntent);
                     stackData.remaining_intents = stackData.remaining_intents.slice(1);
                     stackData.current_intent_index++;
-                    
+
                     if (stackData.remaining_intents.length === 0) {
                         await stateManager.clearStack(TEST_SESSION_ID);
                         console.log(`${C.green}📚 Stack complete!${C.reset}`);
                     } else {
                         await stateManager.setStack(TEST_SESSION_ID, stackData);
                     }
-                    
+
                     // Refresh stack data for next iteration
                     stackData = await stateManager.getStack(TEST_SESSION_ID);
                 }

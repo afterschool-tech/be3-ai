@@ -70,6 +70,48 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
     const textLower = String(text || '').toLowerCase();
 
+    const tokenize = (s) => String(s || '').toLowerCase().split(/\s+/).map(x => x.trim()).filter(Boolean);
+    const textWords = tokenize(textLower);
+
+    const intentKeywordTokenSet = (intent) => {
+        const out = new Set();
+        for (const kw of (intent.keywords || [])) {
+            tokenize(kw).forEach(t => out.add(t));
+        }
+        for (const syn of (intent.synonyms || [])) {
+            tokenize(syn).forEach(t => out.add(t));
+        }
+        return out;
+    };
+
+    const nonSearchHitIntents = new Set();
+    const nonSearchHitTokens = new Set();
+    for (const intent of Object.values(allIntents)) {
+        if (!intent || intent.name === 'product_search') continue;
+        let hit = false;
+        for (const kw of (intent.keywords || [])) {
+            const kwLower = String(kw || '').toLowerCase();
+            if (kwLower && textWords.includes(kwLower)) {
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) {
+            for (const syn of (intent.synonyms || [])) {
+                const synLower = String(syn || '').toLowerCase();
+                if (synLower && synLower.includes(' ') && textLower.includes(synLower)) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+        if (hit) {
+            nonSearchHitIntents.add(intent.name);
+            const toks = intentKeywordTokenSet(intent);
+            for (const t of toks) nonSearchHitTokens.add(t);
+        }
+    }
+
     // Heuristic: comparison/advice requests often don't include an explicit "compare" verb,
     // but do include strong comparison signals ("comparison", "which one should I get").
     // If multiple product-like mentions exist, prefer product_compare over product_search.
@@ -103,6 +145,14 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         };
     }
 
+    const getCategoryQuality = () => {
+        const cat = entityParams['category'];
+        if (!cat) return 0;
+        const q = Number(cat.quality);
+        if (!Number.isFinite(q)) return 1.0;
+        return Math.max(0, Math.min(1, q));
+    };
+
     // ── Phase 2: Compute action intent set ──
     // Determine which intents are suggested by the detected action verbs
     const actionSuggestedIntents = new Set();
@@ -114,6 +164,8 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const actionCategories = new Set(actionEntities.map(a => a.category));
     const specificCartOps = ['cart_add', 'cart_remove', 'cart_update'];
     const hasSpecificCartOp = specificCartOps.some(op => actionCategories.has(op));
+
+    const hasPurchaseAction = actionCategories.has('purchase');
 
     const hasCartRemoveAction = actionCategories.has('cart_remove');
 
@@ -157,6 +209,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     continue;
                 }
 
+                const isCategorySlot = paramName === 'category' && entity.type === 'category';
+                const catQuality = isCategorySlot ? getCategoryQuality() : 1.0;
+
                 if (paramDef.required) {
                     requiredFilled++;
                     requiredTotal++;
@@ -165,6 +220,16 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     optionalFilled++;
                     optionalTotal++;
                     matchedParams[paramName] = entity.id || entity.clauseId || entity.value;
+                }
+
+                // Category matches should be high recall but not always high authority.
+                // Down-weight the schema-fit contribution for low-quality layer2 category matches.
+                if (isCategorySlot && catQuality < 1.0) {
+                    // We already counted the slot as filled above; compensate by reducing its effective value.
+                    // Optional slot base is +0.5. Reduce by (1 - quality) * 0.5.
+                    if (!paramDef.required) {
+                        score -= (1.0 - catQuality) * 0.5;
+                    }
                 }
             } else if (paramDef.required) {
                 requiredTotal++;
@@ -193,7 +258,6 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3d. IDF Keyword Match (beyond action verbs): Check intent keywords against text words
-        const textWords = textLower.split(/\s+/);
         for (const kw of (intent.keywords || [])) {
             const kwLower = kw.toLowerCase();
             if (textWords.includes(kwLower) && !matchedKeywords.includes(kwLower)) {
@@ -276,15 +340,16 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3h. Zero-param intents with no action match get a baseline penalty
-        if (Object.keys(params).length === 0 && !actionSuggestedIntents.has(intentName)) {
+        if (Object.keys(params).length === 0 && matchedKeywords.length === 0 && !actionSuggestedIntents.has(intentName)) {
             score -= 2.0;
         }
 
         // 3i. Discovery vs Identity Bias Correction
         // If a brand is detected without an action verb, user is likely searching, not identifying vendors.
         if (entityParams['brand'] || entityParams['category']) {
+            const categoryQuality = getCategoryQuality() || 1.0;
             if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
-                score += 1.5; // Discovery boost for specific entities
+                score += 1.5 * categoryQuality; // Discovery boost for specific entities
             }
             if (intentName === 'vendor_identity' && !actionSuggestedIntents.has('info')) {
                 score -= 2.0; // Identity penalty for brand-only mentions
@@ -295,7 +360,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // If a root category is mentioned without specific product terms, user wants to browse
         if (entityParams['category'] && isRoot(entityParams['category'].id)) {
             const hasProductTerms = entityParams['product_name'] || entityParams['brand'];
-            if (!hasProductTerms) {
+            if (!hasProductTerms && !hasPurchaseAction) {
                 if (intentName === 'discovery_sentinel') {
                     score += 2.0;
                     logDebug('SCORING:HIERARCHY_BOOST', {
@@ -314,6 +379,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // BUT: Don't apply this boost if another intent has a direct keyword match (e.g., "dami" → test_microstate)
         if (entityParams['product_name'] && entityParams['product_name'].source === 'residual') {
             const productNameLower = entityParams['product_name'].value.toLowerCase();
+            const residualTokens = new Set(tokenize(productNameLower));
             
             // Check if this product name is actually a keyword for another intent
             const isKeywordForOtherIntent = Object.values(allIntents).some(intent => {
@@ -321,10 +387,22 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                 const allKeywords = [...(intent.keywords || []), ...(intent.synonyms || [])];
                 return allKeywords.some(kw => kw.toLowerCase() === productNameLower);
             });
+
+            // Option (2): only suppress orphan boost when some other intent actually matched this message,
+            // AND the residual contains tokens that belong to those matched intents.
+            let residualSupportsOtherIntent = false;
+            if (!isKeywordForOtherIntent && nonSearchHitIntents.size > 0) {
+                for (const t of residualTokens) {
+                    if (nonSearchHitTokens.has(t)) {
+                        residualSupportsOtherIntent = true;
+                        break;
+                    }
+                }
+            }
             
             if (intentName === 'product_search') {
                 // Only boost if this is NOT a keyword for another intent
-                if (!isKeywordForOtherIntent) {
+                if (!isKeywordForOtherIntent && !residualSupportsOtherIntent) {
                     score += 2.0; // Boost search
                 }
             }

@@ -32,6 +32,11 @@ function mapToTool(resolvedIntent) {
         const value = resolvedIntent.parameters[intentParam];
 
         if (value !== null && value !== undefined) {
+            // Treat empty arrays as "unset" so they don't overwrite more informative values.
+            // Example: products: [] and product_name: "infinix" both map to query.
+            if (Array.isArray(value) && value.length === 0) {
+                continue;
+            }
             if (shouldExpand && Array.isArray(value)) {
                 expansionParam = toolParam;
                 expansionValues = value;
@@ -44,7 +49,11 @@ function mapToTool(resolvedIntent) {
 
                 // Prefer arrays over strings: if existing is array and new value is string, skip
                 if (existingIsArray && !isArray) {
-                    continue; // Keep array, don't overwrite with string
+                    // But if the existing array is empty, allow the string to replace it.
+                    if (existing.length === 0) {
+                        toolParams[toolParam] = value;
+                    }
+                    continue; // Keep array (unless empty), don't overwrite with string
                 }
                 // Prefer arrays over strings: if new value is array and existing is string, overwrite
                 if (isArray && !existingIsArray && existing !== undefined) {

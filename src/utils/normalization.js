@@ -21,6 +21,12 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 
     const debug = !!options?.debug;
     const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
+    const returnMeta = !!options?.returnMeta;
+
+    const result = (id, meta) => {
+        if (!id) return null;
+        return returnMeta ? { id, meta: meta || null } : id;
+    };
 
     // Guard: avoid partial-matching extremely short tokens (e.g., "in", "on", "at")
     // which can accidentally match inside real category labels ("All in one PCs").
@@ -133,7 +139,12 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                             }
                         });
                     }
-                    return targetId;
+                    return result(targetId, {
+                        layer: 'alias',
+                        matchedAlias: a,
+                        matchedAliasLoose: alias,
+                        inputLoose
+                    });
                 }
             }
         }
@@ -231,12 +242,10 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         }
 
         if (best > 0) {
-            const inv = Number(c.total_count || c.product_count || 0);
-            const invBonus = inv > 0 ? Math.min(20, 8 * Math.log10(1 + inv)) : 0;
             layer1Candidates.push({
                 id: c.id,
-                score: best + invBonus,
-                match: { field: bestField, query: bestQuery, baseScore: best, inv, invBonus }
+                score: best,
+                match: { field: bestField, query: bestQuery, baseScore: best }
             });
         }
     }
@@ -244,7 +253,13 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     if (layer1Candidates.length > 0) {
         layer1Candidates.sort((a, b) => b.score - a.score);
         const winner = layer1Candidates[0];
-        if (winner && winner.id) return winner.id;
+        if (winner && winner.id) {
+            return result(winner.id, {
+                layer: 'layer1',
+                score: winner.score,
+                match: winner.match
+            });
+        }
     }
 
     if (exactMatchOnly) return null;
@@ -280,12 +295,6 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             if (depth > 20) break;
         }
         return depth;
-    };
-
-    const invBonus = (n) => {
-        const x = Number(n || 0);
-        if (!Number.isFinite(x) || x <= 0) return 0;
-        return 8 * Math.log10(1 + x);
     };
 
     const inferWordsRaw = tokenize(catLower);
@@ -369,8 +378,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 
         const depth = getDepth(c);
         const depthBonus = Math.min(4, depth) * 6;
-        const inventoryBonus = invBonus(c.total_count || c.product_count);
-        const finalScore = lexScore + depthBonus + inventoryBonus;
+        const finalScore = lexScore + depthBonus;
 
         scored.push({
             id: c.id,
@@ -383,7 +391,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             total_count: c.total_count,
             product_count: c.product_count,
             match: wordMatches[0]?.details,
-            bonuses: { depth: depthBonus, inventory: inventoryBonus, coverage: coverageBonus }
+            bonuses: { depth: depthBonus, coverage: coverageBonus }
         });
     }
 
@@ -437,7 +445,15 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         });
     }
 
-    return scored[0].id;
+    return result(scored[0].id, {
+        layer: 'layer2',
+        score: scored[0].score,
+        lexTier: scored[0].lexTier,
+        lexScore: scored[0].lexScore,
+        depth: scored[0].depth,
+        match: scored[0].match,
+        bonuses: scored[0].bonuses
+    });
 }
 
 /**

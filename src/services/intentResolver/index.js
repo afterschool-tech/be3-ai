@@ -579,7 +579,16 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
             _example: '"add samsung phone to cart" → action:add, brand:samsung, residual:phone',
             text: cleanedText,
-            entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb, idf: e.idf })),
+            entities: extractionResult.entities.map(e => ({
+                type: e.type,
+                value: e.value || e.verb,
+                category: e.category,
+                idf: e.idf,
+                quality: e.quality,
+                matchMeta: e.matchMeta,
+                wordIndices: e.wordIndices,
+                consumedWordIndices: e.consumedWordIndices
+            })),
             residualWords: extractionResult.residualWords
         });
 

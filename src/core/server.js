@@ -259,6 +259,7 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
     const { logDebug } = require('../utils/debugLogger');
 
     const MAX_PRODUCTS_FOR_LLM = 6;
+    const MAX_VENDORS_FOR_LLM = 25;
 
     const summarizeToolResultsForLLM = (results) => {
         const summarized = [];
@@ -274,13 +275,45 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 error: tr?.error || tr?.result?.error || null
             };
 
-            const r = tr?.result || {};
+            const r = tr?.result;
+
+            if (tool === 'vendor.list' && Array.isArray(r)) {
+                base.vendors = r.slice(0, MAX_VENDORS_FOR_LLM).map(v => ({
+                    name: v?.name || null,
+                    tag: v?.tag || null,
+                    product_count: v?.product_count ?? null,
+                    delivery: v?.delivery ?? null
+                }));
+                base.vendors_truncated = r.length > MAX_VENDORS_FOR_LLM;
+                base.total_vendors = r.length;
+                summarized.push(base);
+                continue;
+            }
+
+            const rr = (r && typeof r === 'object') ? r : {};
+
+            if ((tool === 'vendor.getContactLink' || tool === 'vendor.getContact') && rr && typeof rr === 'object') {
+                base.vendor_contact = {
+                    vendor: rr.vendor || null,
+                    whatsapp_link: rr.whatsapp_link || null,
+                    phone: rr.phone || null,
+                    message_preview: rr.message_preview || null
+                };
+            }
+
+            if (tool === 'discovery.sentinel' && rr && typeof rr === 'object') {
+                base.target_category = rr.target_category || null;
+                base.suggestion_type = rr.suggestion_type || null;
+                base.recovery_reason = rr.recovery_reason || null;
+                if (rr.whatsapp_product_cards) base.whatsapp_product_cards = rr.whatsapp_product_cards;
+                if (rr.whatsapp) base.whatsapp = rr.whatsapp;
+            }
 
             // Suggested products (product.search fallbacks)
-            if (Array.isArray(r.suggested_products) && r.suggested_products.length > 0) {
-                base.suggestion_message = r.suggestion_message || null;
-                base.suggested_total = r.suggested_total ?? r.suggested_products.length;
-                base.suggested_products = r.suggested_products.slice(0, MAX_PRODUCTS_FOR_LLM).map(p => ({
+            if (Array.isArray(rr.suggested_products) && rr.suggested_products.length > 0) {
+                base.suggestion_message = rr.suggestion_message || null;
+                base.suggested_total = rr.suggested_total ?? rr.suggested_products.length;
+                base.suggested_products = rr.suggested_products.slice(0, MAX_PRODUCTS_FOR_LLM).map(p => ({
                     id: p?.id || p?.handle || p?.product_id || null,
                     name: p?.name || p?.title || null,
                     price: p?.price ?? null,
@@ -292,21 +325,21 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
 
             // Cart view items: preserve full line items for grounded cart responses.
             // cart.view returns r.items (not r.products), so we explicitly summarize it.
-            if (Array.isArray(r.items) && (tool === 'cart.view' || tool === 'cart.get' || tool === 'cart')) {
-                base.cart_items = r.items.map(i => ({
+            if (Array.isArray(rr.items) && (tool === 'cart.view' || tool === 'cart.get' || tool === 'cart')) {
+                base.cart_items = rr.items.map(i => ({
                     id: i?.id || null,
                     name: i?.product_name || i?.name || i?.title || null,
                     quantity: i?.quantity ?? null,
                     price: i?.price ?? null,
                     subtotal: i?.subtotal ?? null
                 }));
-                base.total = r.total ?? null;
-                base.item_count = r.item_count ?? base.cart_items.length;
+                base.total = rr.total ?? null;
+                base.item_count = rr.item_count ?? base.cart_items.length;
             }
 
             // Single-product details (e.g., product.getDetails)
-            if (r && r.product && typeof r.product === 'object' && !Array.isArray(r.product)) {
-                const p = r.product;
+            if (rr && rr.product && typeof rr.product === 'object' && !Array.isArray(rr.product)) {
+                const p = rr.product;
                 base.product = {
                     id: p?.id || p?.handle || p?.product_id || null,
                     name: p?.name || p?.title || null,
@@ -325,8 +358,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 };
             }
 
-            const hasProducts = Array.isArray(r.products) || Array.isArray(r.results);
-            const productArray = Array.isArray(r.products) ? r.products : (Array.isArray(r.results) ? r.results : null);
+            const hasProducts = Array.isArray(rr.products) || Array.isArray(rr.results);
+            const productArray = Array.isArray(rr.products) ? rr.products : (Array.isArray(rr.results) ? rr.results : null);
 
             if (hasProducts && Array.isArray(productArray)) {
                 const isCartView = tool === 'cart.view' || tool === 'cart.get' || tool === 'cart';
@@ -345,8 +378,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
             }
 
             // Preserve critical vendor breakdown / checkout links if present, but keep it lean
-            if (Array.isArray(r.vendor_breakdown)) {
-                base.vendor_breakdown = r.vendor_breakdown.map(v => ({
+            if (Array.isArray(rr.vendor_breakdown)) {
+                base.vendor_breakdown = rr.vendor_breakdown.map(v => ({
                     vendor: v.vendor || v.vendor_name || v.name || null,
                     order_number: v.order_number || null,
                     subtotal: v.subtotal || null,
@@ -357,8 +390,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
             }
 
             // Product comparisons (e.g., product.compare)
-            if (Array.isArray(r.comparison)) {
-                base.comparison = r.comparison.map(p => ({
+            if (Array.isArray(rr.comparison)) {
+                base.comparison = rr.comparison.map(p => ({
                     id: p?.id || p?.handle || p?.product_id || null,
                     name: p?.name || p?.title || null,
                     price: p?.price ?? null,

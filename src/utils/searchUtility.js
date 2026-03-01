@@ -35,8 +35,9 @@ async function performSemanticSearch(query, category, context, callBackendAPI, l
     }
 
     try {
+        const rawUserMessage = (context && typeof context.userMessage === 'string') ? context.userMessage : '';
         const resolved = await resolveClauses(
-            query || context.userMessage || '',
+            rawUserMessage,
             category.id,
             context.history || []
         );

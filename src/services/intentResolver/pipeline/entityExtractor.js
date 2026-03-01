@@ -125,7 +125,8 @@ const FILLERS = new Set([
     'ok', 'okay', 'hi', 'hello', 'hey', 'yo', 'sup',
     'yeah', 'yes', 'yep', 'yup', 'nope', 'nah',
     'thanks', 'thank', 'thx', 'ty', 'cool', 'great', 'sure',
-    'show', 'find', 'get', 'give', 'tell', 'look', 'looking', 'about',
+    'let',
+    'show', 'find', 'get', 'give', 'tell', 'look', 'looking', 'see', 'about',
     "i'm", "i'd", "i'll", "i've", "let's", "don't", "doesn't",
     "can't", "won't", "shouldn't", "wouldn't", "couldn't"
 ]);
@@ -143,6 +144,19 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
     const entities = [];
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const consumed = new Set(); // Track consumed word indices
+
+    // ── Attribute/Clause pre-pass (B2): mark indices that look like attribute signals ──
+    // These indices should not be consumed by category detection so that downstream
+    // attribute extraction (brand/clause) can still fire.
+    const protectedAttrIdx = new Set();
+    for (let size = 2; size >= 1; size--) {
+        for (let i = 0; i <= words.length - size; i++) {
+            const phrase = words.slice(i, i + size).join(' ');
+            if (BRAND_LOOKUP.has(phrase) || CLAUSE_LOOKUP.has(phrase)) {
+                for (let j = i; j < i + size; j++) protectedAttrIdx.add(j);
+            }
+        }
+    }
 
     // ── 1. Vendor Detection (N-gram, longest match first) ──
     if (storeContext.VENDORS) {
@@ -230,21 +244,39 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     }
                 }
                 if (overlaps) continue;
-                const phrase = words.slice(i, i + size).join(' ');
+                const phraseWords = words.slice(i, i + size);
+                if (phraseWords.every(w => FILLERS.has(w))) continue;
+                if (FILLERS.has(phraseWords[0]) || FILLERS.has(phraseWords[phraseWords.length - 1])) continue;
+                const phrase = phraseWords.join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catId = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5 });
+                const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5, returnMeta: true });
+                const catId = catRes && typeof catRes === 'object' ? catRes.id : catRes;
+                const catMeta = catRes && typeof catRes === 'object' ? (catRes.meta || null) : null;
                 if (catId) {
+                    let categoryQuality = 1.0;
+                    if (catMeta && catMeta.layer === 'layer2') {
+                        const tier = Number(catMeta.lexTier || 0);
+                        if (tier >= 4) categoryQuality = 0.35;
+                        else if (tier === 3) categoryQuality = 0.25;
+                        else if (tier === 2) categoryQuality = 0.10;
+                        else categoryQuality = 0.10;
+                    }
+                    const matchedWordIndices = Array.from({ length: size }, (_, j) => i + j);
+                    const consumedWordIndices = matchedWordIndices.filter(idx => !protectedAttrIdx.has(idx));
                     entities.push({
                         type: 'category',
                         value: phrase,
                         id: catId,
                         source: 'storeContext.CATEGORIES',
-                        wordIndices: Array.from({ length: size }, (_, j) => i + j)
+                        matchMeta: catMeta,
+                        quality: categoryQuality,
+                        wordIndices: matchedWordIndices,
+                        consumedWordIndices
                     });
 
-                    // Consume all category words
-                    for (let j = i; j < i + size; j++) consumed.add(j);
+                    // B2 consume behavior: only consume non-attribute indices so attribute extraction can still run.
+                    for (const idx of consumedWordIndices) consumed.add(idx);
                     break; // Only one category per statement
                 }
             }
