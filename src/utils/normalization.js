@@ -20,6 +20,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     let catLower = cat.trim().toLowerCase();
 
     const debug = !!options?.debug;
+    const initiator = options?.initiator || 'unknown';
     const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
     const returnMeta = !!options?.returnMeta;
 
@@ -39,7 +40,17 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     }
 
     // 2. Direct match with key
-    if (cats[catLower]) return cats[catLower].id;
+    if (cats[catLower]) {
+        if (debug) {
+            logDebug('NORMALIZE_CATEGORY:KEY_HIT', {
+                _desc: 'normalizeCategory — direct key/slug match',
+                initiator,
+                input: cat,
+                id: cats[catLower].id
+            });
+        }
+        return cats[catLower].id;
+    }
 
     const normalizeLoose = (s) => String(s || '')
         .toLowerCase()
@@ -124,6 +135,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                         const resolved = Object.values(cats).find(c => c && c.id === targetId);
                         logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
                             _desc: 'normalizeCategory — alias inventory override',
+                            initiator,
                             input: cat,
                             inputLower: catLower,
                             exactMatchOnly,
@@ -254,6 +266,14 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         layer1Candidates.sort((a, b) => b.score - a.score);
         const winner = layer1Candidates[0];
         if (winner && winner.id) {
+            if (debug) {
+                logDebug('NORMALIZE_CATEGORY:LAYER1', {
+                    _desc: 'normalizeCategory — layer1 exact/plural match',
+                    initiator,
+                    input: cat,
+                    winner: winner
+                });
+            }
             return result(winner.id, {
                 layer: 'layer1',
                 score: winner.score,
@@ -412,6 +432,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         const winner = scored[0];
         logDebug('NORMALIZE_CATEGORY:LAYER2', {
             _desc: 'normalizeCategory — layer2 scoring fallback',
+            initiator,
             input: cat,
             inputLower: catLower,
             exactMatchOnly,
@@ -633,33 +654,33 @@ const ORDINAL_INDICATORS = new Set([
  */
 function isOrdinalOrReferencePhrase(phrase, fullText = null, phraseStartIndex = -1) {
     if (!phrase || typeof phrase !== 'string') return false;
-    
+
     const words = phrase.toLowerCase().trim().split(/\s+/).filter(Boolean);
     if (words.length === 0) return false;
-    
+
     // If phrase contains non-ordinal words, it's likely a category name (e.g., "all in one")
     const hasNonOrdinalWords = words.some(w => !ORDINAL_WORDS.has(w) && !ORDINAL_INDICATORS.has(w));
     if (hasNonOrdinalWords) return false;
-    
+
     // If phrase is purely ordinal words, check context
     const isPurelyOrdinal = words.every(w => ORDINAL_WORDS.has(w) || ORDINAL_INDICATORS.has(w));
     if (!isPurelyOrdinal) return false;
-    
+
     // Check surrounding context if available
     if (fullText && phraseStartIndex >= 0) {
         const beforePhrase = fullText.substring(Math.max(0, phraseStartIndex - 20), phraseStartIndex).trim();
         const beforeWords = beforePhrase.toLowerCase().split(/\s+/).filter(Boolean);
-        
+
         // If preceded by ordinal indicators or comparison words, it's likely a reference
         const hasOrdinalContext = beforeWords.length > 0 && (
             ORDINAL_INDICATORS.has(beforeWords[beforeWords.length - 1]) ||
             ORDINAL_WORDS.has(beforeWords[beforeWords.length - 1]) ||
             beforeWords.some(w => ['compare', 'versus', 'vs', 'difference', 'between'].includes(w))
         );
-        
+
         if (hasOrdinalContext) return true;
     }
-    
+
     // Default: if phrase is purely ordinal words (especially single word), treat as reference
     // This catches cases like "one" in "compare X and Y, the first one"
     return words.length === 1 || words.every(w => ORDINAL_WORDS.has(w));

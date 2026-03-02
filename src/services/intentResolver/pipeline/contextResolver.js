@@ -11,10 +11,11 @@
  * Ambiguous reference words that can be relative pronouns or temporal/discourse markers.
  * Only resolve these when context strongly suggests a product reference.
  */
- 
+
 const {
     MODEL_QUALIFIER_WORDS
 } = require('../config/contextResolverGuards');
+const { logDebug } = require('../../../utils/debugLogger');
 
 const AMBIGUOUS_REFERENCE_WORDS = new Set([
     'it', 'this', 'that', 'then', 'the_one', 'the ones', 'ones',
@@ -128,6 +129,13 @@ function resolveReferences(text, state, storeContext) {
     const referenceMap = state.reference_map;
     const refKeys = Object.keys(referenceMap).sort((a, b) => b.length - a.length);
     console.log(`[ContextResolver] resolveReferences: input="${text.slice(0, 120)}${text.length > 120 ? '...' : ''}" | keys=[${refKeys.join(', ')}]`);
+    logDebug('CONTEXT:RESOLVE_START', {
+        _desc: 'Context resolution start — scan text for pronoun/ordinal references in reference_map',
+        _example: '"add the first one" → scanning reference_map keys: [the_first_one, it, this]',
+        input: text.slice(0, 150),
+        referenceKeys: refKeys.slice(0, 10),
+        keyCount: refKeys.length
+    });
     const resolutions = [];
     let resolvedText = text;
 
@@ -163,23 +171,79 @@ function resolveReferences(text, state, storeContext) {
         }
 
         if (productName) {
-            console.log(`[ContextResolver] ✅ Resolved "${matched}" → "${productName}" (${productId})`);
+            // Token Masking: collapse multi-word product names into single tokens
+            // so downstream normalizeCategory cannot cannibalize individual words.
+            // e.g. "iPhone 16 Pro" → "iPhone16Pro"
+            const collapsed = collapseProductName(productName);
+            console.log(`[ContextResolver] ✅ Resolved "${matched}" → "${productName}" (collapsed: "${collapsed}") (${productId})`);
+            logDebug('CONTEXT:TOKEN_MASK', {
+                _desc: 'Token masking — collapsed resolved product name into single contiguous token',
+                _example: '"the first one" → "iPhone 16 Pro" collapsed to "iPhone16Pro" (prevents normalizeCategory cannibalization)',
+                original: matched,
+                resolved: productName,
+                collapsed: collapsed,
+                productId: productId
+            });
             resolutions.push({
                 original: matched,
                 resolved: productName,
+                collapsed: collapsed,
                 productId: productId,
                 source: 'reference_map'
             });
-            return productName;
+            return collapsed;
         }
         console.log(`[ContextResolver] ⚠️ Matched "${matched}" in reference_map → ${productId} but no product name in search results`);
+        logDebug('CONTEXT:RESOLVE_MISS', {
+            _desc: 'Context resolution miss — reference_map key matched but no product name found in search results',
+            _example: '"it" → product_id abc123 but product name not in search results cache',
+            matched: matched,
+            productId: productId
+        });
         return matched;
     });
 
     if (resolutions.length > 0) {
         console.log(`[ContextResolver] resolveReferences: done | resolutions=${resolutions.length} | output="${resolvedText.slice(0, 120)}${resolvedText.length > 120 ? '...' : ''}"`);
+        logDebug('CONTEXT:RESOLVE_COMPLETE', {
+            _desc: 'Context resolution complete — all pronoun/ordinal references resolved and collapsed',
+            _example: '"add the first one" → "add iPhone16Pro" with 1 resolution',
+            resolutionCount: resolutions.length,
+            resolutions: resolutions.map(r => ({
+                original: r.original,
+                resolved: r.resolved,
+                collapsed: r.collapsed
+            })),
+            outputPreview: resolvedText.slice(0, 150)
+        });
     }
     return { resolvedText, resolutions };
+}
+
+/**
+ * Collapse a product name into a single contiguous token.
+ * Strips spaces and special characters so it survives tokenization as one unit.
+ * e.g. "iPhone 16 Pro Max" → "iPhone16ProMax"
+ *      "Infinix Hot 30i"   → "InfinixHot30i"
+ */
+function collapseProductName(name) {
+    return String(name)
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .trim();
+}
+
+/**
+ * Un-collapse a masked token back to the original product name
+ * using the resolutions record.
+ */
+function uncollapseFromResolutions(text, resolutions) {
+    let result = text;
+    for (const res of resolutions) {
+        if (res.collapsed && res.resolved) {
+            result = result.replace(new RegExp(escapeRegex(res.collapsed), 'gi'), res.resolved);
+        }
+    }
+    return result;
 }
 
 /**
@@ -189,4 +253,4 @@ function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-module.exports = { resolveReferences, resolveIdToName, shouldSkipAmbiguousReference, shouldSkipBrandCollision };
+module.exports = { resolveReferences, resolveIdToName, shouldSkipAmbiguousReference, shouldSkipBrandCollision, collapseProductName, uncollapseFromResolutions };

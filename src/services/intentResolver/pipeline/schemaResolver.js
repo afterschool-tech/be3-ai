@@ -26,7 +26,8 @@ const ENTITY_TO_PARAM = {
     'quantity': 'quantity',
     'price_max': 'price_max',
     'price_min': 'price_min',
-    'clause': 'clause_words'
+    'clause': 'clause_words',
+    'resolved_product': 'product_name'  // Context-resolved products → product_name slot
 };
 
 // ── Action category to intent name mapping ──
@@ -380,7 +381,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         if (entityParams['product_name'] && entityParams['product_name'].source === 'residual') {
             const productNameLower = entityParams['product_name'].value.toLowerCase();
             const residualTokens = new Set(tokenize(productNameLower));
-            
+
             // Check if this product name is actually a keyword for another intent
             const isKeywordForOtherIntent = Object.values(allIntents).some(intent => {
                 if (intent.name === 'product_search') return false;
@@ -399,7 +400,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     }
                 }
             }
-            
+
             if (intentName === 'product_search') {
                 // Only boost if this is NOT a keyword for another intent
                 if (!isKeywordForOtherIntent && !residualSupportsOtherIntent) {
@@ -465,7 +466,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         const allKeywords = [...(intent.keywords || []), ...(intent.synonyms || [])];
         return allKeywords.some(kw => kw.toLowerCase() === residualText);
     });
-    
+
     if (residualWords.length > 0 && !residualIsKeyword && !validCandidates.some(c => c.intentName === 'product_search' && c.score > 1)) {
         const existing = validCandidates.find(c => c.intentName === 'product_search');
         if (!existing) {

@@ -71,7 +71,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 if (snap?.filters && typeof snap.filters === 'object') {
                     baseFilters = snap.filters;
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (baseFilters) {
@@ -117,7 +117,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         if (clauseName) {
             try {
                 clauseName = decodeURIComponent(clauseName);
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (snapshotId) {
@@ -126,7 +126,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 if (snap?.filters && typeof snap.filters === 'object') {
                     baseFilters = snap.filters;
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (baseFilters && attrCode && clauseName) {
@@ -177,7 +177,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         if (value) {
             try {
                 value = decodeURIComponent(value);
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (snapshotId) {
@@ -186,7 +186,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 if (snap?.filters && typeof snap.filters === 'object') {
                     baseFilters = snap.filters;
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (baseFilters && attrCode && value) {
@@ -376,7 +376,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             } catch (_) {
                 try {
                     vendorKey = decodeURIComponent(vendorKey);
-                } catch (_) {}
+                } catch (_) { }
             }
         }
 
@@ -573,7 +573,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 4a: Entity Extraction
         const positionTracker = createPositionTracker();
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker);
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
@@ -589,7 +589,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 wordIndices: e.wordIndices,
                 consumedWordIndices: e.consumedWordIndices
             })),
-            residualWords: extractionResult.residualWords
+            residualWords: extractionResult.residualWords,
+            categoryHints: extractionResult.categoryHints || []
         });
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
@@ -829,7 +830,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // If multiple intents, execute one at a time and preserve remaining in stack
     // ═══════════════════════════════════════════════
     const stackResult = await stack.executeIntentStack(normalizedStatements, state, storeContext, state.session_id);
-    
+
     // When stack is active, only process the FIRST intent
     // Remaining intents stay in stack for later
     let intentsToProcess = intents;
@@ -896,11 +897,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Process ALL intents, not just winnerIntent, especially ported ones
         const READ_INTENTS = ['add_to_cart', 'product_compare', 'check_availability'];
         const searchCtx = userId ? await stateManager.getSearchContext(userId) : null;
-        
+
         if (searchCtx) {
             for (const intent of intents) {
                 if (!READ_INTENTS.includes(intent.intentName)) continue;
-                
+
                 const params = intent.parameters || {};
                 let contextApplied = false;
 
@@ -951,30 +952,30 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     if (hasConcreteSingleProduct && params._require_confirmation === true) {
                         // Keep contextApplied=false so later stages (microstate triggers) can run normally.
                     } else {
-                    const msg = (userMessage || '').toLowerCase();
-                    const hasOrdinalPrefix = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|twelvth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|11th|12th|last)\s+(?:one|ones)\b/i.test(msg);
-                    const hasBareOneInMessage = /\b(?:the\s+)?(one|ones)\b/i.test(msg) && !hasOrdinalPrefix;
-                    let phraseForOrdinal = (params.products && params.products[0]) || params.product_name;
-                    if (typeof phraseForOrdinal !== 'string') phraseForOrdinal = null;
-                    const ordinalPhrase = phraseForOrdinal ? phraseForOrdinal.replace(/\s+(one|ones)$/i, '').trim() : null;
-                    const oneBased = ordinalPhrase ? resolveOrdinal(ordinalPhrase) : null;
-                    const listLen = searchCtx.product_ids.length;
-                    const outOfRange = oneBased != null && oneBased !== -1 && oneBased > listLen;
-                    const unresolvedOrdinal = phraseForOrdinal && /(one|ones)$/i.test(phraseForOrdinal) && (oneBased == null || outOfRange);
-                    if (hasBareOneInMessage || unresolvedOrdinal) {
-                        params._open_ordinal_choice_microstate = true;
-                        params._ordinal_choice_product_ids = searchCtx.product_ids;
-                        contextApplied = true;
-                        logDebug('PIPELINE:STAGE8A_ORDINAL_CHOICE_TRIGGER', {
-                            _desc: 'Ordinal choice trigger — bare "one"/"ones" with multiple results → ask which one',
-                            _example: '"add one" with 5 products → open ordinal_choice microstate',
-                            reason: hasBareOneInMessage ? 'bare_one_in_message' : 'unresolved_or_out_of_range_ordinal',
-                            productCount: listLen,
-                            phrase: phraseForOrdinal,
-                            oneBased,
-                            intent: intent.intentName
-                        });
-                    }
+                        const msg = (userMessage || '').toLowerCase();
+                        const hasOrdinalPrefix = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|twelvth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|11th|12th|last)\s+(?:one|ones)\b/i.test(msg);
+                        const hasBareOneInMessage = /\b(?:the\s+)?(one|ones)\b/i.test(msg) && !hasOrdinalPrefix;
+                        let phraseForOrdinal = (params.products && params.products[0]) || params.product_name;
+                        if (typeof phraseForOrdinal !== 'string') phraseForOrdinal = null;
+                        const ordinalPhrase = phraseForOrdinal ? phraseForOrdinal.replace(/\s+(one|ones)$/i, '').trim() : null;
+                        const oneBased = ordinalPhrase ? resolveOrdinal(ordinalPhrase) : null;
+                        const listLen = searchCtx.product_ids.length;
+                        const outOfRange = oneBased != null && oneBased !== -1 && oneBased > listLen;
+                        const unresolvedOrdinal = phraseForOrdinal && /(one|ones)$/i.test(phraseForOrdinal) && (oneBased == null || outOfRange);
+                        if (hasBareOneInMessage || unresolvedOrdinal) {
+                            params._open_ordinal_choice_microstate = true;
+                            params._ordinal_choice_product_ids = searchCtx.product_ids;
+                            contextApplied = true;
+                            logDebug('PIPELINE:STAGE8A_ORDINAL_CHOICE_TRIGGER', {
+                                _desc: 'Ordinal choice trigger — bare "one"/"ones" with multiple results → ask which one',
+                                _example: '"add one" with 5 products → open ordinal_choice microstate',
+                                reason: hasBareOneInMessage ? 'bare_one_in_message' : 'unresolved_or_out_of_range_ordinal',
+                                productCount: listLen,
+                                phrase: phraseForOrdinal,
+                                oneBased,
+                                intent: intent.intentName
+                            });
+                        }
                     }
                 }
 
@@ -1056,10 +1057,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
                 // Clause match: trigger if matchedClauses exist OR if we have params.attributes for filtering
                 // (e.g., "add the white ones" when searchCtx.clauses is empty but params.attributes.color exists)
-                if (!contextApplied && searchCtx.product_ids.length > 0 && 
+                if (!contextApplied && searchCtx.product_ids.length > 0 &&
                     (matchedClauses.length > 0 || (params.attributes && Object.keys(params.attributes).length > 0 && searchCtx.product_attributes_map))) {
                     let filteredProductIds = searchCtx.product_ids;
-                    
+
                     console.log(`[Stage8a:ClauseMatch] 🔍 Starting clause match filtering:`, {
                         matchedClauses: matchedClauses,
                         params_attributes: params.attributes,
@@ -1068,7 +1069,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         product_attributes_map_exists: !!searchCtx.product_attributes_map,
                         product_attributes_map_keys: searchCtx.product_attributes_map ? Object.keys(searchCtx.product_attributes_map) : []
                     });
-                    
+
                     // Filter by attributes if params.attributes exists (from parameterNormalizer mapping clause_words)
                     // This ensures "add the white ones" only adds products that actually have color: 'white'
                     if (params.attributes && Object.keys(params.attributes).length > 0 && searchCtx.product_attributes_map) {
@@ -1089,41 +1090,41 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                                 filterResults.push({ pid, reason: 'no_attributes_stored', kept: true });
                                 return true; // Keep if no attributes stored (fallback)
                             }
-                            
+
                             // Check if product matches all params.attributes (try attrKey then code, no key stripping)
                             let matches = true;
                             for (const [attrKey, attrValue] of Object.entries(params.attributes)) {
                                 const productAttrValue = productAttrs[attrKey] ?? (attrKeyToCode[attrKey] ? productAttrs[attrKeyToCode[attrKey]] : undefined);
                                 const productAttrStr = productAttrValue ? String(productAttrValue).toLowerCase() : null;
                                 const expectedAttrStr = String(attrValue).toLowerCase();
-                                
+
                                 if (!productAttrValue || productAttrStr !== expectedAttrStr) {
                                     matches = false;
-                                    filterResults.push({ 
-                                        pid, 
-                                        attrKey, 
+                                    filterResults.push({
+                                        pid,
+                                        attrKey,
                                         productAttrValue: productAttrValue || '(missing)',
-                                        expectedAttrValue: attrValue, 
+                                        expectedAttrValue: attrValue,
                                         reason: !productAttrValue ? 'attribute_missing' : 'attribute_mismatch',
-                                        kept: false 
+                                        kept: false
                                     });
                                     break;
                                 }
                             }
-                            
+
                             if (matches) {
                                 filterResults.push({ pid, reason: 'all_attributes_match', kept: true });
                             }
                             return matches;
                         });
-                        
+
                         console.log(`[Stage8a:ClauseMatch] 🔍 Filtering results:`, {
                             before: searchCtx.product_ids.length,
                             after: filteredProductIds.length,
                             filtered_out: searchCtx.product_ids.length - filteredProductIds.length,
                             filter_details: filterResults
                         });
-                        
+
                         if (filteredProductIds.length === 0) {
                             // If filtering removed all products, fallback to original (better than nothing)
                             console.log(`[Stage8a:ClauseMatch] ⚠️ Filtering removed all products, falling back to original`);
@@ -1135,7 +1136,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             has_product_attributes_map: !!searchCtx.product_attributes_map
                         });
                     }
-                    
+
                     params._context_product_ids = filteredProductIds;
                     if (matchedClauses.length > 0) {
                         params._context_matched_clauses = matchedClauses;
@@ -1169,10 +1170,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         // No searchCtx.attributes, use params.attributes directly for filtering
                         Object.assign(matchedAttrs, params.attributes);
                     }
-                    
+
                     if (Object.keys(matchedAttrs).length > 0) {
                         let filteredProductIds = searchCtx.product_ids;
-                        
+
                         // Filter products by matched attributes using product_attributes_map
                         if (searchCtx.product_attributes_map) {
                             const attrKeyToCode = {};
@@ -1187,7 +1188,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             filteredProductIds = searchCtx.product_ids.filter(pid => {
                                 const productAttrs = searchCtx.product_attributes_map[pid];
                                 if (!productAttrs) return true; // Keep if no attributes stored (fallback)
-                                
+
                                 for (const [attrKey, attrValue] of Object.entries(matchedAttrs)) {
                                     const productAttrValue = productAttrs[attrKey] ?? (attrKeyToCode[attrKey] ? productAttrs[attrKeyToCode[attrKey]] : undefined);
                                     const productAttrStr = productAttrValue ? String(productAttrValue).toLowerCase() : null;
@@ -1198,12 +1199,12 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                                 }
                                 return true; // All attributes match
                             });
-                            
+
                             if (filteredProductIds.length === 0) {
                                 filteredProductIds = searchCtx.product_ids; // Fallback
                             }
                         }
-                        
+
                         params._context_product_ids = filteredProductIds;
                         params._context_matched_attributes = matchedAttrs;
                         contextApplied = true;
@@ -1214,14 +1215,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 // BUT: Filter by attributes if params.attributes exists (e.g., "add the white ones")
                 else if (!contextApplied && hasExplicitPronoun && searchCtx.product_ids.length > 0) {
                     let filteredProductIds = searchCtx.product_ids;
-                    
+
                     console.log(`[Stage8a:PronounFallback] 🔍 Starting pronoun fallback with attribute filtering:`, {
                         hasExplicitPronoun: hasExplicitPronoun,
                         params_attributes: params.attributes,
                         product_ids_before: searchCtx.product_ids.length,
                         product_attributes_map_exists: !!searchCtx.product_attributes_map
                     });
-                    
+
                     // Filter by attributes if params.attributes exists (from parameterNormalizer)
                     if (params.attributes && Object.keys(params.attributes).length > 0 && searchCtx.product_attributes_map) {
                         const attrKeyToCode = {};
@@ -1240,46 +1241,46 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                                 filterResults.push({ pid, reason: 'no_attributes_stored', kept: true });
                                 return true; // Keep if no attributes stored (fallback)
                             }
-                            
+
                             let matches = true;
                             for (const [attrKey, attrValue] of Object.entries(params.attributes)) {
                                 const productAttrValue = productAttrs[attrKey] ?? (attrKeyToCode[attrKey] ? productAttrs[attrKeyToCode[attrKey]] : undefined);
                                 const productAttrStr = productAttrValue ? String(productAttrValue).toLowerCase() : null;
                                 const expectedAttrStr = String(attrValue).toLowerCase();
-                                
+
                                 if (!productAttrValue || productAttrStr !== expectedAttrStr) {
                                     matches = false;
-                                    filterResults.push({ 
-                                        pid, 
-                                        attrKey, 
-                                        productAttrValue: productAttrValue || '(missing)', 
-                                        expectedAttrValue: attrValue, 
+                                    filterResults.push({
+                                        pid,
+                                        attrKey,
+                                        productAttrValue: productAttrValue || '(missing)',
+                                        expectedAttrValue: attrValue,
                                         reason: !productAttrValue ? 'attribute_missing' : 'attribute_mismatch',
-                                        kept: false 
+                                        kept: false
                                     });
                                     break;
                                 }
                             }
-                            
+
                             if (matches) {
                                 filterResults.push({ pid, reason: 'all_attributes_match', kept: true });
                             }
                             return matches;
                         });
-                        
+
                         console.log(`[Stage8a:PronounFallback] 🔍 Filtering results:`, {
                             before: searchCtx.product_ids.length,
                             after: filteredProductIds.length,
                             filtered_out: searchCtx.product_ids.length - filteredProductIds.length,
                             filter_details: filterResults
                         });
-                        
+
                         if (filteredProductIds.length === 0) {
                             console.log(`[Stage8a:PronounFallback] ⚠️ Filtering removed all products, falling back to original`);
                             filteredProductIds = searchCtx.product_ids; // Fallback
                         }
                     }
-                    
+
                     // Ordinal-choice microstate: multiple results + bare "one"/"ones" → ask which one
                     const rawProducts = params.products;
                     const rawName = params.product_name;
@@ -1317,7 +1318,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         if (!(params._require_confirmation === true && hasConcreteSingleProduct)) {
                             params.products = params._context_product_ids;
                         }
-                        
+
                         // Filter out pronouns from products array (e.g., "ones", "white ones")
                         const PRONOUNS = ['ones', 'one', 'it', 'them', 'that', 'this', 'those', 'these', 'the_one', 'the_ones', 'the_products'];
                         params.products = params.products.filter(p => {
@@ -1325,38 +1326,38 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             // Remove if it's a pure pronoun or contains only pronoun
                             return !PRONOUNS.includes(pLower) && !PRONOUNS.some(pronoun => pLower === pronoun || pLower.endsWith(' ' + pronoun));
                         });
-                        
+
                         // Clear product_name if it's a pronoun
                         if (params.product_name && PRONOUNS.includes(params.product_name.toLowerCase())) {
                             params.product_name = null;
                         }
-                        
-                    logDebug('PIPELINE:STAGE8A_CONTEXT_INJECT', {
-                        _desc: 'Context inject — inject _context_product_ids into params.products',
-                        _example: '"add the cheap ones" → products: [uuid1, uuid2] from clause match',
-                        targetIntent: intent.intentName,
-                        productCount: params.products.length,
-                        reason: params._context_matched_clauses ? 'matched_clauses' :
-                            params._context_matched_category ? 'matched_category' : 'matched_attributes'
+
+                        logDebug('PIPELINE:STAGE8A_CONTEXT_INJECT', {
+                            _desc: 'Context inject — inject _context_product_ids into params.products',
+                            _example: '"add the cheap ones" → products: [uuid1, uuid2] from clause match',
+                            targetIntent: intent.intentName,
+                            productCount: params.products.length,
+                            reason: params._context_matched_clauses ? 'matched_clauses' :
+                                params._context_matched_category ? 'matched_category' : 'matched_attributes'
+                        });
+                    }
+
+                    intent.parameters = params;
+
+                    logDebug('PIPELINE:STAGE8A_CONTEXT_READ', {
+                        _desc: 'Search context read — resolve cart/compare refs from last search',
+                        _example: 'add_to_cart "it" → load product_ids from searchCtx, match clauses/attrs',
+                        intent: intent.intentName,
+                        contextCategory: searchCtx.category,
+                        contextClauses: searchCtx.clauses,
+                        matchedClauses: params._context_matched_clauses,
+                        matchedCategory: params._context_matched_category,
+                        matchedAttributes: params._context_matched_attributes,
+                        productIds: (params._context_product_ids || []).length
                     });
                 }
-
-                intent.parameters = params;
-
-                logDebug('PIPELINE:STAGE8A_CONTEXT_READ', {
-                    _desc: 'Search context read — resolve cart/compare refs from last search',
-                    _example: 'add_to_cart "it" → load product_ids from searchCtx, match clauses/attrs',
-                    intent: intent.intentName,
-                    contextCategory: searchCtx.category,
-                    contextClauses: searchCtx.clauses,
-                    matchedClauses: params._context_matched_clauses,
-                    matchedCategory: params._context_matched_category,
-                    matchedAttributes: params._context_matched_attributes,
-                    productIds: (params._context_product_ids || []).length
-                });
             }
         }
-    }
     }
 
     // ── Stage 8a-cart: remove_from_cart — resolve "second item", "first item", "first two" → cart_item_id(s) ──
@@ -1540,7 +1541,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             };
                         }
                     }
-                } catch (_) {}
+                } catch (_) { }
             }
 
             await stateManager.setMicrostate(userId, msObj);

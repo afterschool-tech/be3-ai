@@ -202,14 +202,14 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             currentPos = pos >= 0 ? pos + w.length : currentPos;
             return pos;
         });
-        
+
         for (let size = 3; size >= 1; size--) {
             if (foundCategoryUUID) break;
             for (let i = 0; i <= words.length - size; i++) {
                 const phrase = words.slice(i, i + size).join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catId = normalizeCategory(phrase, storeContext.CATEGORIES);
+                const catId = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, initiator: 'parameterExtractor' });
                 if (catId) {
                     foundCategoryUUID = catId;
                     categoryWords = words.slice(i, i + size);
@@ -474,6 +474,12 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
             if (ent.type === 'quantity' && !baseFromEntities.quantity) baseFromEntities.quantity = ent.value;
             if (ent.type === 'price_max' && !baseFromEntities.price_max) baseFromEntities.price_max = ent.value;
             if (ent.type === 'price_min' && !baseFromEntities.price_min) baseFromEntities.price_min = ent.value;
+
+            // Context-resolved products: use the original (un-collapsed) name
+            if (ent.type === 'resolved_product' && !baseFromEntities.product_name) {
+                baseFromEntities.product_name = ent.value;  // ent.value = original human name
+                baseFromEntities._resolved_product_id = ent.productId;
+            }
 
             if (ent.type === 'clause') {
                 if (!baseFromEntities.clause_words) baseFromEntities.clause_words = [];

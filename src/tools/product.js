@@ -42,7 +42,7 @@ const productTools = {
                 if (context.sessionId) {
                     await stateManager.setSearchSnapshot(context.sessionId, snapshotId, { ...params, page });
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const searchParams = new URLSearchParams({
                 per_page: limit,
@@ -295,11 +295,67 @@ const productTools = {
             const hasStructuredFilters = hasAttributeFilters || tag || price_min || price_max;
             const shouldUseSemantic = Number(page) === 1;
 
-            // --- STAGE 0.5: Semantic Search (The "Power" step via Util) ---
-            // Run semantic search FIRST whenever we have a category + query on page 1.
-            // This is intentionally allowed even when structured filters exist, so clauseResolver
-            // remains a safety net for queries like "cheap smartphones".
-            if (cat && shouldUseSemantic) {
+            // --- STAGE 0.5: PRECISION-FIRST SEARCH ---
+            // Run the structured backend call FIRST to check if there are exact results.
+            // Semantic search only fires as a fallback when precision returns 0 results.
+            let precisionTotal = null;
+            if (cat && shouldUseSemantic && query) {
+                const { logDebug: logDbg } = require('../utils/debugLogger');
+                try {
+                    // Quick structured probe: ask the backend for results using exact params
+                    const probeParams = new URLSearchParams({
+                        per_page: 1,  // Only need 1 result to check existence
+                        page: 1,
+                        sort: sort
+                    });
+                    const queryStr = Array.isArray(query) ? query[0] : query;
+                    if (queryStr) probeParams.append('q', queryStr);
+                    if (price_min) probeParams.append('price_min', price_min);
+                    if (price_max) probeParams.append('price_max', price_max);
+                    if (tag) probeParams.append('tag', tag);
+                    if (catId) probeParams.append('category_id', cat?.slug || catId);
+                    probeParams.append('type', 'product');
+
+                    const safeAttrs = attributes || {};
+                    Object.entries(safeAttrs).forEach(([key, val]) => {
+                        const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
+                        probeParams.append(`attribute.${key}`, finalVal);
+                    });
+
+                    const probeResult = await callBackendAPI(`/search?${probeParams.toString()}`);
+                    if (probeResult?.success) {
+                        precisionTotal = probeResult.data?.pagination?.total ?? probeResult.data?.total ?? null;
+                    }
+
+                    logDbg('TOOL:PRECISION_PROBE [product.search]', {
+                        _desc: 'Precision-first probe — check structured backend for exact results before semantic fallback',
+                        _example: '"cheap phones" → backend has 12 results → skip semantic search',
+                        query: queryStr,
+                        category: cat.label,
+                        precisionTotal,
+                        willUseSemantic: precisionTotal === 0 || precisionTotal === null
+                    });
+                } catch (_) {
+                    // Probe failed — fall through to semantic as before
+                }
+            }
+
+            // --- STAGE 0.5b: Semantic Search (FALLBACK only when precision returns 0) ---
+            // Only run semantic/vector search when the structured backend returned NO results.
+            // This prevents expensive semantic operations when precise results already exist.
+            const semanticEligible = precisionTotal === 0 || precisionTotal === null;
+            if (cat && shouldUseSemantic && !semanticEligible) {
+                const { logDebug: logDbg2 } = require('../utils/debugLogger');
+                logDbg2('TOOL:SEMANTIC_SKIPPED [product.search]', {
+                    _desc: 'Semantic search SKIPPED — precision probe found results, no need for vector search',
+                    _example: '"cheap phones" → backend has 12 results → semantic search entirely bypassed',
+                    query: Array.isArray(query) ? query[0] : query,
+                    category: cat.label,
+                    precisionTotal: precisionTotal,
+                    reason: 'Structured backend returned results'
+                });
+            }
+            if (cat && shouldUseSemantic && semanticEligible) {
                 const { logDebug } = require('../utils/debugLogger');
                 logDebug('TOOL:SEMANTIC_SEARCH [product.search]', {
                     _desc: 'Semantic search — vector/semantic search within category',
@@ -353,7 +409,7 @@ const productTools = {
                                 backendPagination = metaRes.data?.pagination || null;
                                 backendTotal = metaRes.data?.pagination?.total ?? metaRes.data?.total ?? null;
                             }
-                        } catch (_) {}
+                        } catch (_) { }
 
                         if (backendTotal !== null && backendTotal !== undefined) {
                             semanticTotal = backendTotal;
@@ -461,7 +517,7 @@ const productTools = {
                                 if (typeof k === 'string' && k.includes(':')) { hasActiveClause = true; break; }
                                 if (typeof v === 'string' && v.includes(':')) { hasActiveClause = true; break; }
                             }
-                        } catch (_) {}
+                        } catch (_) { }
 
                         // Filter buttons (low priority):
                         // - before clause active: prefer explicit clauses, fallback to facet options
@@ -480,7 +536,7 @@ const productTools = {
                                     if (!finalAttr || !finalClause) continue;
                                     activeClauseByAttr[finalAttr] = finalClause.toLowerCase();
                                 }
-                            } catch (_) {}
+                            } catch (_) { }
 
                             const activeValueByAttr = {};
                             try {
@@ -491,7 +547,7 @@ const productTools = {
                                     if (v === undefined || v === null) continue;
                                     activeValueByAttr[k] = String(v).trim().toLowerCase();
                                 }
-                            } catch (_) {}
+                            } catch (_) { }
 
                             const facetsAttrs = Array.isArray(semanticResult?.facets?.attributes)
                                 ? semanticResult.facets.attributes
@@ -572,7 +628,7 @@ const productTools = {
                                         });
                                     }
                                 });
-                        } catch (_) {}
+                        } catch (_) { }
 
                         let clauseName = null;
                         try {
@@ -586,7 +642,7 @@ const productTools = {
                                     break;
                                 }
                             }
-                        } catch (_) {}
+                        } catch (_) { }
 
                         const labelQuery = Array.isArray(query)
                             ? query.join(' ').trim()
@@ -677,7 +733,7 @@ const productTools = {
                             result.data.total = facetRes.data.pagination.total;
                         }
                     }
-                } catch (_) {}
+                } catch (_) { }
             }
 
             let rawProducts = result.data.products || result.data.results || [];
@@ -686,7 +742,7 @@ const productTools = {
             const productAttrsMap = {};
             const categoryAttrs = cat?.attributes || [];
             const { logDebug } = require('../utils/debugLogger');
-            
+
             // Log first raw product structure for debugging
             if (rawProducts.length > 0) {
                 const firstRaw = rawProducts[0];
@@ -701,12 +757,12 @@ const productTools = {
                     all_keys: Object.keys(firstRaw).slice(0, 30)
                 });
             }
-            
+
             // Extract attributes from RAW products before they're stripped
             rawProducts.slice(0, 10).forEach(p => {
                 const pid = p.id || p.handle || p.product_id;
                 if (!pid) return;
-                
+
                 const attrs = {};
                 // Check product.attributes first
                 if (p.attributes && typeof p.attributes === 'object') {
@@ -730,12 +786,12 @@ const productTools = {
                         attrs[attrKey] = p[attrKey];
                     }
                 });
-                
+
                 if (Object.keys(attrs).length > 0) {
                     productAttrsMap[pid] = attrs;
                 }
             });
-            
+
             logDebug('TOOL:PRODUCT_ATTRIBUTES_MAP_BUILD [product.search]', {
                 _desc: 'Product attributes map build — extract attributes from raw products before stripping',
                 _example: 'Phone with color=white, brand=Samsung → { color: white, brand: Samsung }',
@@ -829,7 +885,7 @@ const productTools = {
                             tag: dropOtherFilters ? undefined : tag,
                             attributes: dropOtherFilters ? {} : (attributes || {})
                         });
-                    } catch (_) {}
+                    } catch (_) { }
                 }
 
                 return {
@@ -898,7 +954,7 @@ const productTools = {
                 });
                 const scope = context && context.microstate_active ? 'microstate' : 'global';
                 await stateManager.updateReferenceMap(context.sessionId, productsForContext, { scope });
-                
+
                 // Update user_query_map: Store user's query -> products found
                 // This is volatile (session-only) and respects user's terminology
                 const queryForMap = typeof query === 'string' ? query : (query?.query ?? null);
@@ -908,7 +964,7 @@ const productTools = {
 
                 // Populate search_context with actual product IDs, attributes map, and discovered category
                 let existingCtx = await stateManager.getSearchContext(context.sessionId);
-                
+
                 // Create search context if it doesn't exist
                 if (!existingCtx) {
                     existingCtx = {
@@ -918,7 +974,7 @@ const productTools = {
                         ttl_messages: 5
                     };
                 }
-                
+
                 const productIds = productsForContext.slice(0, 10).map(p => p.id || p.handle || p.product_id);
                 existingCtx.product_ids = productIds;
                 existingCtx.result_count = (products.length > 0)
@@ -1000,7 +1056,7 @@ const productTools = {
                     if (typeof k === 'string' && k.includes(':')) { hasActiveClause = true; break; }
                     if (typeof v === 'string' && v.includes(':')) { hasActiveClause = true; break; }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             // Filter buttons (low priority):
             // - before clause active: prefer explicit clauses, fallback to facet options
@@ -1019,7 +1075,7 @@ const productTools = {
                         if (!finalAttr || !finalClause) continue;
                         activeClauseByAttr[finalAttr] = finalClause.toLowerCase();
                     }
-                } catch (_) {}
+                } catch (_) { }
 
                 const activeValueByAttr = {};
                 try {
@@ -1030,7 +1086,7 @@ const productTools = {
                         if (v === undefined || v === null) continue;
                         activeValueByAttr[k] = String(v).trim().toLowerCase();
                     }
-                } catch (_) {}
+                } catch (_) { }
 
                 const facetsAttrs = Array.isArray(result?.data?.facets?.attributes)
                     ? result.data.facets.attributes
@@ -1111,7 +1167,7 @@ const productTools = {
                             });
                         }
                     });
-            } catch (_) {}
+            } catch (_) { }
 
             const ordinalSuffix = (n) => {
                 if (n === 1) return 'st';
@@ -1162,7 +1218,7 @@ const productTools = {
                         break;
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const labelQuery = Array.isArray(query)
                 ? query.join(' ').trim()
@@ -1278,7 +1334,7 @@ const productTools = {
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             // Last resort: if the details payload omits attributes AND we don't have a usable snapshot,
             // query the backend search endpoint and lift attributes from the search result.
@@ -1312,7 +1368,7 @@ const productTools = {
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             // Convenience alias: allow tools/prompting layers to read product.attributes directly.
             if (!leanProduct.attributes && leanProduct?.metadata?.attributes) {
@@ -1385,7 +1441,7 @@ const productTools = {
                     const firstId = products[0]?.id || products[0]?.handle || products[0]?.product_id;
                     if (firstId) await stateManager.setCurrentlyViewing(context.sessionId, firstId);
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             // Fallback attribute source:
             // - product.search results stored in state often include metadata.attributes (codes like b/c/j/m/p)
@@ -1421,7 +1477,7 @@ const productTools = {
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const expandAttributes = (product) => {
                 let raw = (product?.attributes && typeof product.attributes === 'object')

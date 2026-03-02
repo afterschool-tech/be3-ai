@@ -32,7 +32,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
         // Handle both array format [{ clauseId, word }] and string format "clause_id"
         if (params.clause_words && !isCompareIntent) {
             if (!params.attributes) params.attributes = {};
-            
+
             let clausesToProcess = [];
             if (Array.isArray(params.clause_words)) {
                 clausesToProcess = params.clause_words;
@@ -41,14 +41,14 @@ function normalizeParameters(resolvedIntents, storeContext) {
                 // Try to extract word from product_name or products (e.g., "white" from "white ones")
                 const clause = CLAUSES[params.clause_words];
                 let extractedWord = params.clause_words; // fallback to clause ID
-                
+
                 if (clause && clause.matches && Array.isArray(clause.matches)) {
                     // Check if any clause match word appears in product_name or products
                     const searchText = [
                         params.product_name,
                         ...(Array.isArray(params.products) ? params.products : [params.products].filter(Boolean))
                     ].join(' ').toLowerCase();
-                    
+
                     for (const match of clause.matches) {
                         if (searchText.includes(match.toLowerCase())) {
                             extractedWord = match;
@@ -56,7 +56,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
                         }
                     }
                 }
-                
+
                 clausesToProcess = [{ clauseId: params.clause_words, word: extractedWord }];
             } else if (typeof params.clause_words === 'object' && params.clause_words !== null) {
                 // Object format: convert to array
@@ -70,7 +70,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
                 const clauseId = typeof c === 'object' ? (c.clauseId || c.id || String(c)) : String(c);
                 const clauseWord = typeof c === 'object' ? (c.word || clauseId) : clauseId;
                 const clause = CLAUSES[clauseId];
-                
+
                 if (clause && clause.attribute) {
                     let mapped = false;
 
@@ -97,7 +97,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
                                 mapped = true;
                             }
                         }
-                    } catch (_) {}
+                    } catch (_) { }
 
                     // Fallback: map to attribute raw key, but canonicalize against predefined values when possible.
                     if (!mapped) {
@@ -117,7 +117,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
                                     .find(m => supportedValues.includes(m));
                                 if (canonical) finalValue = canonical;
                             }
-                        } catch (_) {}
+                        } catch (_) { }
 
                         params.attributes[clause.attribute] = finalValue;
                     }
@@ -179,7 +179,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
         // ── 3. Category Shifting (Exact Matches) ──
         if (params.product_name) {
-            const resolvedCatId = normalizeCategory(params.product_name, categoriesContext, true, { debug: true, topK: 5 });
+            const resolvedCatId = normalizeCategory(params.product_name, categoriesContext, true, { debug: true, topK: 5, initiator: 'parameterNormalizer' });
             if (resolvedCatId) {
                 params.category = resolvedCatId;
                 params.product_name = null;
@@ -200,7 +200,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
         if (params.products && Array.isArray(params.products)) {
             const newProducts = [];
             for (const p of params.products) {
-                const resolvedCatId = normalizeCategory(p, categoriesContext, true, { debug: true, topK: 5 });
+                const resolvedCatId = normalizeCategory(p, categoriesContext, true, { debug: true, topK: 5, initiator: 'parameterNormalizer' });
                 if (resolvedCatId) {
                     params.category = resolvedCatId;
                 } else {

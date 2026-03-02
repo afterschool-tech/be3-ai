@@ -102,7 +102,7 @@ module.exports = {
                 // Only trigger when the product name itself clearly resolves to a category
                 // (e.g. "add iphones to cart" where "iphones" is a category),
                 // not just because some unrelated category entity exists.
-                const resolvedCatId = normalizeCategory(name, null, false);
+                const resolvedCatId = normalizeCategory(name, null, false, { debug: true, initiator: 'add_to_cart' });
                 return !!resolvedCatId;
             },
             sandbox: 'soft',
