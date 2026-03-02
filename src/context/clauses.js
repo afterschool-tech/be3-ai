@@ -8,9 +8,7 @@ const CLAUSES = {
         "label": "apple product",
         "attribute": "brand",
         "matches": [
-            "apple",
-            "apple product",
-            "made by apple"
+            "apple"
         ],
         "display": {
             "prefix": "",

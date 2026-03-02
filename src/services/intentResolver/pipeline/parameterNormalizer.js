@@ -101,31 +101,18 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
                     // Fallback: map to attribute raw key, but canonicalize against predefined values when possible.
                     if (!mapped) {
-                        let finalValue = clauseWord;
-                        try {
-                            const attrMeta = attributesContext ? attributesContext[clause.attribute] : null;
-                            const predefined = Array.isArray(attrMeta?.predefined_values) ? attrMeta.predefined_values : [];
-                            const supportedValues = predefined
-                                .map(v => (v && v.value !== undefined && v.value !== null) ? String(v.value).toLowerCase().trim() : null)
-                                .filter(Boolean);
+                        const attrKey = clause.attribute;
+                        const attrMeta = attributesContext ? attributesContext[attrKey] : null;
+                        const finalValue = canonicalizeValue(clauseWord, attrMeta, clause);
 
-                            const clauseWordLower = String(clauseWord).toLowerCase().trim();
-                            if (!supportedValues.includes(clauseWordLower)) {
-                                const clauseMatches = Array.isArray(clause.matches) ? clause.matches : [];
-                                const canonical = clauseMatches
-                                    .map(m => String(m).toLowerCase().trim())
-                                    .find(m => supportedValues.includes(m));
-                                if (canonical) finalValue = canonical;
-                            }
-                        } catch (_) { }
-
-                        params.attributes[clause.attribute] = finalValue;
+                        // Use attribute code if available, fallback to key
+                        const targetKey = attrMeta?.code || attrKey;
+                        params.attributes[targetKey] = finalValue;
                     }
                     console.log(`[ParameterNormalizer] 🔄 Mapped clause to attribute:`, {
                         clauseId: clauseId,
                         clauseWord: clauseWord,
                         attribute: clause.attribute,
-                        attributeValue: params.attributes,
                         resulting_attributes: params.attributes
                     });
                 } else {
@@ -137,6 +124,31 @@ function normalizeParameters(resolvedIntents, storeContext) {
                     });
                 }
             });
+        }
+
+        // ── 1.5 Brand to Attribute Folding ──
+        // If a top-level 'brand' parameter exists (extracted as an entity but not via a clause),
+        // fold it into the attributes collection using the 'brand' attribute code.
+        if (params.brand) {
+            if (!params.attributes) params.attributes = {};
+
+            const attrMeta = attributesContext?.brand;
+            const brandCode = attrMeta?.code || 'b';
+
+            // Only set it if more specific clause mapping didn't already set it (e.g. b:a=apple)
+            const hasSpecificBrandAttr = Object.keys(params.attributes).some(k => k === brandCode || k.startsWith(`${brandCode}:`));
+
+            if (!hasSpecificBrandAttr) {
+                // Canonicalize the brand value (e.g. "apple product" -> "apple")
+                const finalBrand = canonicalizeValue(params.brand, attrMeta);
+                params.attributes[brandCode] = finalBrand;
+                console.log(`[ParameterNormalizer] 🏷️ Folded top-level brand into attributes:`, {
+                    original: params.brand,
+                    normalized: finalBrand,
+                    key: brandCode
+                });
+            }
+            delete params.brand;
         }
 
         // ── 2. Vendor Normalization ──
@@ -214,6 +226,45 @@ function normalizeParameters(resolvedIntents, storeContext) {
         // (intent object is mutated, so _ported_from should already be preserved, but be explicit)
         return intent;
     });
+}
+
+/**
+ * Canonicalizes an attribute value against a set of predefined values.
+ * If the value isn't directly supported, it checks if it matches any clause synonyms
+ * that are themselves linked to a supported value.
+ */
+function canonicalizeValue(value, attrMeta, clause = null) {
+    if (!value || !attrMeta) return value;
+
+    const predefined = Array.isArray(attrMeta.predefined_values) ? attrMeta.predefined_values : [];
+    if (predefined.length === 0) return value;
+
+    const supportedValues = predefined
+        .map(v => (v && v.value !== undefined) ? String(v.value).toLowerCase().trim() : null)
+        .filter(Boolean);
+
+    const valLower = String(value).toLowerCase().trim();
+
+    // 1. Direct match
+    if (supportedValues.includes(valLower)) return valLower;
+
+    // 2. Check clause matches (synonyms)
+    const matches = Array.isArray(clause?.matches) ? clause.matches : [];
+    const canonicalFromClause = matches
+        .map(m => String(m).toLowerCase().trim())
+        .find(m => supportedValues.includes(m));
+
+    if (canonicalFromClause) return canonicalFromClause;
+
+    // 3. Check for substring/plural matches against supported values if it's a small set
+    if (supportedValues.length < 50) {
+        const fuzzyMatch = supportedValues.find(sv =>
+            valLower.includes(sv) || sv.includes(valLower)
+        );
+        if (fuzzyMatch) return fuzzyMatch;
+    }
+
+    return value;
 }
 
 module.exports = { normalizeParameters };

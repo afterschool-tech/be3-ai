@@ -6,74 +6,20 @@
  * Entity Types:
  *   - vendor:    matched against storeContext.VENDORS
  *   - category:  matched against storeContext.CATEGORIES 
- *   - brand:     matched against CLAUSES (attribute === 'brand')
+ *   - brand:     pre-detected by Global Pre-pass (Stage 3)
+ *   - clause:    pre-detected by Global Pre-pass (Stage 3)
  *   - action:    matched against IDF-weighted keyword index
  *   - order_id:  regex #\d{3,}
  *   - quantity:  regex after action verbs
  *   - price:     regex under/over $X
  * 
- * Imports: CLAUSES, normalizeCategory, intentRegistry
- * Returns: { entities: [...], cleanedText: string }
+ * Imports: normalizeCategory, intentRegistry
+ * Returns: { entities: [...], residualWords: [], categoryHints: [], shape: string }
  */
 
-const { CLAUSES } = require('../../../context/clauses');
 const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
 const { levenshtein } = require('../utils/levenshtein');
-const path = require('path');
-const SemanticMatcher = require('../semanticLab/utils/SemanticMatcher');
 const { logDebug } = require('../../../utils/debugLogger');
-
-// ── Pre-build brand lookup from clauses ──
-const BRAND_LOOKUP = new Map();
-// ── Pre-build clause lookup for non-brand clauses (affordable, premium, etc.) ──
-const CLAUSE_LOOKUP = new Map();
-// Generic words that appear in clause labels/matches but shouldn't trigger clause detection
-const CLAUSE_EXCLUDE = new Set(['by', 'for', 'the', 'a', 'and', 'of', 'in', 'men', 'ladies',
-    'high', 'small', 'color', 'all', 'yes', 'no', 'ok', 'new']);
-
-// Lazy-init semantic clause matcher for TF-IDF augmentation of deterministic lookup
-let _semanticClauseMatcher = null;
-function getSemanticClauseMatcher() {
-    if (_semanticClauseMatcher) return _semanticClauseMatcher;
-    try {
-        const benchPath = path.join(__dirname, '../semanticLab/clauses/clause_bench.json');
-        _semanticClauseMatcher = new SemanticMatcher(benchPath, 'EntityExtractor Clauses');
-        return _semanticClauseMatcher;
-    } catch (e) {
-        console.error('[EntityExtractor] SemanticMatcher init failed:', e.message);
-        _semanticClauseMatcher = { isLoaded: false, findMatches: () => [] };
-        return _semanticClauseMatcher;
-    }
-}
-
-for (const [clauseId, clause] of Object.entries(CLAUSES)) {
-    if (clause.attribute === 'brand') {
-        // Brand clauses go into BRAND_LOOKUP
-        const label = clause.label.toLowerCase();
-        BRAND_LOOKUP.set(label, { clauseId, label: clause.label, attribute: 'brand' });
-        (clause.matches || []).forEach(m => {
-            BRAND_LOOKUP.set(m.toLowerCase(), { clauseId, label: clause.label, attribute: 'brand' });
-        });
-    } else {
-        // Non-brand clauses go into CLAUSE_LOOKUP
-        const allWords = [clause.label, ...(clause.matches || [])];
-        // Also include display prefix/suffix words (e.g., "cheap", "expensive")
-        if (clause.display?.prefix) allWords.push(clause.display.prefix);
-        if (clause.display?.suffix) allWords.push(clause.display.suffix);
-
-        for (const word of allWords) {
-            const w = word.toLowerCase().trim();
-            if (w.length > 1 && !CLAUSE_EXCLUDE.has(w)) {
-                CLAUSE_LOOKUP.set(w, {
-                    clauseId,
-                    label: clause.label,
-                    attribute: clause.attribute,
-                    word: w
-                });
-            }
-        }
-    }
-}
 
 // ── Action verb patterns (not intent-specific — these are universal action signals) ──
 // Each verb maps to a SPECIFIC action category that feeds into ACTION_TO_INTENTS.
@@ -156,9 +102,12 @@ const FILLERS = new Set([
  * @param {Object} storeContext - Store context with VENDORS, CATEGORIES, ATTRIBUTES
  * @param {Object} idfMap - IDF weights for keywords (from intentRegistry.buildIdfMap())
  * @param {Object} [positionTracker] - Optional. If provided, populated with { words, entities, residuals } for [TEST] analysis.
- * @returns {Object} { entities: Array, residualWords: Array }
+ * @param {Array} resolutions - Context-resolved product tokens
+ * @param {Array} preDetectedEntities - Entities from the Global Pre-pass (Stage 3)
+ * @param {Array} categoryHints - Category hints from the Global Pre-pass
+ * @returns {Object} { entities: Array, residualWords: Array, categoryHints: Array, shape: string }
  */
-function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = []) {
+function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = [], preDetectedEntities = [], categoryHints = []) {
     const entities = [];
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const consumed = new Set(); // Track consumed word indices
@@ -212,18 +161,40 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         });
     }
 
-    // ── Attribute/Clause pre-pass (B2): mark indices that look like attribute signals ──
-    // These indices should not be consumed by category detection so that downstream
-    // attribute extraction (brand/clause) can still fire.
-    const protectedAttrIdx = new Set();
-    for (let size = 2; size >= 1; size--) {
-        for (let i = 0; i <= words.length - size; i++) {
-            if (consumed.has(i)) continue; // Skip already-consumed masked tokens
-            const phrase = words.slice(i, i + size).join(' ');
-            if (BRAND_LOOKUP.has(phrase) || CLAUSE_LOOKUP.has(phrase)) {
-                for (let j = i; j < i + size; j++) protectedAttrIdx.add(j);
-            }
+    // ── Stage 0b: Pre-detected Entity Ingestion (from Global Pre-pass) ──
+    // Clauses and brands were already detected globally in Stage 3.
+    // We ingest them here and mark their word indices as consumed
+    // BEFORE the Category N-gram scanner runs, guaranteeing shielding.
+    if (preDetectedEntities && preDetectedEntities.length > 0) {
+        for (const preEnt of preDetectedEntities) {
+            const localIdx = preEnt.localWordIndex;
+            if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
+            if (consumed.has(localIdx)) continue;
+
+            entities.push({
+                type: preEnt.type,
+                value: preEnt.value,
+                clauseId: preEnt.clauseId,
+                clauseLabel: preEnt.clauseLabel,
+                attribute: preEnt.attribute,
+                source: preEnt.source,
+                similarity: preEnt.similarity,
+                wordIndices: [localIdx]
+            });
+            consumed.add(localIdx);
         }
+
+        logDebug('ENTITY:PREPASS_INGESTED', {
+            _desc: 'Pre-detected entities ingested from Global Pre-pass — shielded from Category Scanner',
+            _example: '"cheap" (clause) and "infinix" (brand) consumed at Stage 0b before category N-gram',
+            count: preDetectedEntities.length,
+            ingested: preDetectedEntities.map(e => ({
+                type: e.type,
+                value: e.value,
+                clauseId: e.clauseId,
+                localIdx: e.localWordIndex
+            }))
+        });
     }
 
     // ── 1. Vendor Detection (N-gram, longest match first) ──
@@ -331,7 +302,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                         else categoryQuality = 0.10;
                     }
                     const matchedWordIndices = Array.from({ length: size }, (_, j) => i + j);
-                    const consumedWordIndices = matchedWordIndices.filter(idx => !protectedAttrIdx.has(idx));
+                    const consumedWordIndices = matchedWordIndices;
                     entities.push({
                         type: 'category',
                         value: phrase,
@@ -343,7 +314,6 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                         consumedWordIndices
                     });
 
-                    // B2 consume behavior: only consume non-attribute indices so attribute extraction can still run.
                     for (const idx of consumedWordIndices) consumed.add(idx);
                     break; // Only one category per statement
                 }
@@ -377,93 +347,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         }
     }
 
-    // ── 4. Brand Detection (with Category Scoping) ──
-    // Identify supported attributes for the detected category (if any)
-    const detectedCategory = entities.find(e => e.type === 'category');
-    const categoryId = detectedCategory?.id;
-    const supportedAttributes = new Set();
-    if (categoryId && storeContext.CATEGORIES) {
-        // Find category object by ID (it's keyed by slug/label)
-        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
-        if (catObj) {
-            (catObj.attributes || []).forEach(a => supportedAttributes.add(a));
-        }
-    }
-
-    for (let size = 2; size >= 1; size--) {
-        for (let i = 0; i <= words.length - size; i++) {
-            if (consumed.has(i)) continue;
-            const phrase = words.slice(i, i + size).join(' ');
-            const brandMatch = BRAND_LOOKUP.get(phrase);
-
-            if (brandMatch) {
-                // Scoping Rule: If category is known, only allow supported attributes
-                if (categoryId && !supportedAttributes.has(brandMatch.attribute)) {
-                    continue;
-                }
-
-                entities.push({
-                    type: 'brand',
-                    value: brandMatch.label,
-                    clauseId: brandMatch.clauseId,
-                    source: 'CLAUSES',
-                    wordIndices: Array.from({ length: size }, (_, j) => i + j)
-                });
-                for (let j = i; j < i + size; j++) consumed.add(j);
-            }
-        }
-    }
-
-    // ── 4b. Clause Detection (non-brand: with Category Scoping) ──
-    // Resolves diverse user words ("cheap", "budget", "inexpensive") to their
-    // generic clause type ("affordable"), enabling [clause] slot matching.
-    const deterministicClauseHits = [];
-    for (let i = 0; i < words.length; i++) {
-        if (consumed.has(i)) continue;
-        const clauseMatch = CLAUSE_LOOKUP.get(words[i]);
-        if (clauseMatch) {
-            // Scoping Rule: If category is known, only allow supported attributes
-            if (categoryId && !supportedAttributes.has(clauseMatch.attribute)) {
-                logDebug('ENTITY:CLAUSE_SCOPED_OUT', {
-                    _desc: 'Deterministic clause skipped — attribute not supported by detected category',
-                    _example: '"cheap" clause has attribute price_tier but category does not support price_tier',
-                    word: words[i],
-                    clauseId: clauseMatch.clauseId,
-                    clauseLabel: clauseMatch.label,
-                    attribute: clauseMatch.attribute,
-                    categoryId
-                });
-                continue;
-            }
-
-            entities.push({
-                type: 'clause',
-                value: clauseMatch.word,
-                clauseId: clauseMatch.clauseId,
-                clauseLabel: clauseMatch.label,
-                attribute: clauseMatch.attribute,
-                source: 'CLAUSES',
-                wordIndices: [i]
-            });
-            consumed.add(i);
-            deterministicClauseHits.push({
-                word: words[i],
-                clauseId: clauseMatch.clauseId,
-                clauseLabel: clauseMatch.label,
-                attribute: clauseMatch.attribute
-            });
-        }
-    }
-    if (deterministicClauseHits.length > 0) {
-        logDebug('ENTITY:CLAUSE_DETERMINISTIC', {
-            _desc: 'Deterministic clause detection — exact word matches from compiled CLAUSE_LOOKUP index',
-            _example: '"cheap" → affordable clause, "white" → color_white clause',
-            initiator: 'entityExtractor:CLAUSE_LOOKUP',
-            matchCount: deterministicClauseHits.length,
-            matches: deterministicClauseHits
-        });
-    }
-    // ── 4c-1. Order ID Detection (regex) ──
+    // ── 4. Regex Detections (Order ID, Price, Quantity) ──
+    // These remain in entityExtractor as they are simple regex patterns.
     const orderMatch = text.match(/(?:#|order\s*[-#]?|ord[-#])\s*(\d{3,})/i);
     if (orderMatch) {
         entities.push({
@@ -474,7 +359,6 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         });
     }
 
-    // ── 4c-2. Price Detection (regex) ──
     const priceMaxMatch = text.match(/(?:under|below|less than|max|cheaper than|budget)\s*\$?\s*(\d+(?:\.\d{1,2})?)/i);
     if (priceMaxMatch) {
         entities.push({
@@ -494,7 +378,6 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         });
     }
 
-    // ── 4c-3. Quantity Detection (regex) ──
     const qtyMatch = text.match(/\b(?:add|buy|get|order|want|need|grab|purchase)\s+(\d+)\b/i);
     if (qtyMatch) {
         const qty = parseInt(qtyMatch[1]);
@@ -508,120 +391,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         }
     }
 
-    // ── 4c. Semantic Clause Augmentation (TF-IDF fallback for missed clauses) ──
-    // The deterministic CLAUSE_LOOKUP above only catches exact word matches.
-    // This pass uses TF-IDF + Dice similarity to catch fuzzy/synonym matches
-    // that the lookup missed (e.g. "inexpensive" → affordable clause).
-    const semanticMatcher = getSemanticClauseMatcher();
-    if (semanticMatcher.isLoaded) {
-        // Build a string from unconsumed non-filler words for semantic matching
-        const unconsumedText = words
-            .filter((w, i) => !consumed.has(i) && !FILLERS.has(w) && w.length > 1)
-            .join(' ');
-
-        if (unconsumedText.length > 0) {
-            const semanticMatches = semanticMatcher.findMatches(unconsumedText);
-            const alreadyDetectedClauseIds = new Set(
-                entities.filter(e => e.type === 'clause' || e.type === 'brand').map(e => e.clauseId)
-            );
-
-            for (const sm of semanticMatches) {
-                if (sm.similarity < 0.4 && sm.boost < 1.8) continue; // Same threshold as semanticClauseResolver
-                if (alreadyDetectedClauseIds.has(sm.id)) continue;
-
-                const clauseDef = CLAUSES[sm.id];
-                if (!clauseDef) continue;
-
-                // Scoping: if category known, only allow supported attributes
-                if (categoryId && !supportedAttributes.has(clauseDef.attribute)) continue;
-
-                // Try to find which word(s) triggered this semantic match
-                // by checking each unconsumed word against clause matches/label
-                const clauseWords = [clauseDef.label, ...(clauseDef.matches || [])];
-                const benchVariations = semanticMatcher.benchData?.[sm.id]?.variations || [];
-                const allTargets = [...clauseWords, ...benchVariations].map(w => w.toLowerCase());
-
-                for (let i = 0; i < words.length; i++) {
-                    if (consumed.has(i) || FILLERS.has(words[i])) continue;
-                    // Check if this word has any substring/partial match to clause terms or bench variations
-                    const wordMatch = allTargets.some(target =>
-                        target === words[i] || target.includes(words[i]) || words[i].includes(target)
-                    );
-                    if (wordMatch) {
-                        entities.push({
-                            type: 'clause',
-                            value: words[i],
-                            clauseId: sm.id,
-                            clauseLabel: clauseDef.label,
-                            attribute: clauseDef.attribute,
-                            source: 'SEMANTIC_MATCHER',
-                            similarity: sm.similarity,
-                            wordIndices: [i]
-                        });
-                        consumed.add(i);
-                        alreadyDetectedClauseIds.add(sm.id);
-                        logDebug('ENTITY:CLAUSE_SEMANTIC_MATCH', {
-                            _desc: 'Semantic clause match — TF-IDF/Dice matched a word to a clause that deterministic lookup missed',
-                            _example: '"inexpensive" → affordable clause (similarity=0.72)',
-                            initiator: 'entityExtractor:SEMANTIC_MATCHER',
-                            word: words[i],
-                            clauseId: sm.id,
-                            clauseLabel: clauseDef.label,
-                            attribute: clauseDef.attribute,
-                            similarity: sm.similarity?.toFixed?.(3),
-                            boost: sm.boost?.toFixed?.(3)
-                        });
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // Log semantic augmentation results
-    const semanticClauseEntities = entities.filter(e => e.source === 'SEMANTIC_MATCHER');
-    if (semanticClauseEntities.length > 0) {
-        logDebug('ENTITY:SEMANTIC_CLAUSE_AUGMENT', {
-            _desc: 'Semantic clause augmentation — TF-IDF + Dice caught clauses that deterministic CLAUSE_LOOKUP missed',
-            _example: '"inexpensive" → affordable clause (similarity=0.72, not in CLAUSE_LOOKUP)',
-            matchCount: semanticClauseEntities.length,
-            matches: semanticClauseEntities.map(e => ({
-                word: e.value,
-                clauseId: e.clauseId,
-                clauseLabel: e.clauseLabel,
-                attribute: e.attribute,
-                similarity: e.similarity?.toFixed?.(3)
-            }))
-        });
-    }
-
-    // ── 7. Category Hints (aggregated from all detected clauses) ──
-    // For each detected clause, collect which categories support it.
-    // This creates an intersection that downstream stages can use to constrain
-    // normalizeCategory guessing toward contextually appropriate categories.
-    const categoryHints = new Set();
-    for (const ent of entities) {
-        if (ent.type === 'clause' || ent.type === 'brand') {
-            const clauseDef = CLAUSES[ent.clauseId];
-            if (clauseDef?.categories) {
-                clauseDef.categories.forEach(cat => categoryHints.add(cat));
-            }
-        }
-    }
-
-    if (categoryHints.size > 0) {
-        logDebug('ENTITY:CATEGORY_HINTS', {
-            _desc: 'Category hints — aggregated from detected clause/brand entities to constrain normalizeCategory guessing',
-            _example: '"cheap" clause → hints: [smartphones, tablets, laptops_&_computers]',
-            hintCount: categoryHints.size,
-            hints: Array.from(categoryHints),
-            sourceClauses: entities
-                .filter(e => (e.type === 'clause' || e.type === 'brand') && CLAUSES[e.clauseId]?.categories)
-                .map(e => e.clauseId)
-        });
-    }
-
-    // ── 8. Residual Words (unconsumed, non-filler = potential product names) ──
+    // ── 5. Residual Words (unconsumed, non-filler = potential product names) ──
     const residualWords = [];
     const residualWithIndices = [];
     for (let i = 0; i < words.length; i++) {
@@ -630,6 +400,34 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             residualWithIndices.push({ word: words[i], wordIndex: i });
         }
     }
+
+    // ── 6. Dynamic Shape Synthesis ──
+    // Build the "shape" of the statement by replacing detected entity indices
+    // with [type] placeholders. Unconsumed non-filler words become [residual].
+    const shapeWords = words.map((w, i) => {
+        if (FILLERS.has(w)) return null; // Skip fillers in shape
+        const entity = entities.find(e => e.wordIndices && e.wordIndices.includes(i));
+        if (entity) {
+            const type = entity.type === 'resolved_product' ? 'product' : entity.type;
+            return `[${type}]`;
+        }
+        if (!consumed.has(i) && w.length > 1) return '[residual]';
+        return null;
+    }).filter(Boolean);
+
+    // Deduplicate consecutive identical placeholders (e.g., [residual] [residual] → [residual])
+    const shape = shapeWords.reduce((acc, curr) => {
+        if (acc.length === 0 || acc[acc.length - 1] !== curr) acc.push(curr);
+        return acc;
+    }, []).join(' ');
+
+    logDebug('ENTITY:SHAPE', {
+        _desc: 'Dynamic shape synthesis — statement structure with entity placeholders',
+        _example: '"show me cheap phones" → "[action] [clause] [category]"',
+        shape,
+        words,
+        consumed: Array.from(consumed)
+    });
 
     if (positionTracker && typeof positionTracker === 'object') {
         positionTracker.words = [...words];
@@ -641,7 +439,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         positionTracker.residuals = [...residualWithIndices];
     }
 
-    return { entities, residualWords, categoryHints: Array.from(categoryHints) };
+    return { entities, residualWords, categoryHints, shape };
 }
 
-module.exports = { extractEntities, ACTION_VERBS, BRAND_LOOKUP };
+module.exports = { extractEntities, ACTION_VERBS };

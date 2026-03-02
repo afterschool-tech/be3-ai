@@ -43,10 +43,14 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     if (cats[catLower]) {
         if (debug) {
             logDebug('NORMALIZE_CATEGORY:KEY_HIT', {
+                _type: 'CATEGORY_RESOLUTION_SIMPLE',
+                _icon: '🔑',
+                _color: '#3b82f6',
                 _desc: 'normalizeCategory — direct key/slug match',
                 initiator,
                 input: cat,
-                id: cats[catLower].id
+                targetId: cats[catLower].id,
+                label: cats[catLower].label
             });
         }
         return cats[catLower].id;
@@ -134,20 +138,21 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                     if (debug) {
                         const resolved = Object.values(cats).find(c => c && c.id === targetId);
                         logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
+                            _type: 'CATEGORY_RESOLUTION_SIMPLE',
+                            _icon: '🎭',
+                            _color: '#10b981',
                             _desc: 'normalizeCategory — alias inventory override',
                             initiator,
                             input: cat,
-                            inputLower: catLower,
-                            exactMatchOnly,
                             matchedAlias: a,
-                            matchedAliasLoose: alias,
-                            tokenVariants: Array.from(tokenVariants).slice(0, 50),
-                            inputLoose,
                             target: {
-                                keyOrId: targetKeyOrId,
                                 id: targetId,
                                 label: resolved?.label,
                                 slug: resolved?.slug
+                            },
+                            context: {
+                                inputLoose,
+                                variants: Array.from(tokenVariants).slice(0, 5)
                             }
                         });
                     }
@@ -267,11 +272,20 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         const winner = layer1Candidates[0];
         if (winner && winner.id) {
             if (debug) {
+                const resolved = idToCat[winner.id];
                 logDebug('NORMALIZE_CATEGORY:LAYER1', {
+                    _type: 'CATEGORY_RESOLUTION_SIMPLE',
+                    _icon: '⚡',
+                    _color: '#f59e0b',
                     _desc: 'normalizeCategory — layer1 exact/plural match',
                     initiator,
                     input: cat,
-                    winner: winner
+                    winner: {
+                        id: winner.id,
+                        label: resolved?.label,
+                        score: winner.score,
+                        match: winner.match
+                    }
                 });
             }
             return result(winner.id, {
@@ -331,16 +345,20 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         const slugTokens = tokenize(slug);
         const allTokens = [...new Set([...labelTokens, ...slugTokens])];
 
+        // Clean label words (no stop-words) to get the true biological word count
+        const cleanLabelWords = labelTokens.filter(t => !LAYER2_STOPWORDS.has(t));
+        const totalWordsInLabel = Math.max(1, cleanLabelWords.length);
+
         const wordMatches = [];
         for (const w of inferWords) {
             const variants = makeVariants(w);
             let bestTier = 0;
-            let bestTierScore = 0;
+            let bestTierPoints = 0;
             let bestDetails = null;
 
             if (label === w || slug === w) {
                 bestTier = 4;
-                bestTierScore = 100;
+                bestTierPoints = 100;
                 bestDetails = { type: 'exact_query', word: w, variant: w };
             }
 
@@ -348,7 +366,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 for (const v of variants) {
                     if (allTokens.includes(v)) {
                         bestTier = 4;
-                        bestTierScore = 95;
+                        bestTierPoints = 95;
                         bestDetails = { type: 'token_exact', word: w, variant: v };
                         break;
                     }
@@ -362,7 +380,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                         if (t === v) continue;
                         if (t.startsWith(v) || t.endsWith(v)) {
                             bestTier = 3;
-                            bestTierScore = 75;
+                            bestTierPoints = 75;
                             bestDetails = { type: 'token_compound', word: w, variant: v, token: t };
                             break;
                         }
@@ -375,7 +393,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 for (const v of variants) {
                     if ((label && label.includes(v)) || (slug && slug.includes(v))) {
                         bestTier = 2;
-                        bestTierScore = 35;
+                        bestTierPoints = 35;
                         bestDetails = { type: 'substring', word: w, variant: v };
                         break;
                     }
@@ -383,22 +401,41 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             }
 
             if (bestTier > 0) {
-                wordMatches.push({ word: w, tier: bestTier, score: bestTierScore, details: bestDetails });
+                // Apply Precision Slasher: Dilute the tier points by the clean category word count
+                const dilutedScore = bestTierPoints / totalWordsInLabel;
+                wordMatches.push({ word: w, tier: bestTier, score: dilutedScore, details: bestDetails });
             }
         }
 
         if (wordMatches.length === 0) continue;
         wordMatches.sort((a, b) => b.score - a.score);
 
-        const top2Sum = (wordMatches[0]?.score || 0) + Math.floor((wordMatches[1]?.score || 0) * 0.35);
-        const matchedWords = wordMatches.length;
-        const coverageBonus = Math.min(20, Math.max(0, (matchedWords - 1) * 8));
-        const lexScore = top2Sum + coverageBonus;
+        // --- FINAL SCORING: Intent Amplifier ---
+        // 1. Purity Sum: Combine the diluted scores of all matching user words
+        const puritySum = wordMatches.reduce((acc, m) => acc + m.score, 0);
+
+        // 2. Coverage Multiplier: Amplify the score by the number of matches
+        const matchedWordCount = wordMatches.length;
+        const amplifiedScore = puritySum * matchedWordCount;
+
+        // 3. Linear Kicker: Tie-breaker for perfect density matches (more specific wins)
+        const kicker = matchedWordCount * 0.1;
+
+        const lexScore = amplifiedScore + kicker;
         const lexTier = wordMatches[0]?.tier || 0;
 
         const depth = getDepth(c);
         const depthBonus = Math.min(4, depth) * 6;
-        const finalScore = lexScore + depthBonus;
+
+        // 4. HINT Membership Boost: Adder for contextually identified categories
+        let hintBoost = 0;
+        if (options.categoryHints && Array.isArray(options.categoryHints)) {
+            if (options.categoryHints.includes(c.id) || options.categoryHints.includes(c.slug)) {
+                hintBoost = 20;
+            }
+        }
+
+        const finalScore = lexScore + depthBonus + hintBoost;
 
         scored.push({
             id: c.id,
@@ -411,7 +448,15 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             total_count: c.total_count,
             product_count: c.product_count,
             match: wordMatches[0]?.details,
-            bonuses: { depth: depthBonus, coverage: coverageBonus }
+            wordMatches: wordMatches.map(m => ({
+                word: m.word,
+                score: m.score.toFixed(2),
+                type: m.details?.type,
+                variant: m.details?.variant
+            })),
+            labelWordCount: totalWordsInLabel,
+            bonuses: { depth: depthBonus, kicker, hint: hintBoost },
+            multipliers: { coverage: matchedWordCount, purity: puritySum }
         });
     }
 
@@ -431,37 +476,54 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     if (debug) {
         const winner = scored[0];
         logDebug('NORMALIZE_CATEGORY:LAYER2', {
-            _desc: 'normalizeCategory — layer2 scoring fallback',
+            _type: 'INTENT_AMPLIFIER_DETAIL', // Specialized rendering in Telemetry UI
+            _icon: '🎯',
+            _color: '#6366f1', // Indigo premium color
+            _desc: 'Intent Amplifier Scoring Fallback',
+            _physics: '🧪 Purity (Density) x 🚀 Amplification (Coverage) + 🏁 Kicker + 💡 Hints',
             initiator,
             input: cat,
-            inputLower: catLower,
             exactMatchOnly,
-            inferWords,
+            metadata: {
+                totalCandidates: scored.length,
+                matchedWords: inferWords
+            },
             winner: winner ? {
                 id: winner.id,
                 label: winner.label,
-                slug: winner.slug,
-                score: winner.score,
-                lexTier: winner.lexTier,
-                lexScore: winner.lexScore,
-                depth: winner.depth,
-                match: winner.match,
-                bonuses: winner.bonuses,
-                total_count: winner.total_count,
-                product_count: winner.product_count
+                score: winner.score.toFixed(2),
+                viz: {
+                    purityBar: '▓'.repeat(Math.round(winner.multipliers.purity / 10)) + '░'.repeat(10 - Math.round(winner.multipliers.purity / 10)),
+                    coverageIcon: '🔥'.repeat(winner.multipliers.coverage)
+                },
+                breakdown: {
+                    purity: `${winner.multipliers.purity.toFixed(2)}% (Slashed by ${winner.labelWordCount} words)`,
+                    amplification: `x${winner.multipliers.coverage} matches`,
+                    kicker: `+${winner.bonuses.kicker.toFixed(2)} (Tie-breaker)`,
+                    hints: winner.bonuses.hint > 0 ? `+${winner.bonuses.hint} (HINT BOOST)` : 'None',
+                    depth: `+${winner.bonuses.depth} (Level ${winner.depth})`,
+                    wordMatches: winner.wordMatches
+                },
+                matchType: winner.match.type
             } : null,
-            topCandidates: scored.slice(0, topK).map(x => ({
+            competition: scored.slice(0, topK).map(x => ({
                 id: x.id,
                 label: x.label,
-                slug: x.slug,
-                score: x.score,
-                lexTier: x.lexTier,
-                lexScore: x.lexScore,
-                depth: x.depth,
-                match: x.match,
-                bonuses: x.bonuses,
-                total_count: x.total_count,
-                product_count: x.product_count
+                score: x.score.toFixed(2),
+                status: x.id === winner?.id ? 'WINNER' : 'CANDIDATE',
+                viz: {
+                    purityBar: '▓'.repeat(Math.round(x.multipliers.purity / 10)) + '░'.repeat(10 - Math.round(x.multipliers.purity / 10)),
+                    coverageIcon: '🔥'.repeat(x.multipliers.coverage)
+                },
+                breakdown: {
+                    purity: `${x.multipliers.purity.toFixed(2)}% (Slashed by ${x.labelWordCount} words)`,
+                    amplification: `x${x.multipliers.coverage} matches`,
+                    kicker: `+${x.bonuses.kicker.toFixed(2)} (Tie-breaker)`,
+                    hints: x.bonuses.hint > 0 ? `+${x.bonuses.hint} (HINT BOOST)` : 'None',
+                    depth: `+${x.bonuses.depth} (Level ${x.depth})`,
+                    wordMatches: x.wordMatches
+                },
+                matchType: x.match.type
             }))
         });
     }

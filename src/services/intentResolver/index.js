@@ -24,6 +24,7 @@ const contextResolver = require('./pipeline/contextResolver');
 const { shouldSkipAmbiguousReference } = contextResolver;
 const preprocessor = require('./pipeline/preprocessor');
 const { extractEntities } = require('./pipeline/entityExtractor');
+const { resolveClausesGlobal } = require('../../utils/semanticClauseResolver');
 const { resolveIntent } = require('./pipeline/schemaResolver');
 const parameterExtractor = require('./pipeline/parameterExtractor');
 const parameterBleeder = require('./pipeline/parameterBleeder');
@@ -489,6 +490,29 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         statements: statements.map(s => ({ text: s.text, negated: s.negated }))
     });
 
+    // ═══════════════════════════════════════════════
+    // Stage 3a: Global Semantic Pre-pass
+    // Runs ONCE per query to find all clauses/brands across the entire message.
+    // These are "shielded" from the Category Scanner in each statement.
+    // ═══════════════════════════════════════════════
+    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterContext, resolutions);
+    logDebug('PIPELINE:STAGE3A_PREPASS', {
+        _desc: 'Global Semantic Pre-pass — clauses/brands detected across entire query before statement loop',
+        _example: '"show me cheap infinix phones" → cheap(clause), infinix(brand) detected globally',
+        entityCount: globalEntities.length,
+        entities: globalEntities.map(e => ({
+            type: e.type,
+            value: e.value,
+            clauseId: e.clauseId,
+            source: e.source,
+            globalWordIndex: e.globalWordIndex
+        })),
+        categoryHints: globalCategoryHints
+    });
+
+    // Build global word list for index reconciliation
+    const globalWords = afterContext.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+
     const resolvedStatements = [];
 
     // Intra-query coreference: track entities from previous statements
@@ -571,9 +595,42 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             changed: textForExtraction !== cleanedText
         });
 
-        // Stage 4a: Entity Extraction
+        // ── Stage 3d: Reconcile Global Pre-pass entities to this statement ──
+        // Map global word indices to local statement word indices.
+        const localWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        const statementPreEntities = [];
+
+        for (const gEnt of globalEntities) {
+            // Find the global word in the local statement words
+            const globalWord = globalWords[gEnt.globalWordIndex];
+            if (!globalWord) continue;
+
+            const localIdx = localWords.indexOf(globalWord);
+            if (localIdx !== -1) {
+                statementPreEntities.push({
+                    ...gEnt,
+                    localWordIndex: localIdx
+                });
+            }
+        }
+
+        if (statementPreEntities.length > 0) {
+            logDebug(`PIPELINE:STAGE3D_RECONCILE [Statement ${i + 1}]`, {
+                _desc: 'Reconcile global pre-pass entities to local statement indices',
+                _example: 'Global "cheap" at index 2 → local index 1 in statement "cheap phones"',
+                globalEntityCount: globalEntities.length,
+                reconciledCount: statementPreEntities.length,
+                reconciled: statementPreEntities.map(e => ({
+                    value: e.value,
+                    globalIdx: e.globalWordIndex,
+                    localIdx: e.localWordIndex
+                }))
+            });
+        }
+
+        // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions);
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
@@ -590,7 +647,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 consumedWordIndices: e.consumedWordIndices
             })),
             residualWords: extractionResult.residualWords,
-            categoryHints: extractionResult.categoryHints || []
+            categoryHints: extractionResult.categoryHints || [],
+            shape: extractionResult.shape || ''
         });
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)

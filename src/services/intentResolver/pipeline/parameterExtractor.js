@@ -9,7 +9,8 @@
 const intentRegistry = require('../config/intentRegistry');
 const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
 const { CLAUSES } = require('../../../context/clauses');
-const structuralMatcher = require('../semanticLab/structural/utils/StructuralMatcher');
+// NOTE: StructuralMatcher (compiled_index.json) has been deprecated.
+// Clause/brand extraction is now handled by the Global Pre-pass (Stage 3).
 
 // ── Build a flat lookup of all clause trigger words (deterministic, no AI) ──
 const clauseWordSet = new Set();
@@ -488,15 +489,13 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         });
     }
 
-    // 1. Run Structural Extraction (Positional Intuition)
+    // 1. Run Deterministic Fallback (Keyword/Category Stripping)
     const categoryId = baseFromEntities.category;
-    const structural = extractStructural(text, candidates, categoryId, storeContext);
-
-    // 2. Run Deterministic Fallback (Keyword/Category Stripping)
     const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId);
 
-    // Merge base results (entities + structural + deterministic) with array awareness
-    const combinedBase = { ...baseFromEntities, ...deterministic, ...structural };
+    // Merge base results (entities + deterministic) with array awareness
+    // NOTE: extractStructural has been deprecated (StructuralMatcher retired).
+    const combinedBase = { ...baseFromEntities, ...deterministic };
 
     // Identify supported attributes for scoping (used by clause stripping)
     const supportedAttributes = new Set();
@@ -508,11 +507,10 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     }
 
     // Concatenate arrays instead of clobbering
-    if (baseFromEntities.clause_words || deterministic.clause_words || structural.clause_words) {
+    if (baseFromEntities.clause_words || deterministic.clause_words) {
         combinedBase.clause_words = [
             ...(baseFromEntities.clause_words || []),
-            ...(deterministic.clause_words || []),
-            ...(structural.clause_words || [])
+            ...(deterministic.clause_words || [])
         ];
         // Deduplicate clauses by ID
         const seen = new Set();
@@ -522,8 +520,8 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
             return true;
         });
     }
-    if (deterministic.products || structural.products) {
-        combinedBase.products = Array.from(new Set([...(deterministic.products || []), ...(structural.products || [])]));
+    if (deterministic.products) {
+        combinedBase.products = Array.from(new Set([...(deterministic.products || [])]));
     }
 
     // Final polish: clause-strip merged products (covers deterministic-only products like "cheap phone")
@@ -603,7 +601,7 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         }
     }
 
-    // Merge: base (deterministic + structural) takes priority over AI
+    // Merge: base (deterministic) takes priority over AI
     const merged = { ...aiExtracted, ...combinedBase };
 
     return merged;

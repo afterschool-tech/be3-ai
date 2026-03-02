@@ -841,9 +841,8 @@ const productTools = {
                     sParams.append('category', cat?.slug || catId);
                 }
 
-                const hasAttrs = !dropOtherFilters && attributes && typeof attributes === 'object' && Object.keys(attributes).length > 0;
                 let res;
-                if (hasAttrs) {
+                if (hasAttributeFilters) {
                     const searchQuery = new URLSearchParams(sParams);
                     searchQuery.delete('category');
                     if (catId) searchQuery.append('category_id', cat?.slug || catId);
@@ -855,6 +854,22 @@ const productTools = {
 
                 if (!res?.success) {
                     return { success: false, res };
+                }
+
+                // --- RELAXATION HANDLING ---
+                // If it was a precision probe (limit 1) but returned a relaxed result, 
+                // we automatically expand to a broader set (e.g., 5) to give user better options
+                if (res.is_relaxed && limit === 1) {
+                    console.log(`[ProductTool] 🌊 Relaxed match detected for precision probe. Expanding results.`);
+                    const expandParams = new URLSearchParams(sParams);
+                    expandParams.set('per_page', 5);
+                    const expandRes = hasAttributeFilters
+                        ? await callBackendAPI(`/search?${expandParams.toString()}`)
+                        : await callBackendAPI(`/search/products?${expandParams.toString()}`);
+
+                    if (expandRes && expandRes.success) {
+                        res = expandRes;
+                    }
                 }
 
                 const sRaw = res.data.products || res.data.results || [];
