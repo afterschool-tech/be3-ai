@@ -53,7 +53,11 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 label: cats[catLower].label
             });
         }
-        return cats[catLower].id;
+        return result(cats[catLower].id, {
+            layer: 'key',
+            match: { field: 'key', query: catLower },
+            usedWords: [catLower]
+        });
     }
 
     const normalizeLoose = (s) => String(s || '')
@@ -160,7 +164,12 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                         layer: 'alias',
                         matchedAlias: a,
                         matchedAliasLoose: alias,
-                        inputLoose
+                        inputLoose,
+                        usedWords: inputTokens.filter(t => {
+                            const tSing = singularize(t);
+                            const variants = [t.toLowerCase(), tSing, pluralize(tSing)];
+                            return variants.some(v => alias.includes(v));
+                        })
                     });
                 }
             }
@@ -291,7 +300,8 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             return result(winner.id, {
                 layer: 'layer1',
                 score: winner.score,
-                match: winner.match
+                match: winner.match,
+                usedWords: tokenize(winner.match.query)
             });
         }
     }
@@ -535,7 +545,8 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         lexScore: scored[0].lexScore,
         depth: scored[0].depth,
         match: scored[0].match,
-        bonuses: scored[0].bonuses
+        bonuses: scored[0].bonuses,
+        usedWords: scored[0].wordMatches.map(m => m.word)
     });
 }
 
