@@ -10,6 +10,7 @@ const { performSemanticSearch } = require('../utils/searchUtility');
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
+const { buildProductCards } = require('../utils/storefrontWhatsAppUx');
 const crypto = require('crypto');
 
 function encodeBase64Url(str) {
@@ -462,38 +463,9 @@ const productTools = {
                             }
                         }
 
-                        const ordinalSuffix = (n) => {
-                            if (n === 1) return 'st';
-                            if (n === 2) return 'nd';
-                            if (n === 3) return 'rd';
-                            return 'th';
-                        };
                         const pickedForCards = semanticProducts.filter(Boolean);
-                        const buildCardText = (p) => {
-                            const priceText = (p.price !== undefined && p.price !== null) ? `₦${p.price}` : 'Price unavailable';
-                            return `*${p.name || p.title || 'Product'}*\n💰 ${priceText}`;
-                        };
-                        const cards = pickedForCards.map((p, idx) => {
-                            const n = idx + 1;
-                            const suffix = ordinalSuffix(n);
-                            const imageUrl = p.image_url || p.metadata?.image_url || null;
-                            return {
-                                id: p.id,
-                                content_type: 'product',
-                                sponsor: {
-                                    type: 'product',
-                                    product_id: p.id,
-                                    name: p.name || p.title || null,
-                                    ordinal: n
-                                },
-                                image_url: imageUrl,
-                                text: buildCardText(p),
-                                buttons: [
-                                    { id: `add the ${n}${suffix} one`, title: 'Add to cart' },
-                                    { id: `__product:details:${p.id}__`, title: 'More info' }
-                                ]
-                            };
-                        });
+                        const cardsPayload = buildProductCards(pickedForCards);
+                        const cards = cardsPayload.cards;
 
                         const usedCategory = !!catId;
                         const currentPage = Number.isFinite(Number(semanticResult?.pagination?.page))
@@ -1184,40 +1156,10 @@ const productTools = {
                     });
             } catch (_) { }
 
-            const ordinalSuffix = (n) => {
-                if (n === 1) return 'st';
-                if (n === 2) return 'nd';
-                if (n === 3) return 'rd';
-                return 'th';
-            };
-
             // Transactional product cards (sent separately by WA layer)
             const pickedForCards = Array.isArray(productsForContext) ? productsForContext.filter(Boolean) : [];
-            const buildCardText = (p) => {
-                const priceText = (p.price !== undefined && p.price !== null) ? `₦${p.price}` : 'Price unavailable';
-                return `*${p.name || p.title || 'Product'}*\n💰 ${priceText}`;
-            };
-            const cards = pickedForCards.map((p, idx) => {
-                const n = idx + 1;
-                const suffix = ordinalSuffix(n);
-                const imageUrl = p.image_url || p.metadata?.image_url || null;
-                return {
-                    id: p.id,
-                    content_type: 'product',
-                    sponsor: {
-                        type: 'product',
-                        product_id: p.id,
-                        name: p.name || p.title || null,
-                        ordinal: n
-                    },
-                    image_url: imageUrl,
-                    text: buildCardText(p),
-                    buttons: [
-                        { id: `add the ${n}${suffix} one`, title: 'Add to cart' },
-                        { id: `__product:details:${p.id}__`, title: 'More info' }
-                    ]
-                };
-            });
+            const cardsPayload = buildProductCards(pickedForCards);
+            const cards = cardsPayload.cards;
 
             // Try to detect a clause (optional, only if user explicitly activated it)
             // Heuristic: attributes key includes ':' (e.g. attribute.color:premium) or value includes ':'

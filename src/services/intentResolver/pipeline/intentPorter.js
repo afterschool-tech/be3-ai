@@ -111,6 +111,8 @@ async function portIntents(intents, state) {
             }
         }
 
+        // Phase 5: Vagueness Governance — (SUSPENDED)
+
         prevIntentName = out.intentName;
 
         // Existing: product_search + purchase verb + reference_map
@@ -169,7 +171,7 @@ async function portIntents(intents, state) {
             }
             const productSlug = productName.toLowerCase().trim().replace(/\s+/g, '_');
             const rawLower = productName.toLowerCase().trim();
-            
+
             // Step 1: Check user_query_map first (user's terminology, volatile, session-only)
             // This respects how the user actually named the product
             let knownId = null;
@@ -192,7 +194,7 @@ async function portIntents(intents, state) {
                     }
                 }
             }
-            
+
             // Step 2: Fallback to reference_map (product names, brand names, etc.)
             if (!knownId) {
                 knownId = referenceMap[productSlug] || referenceMap[rawLower] || referenceMap[productName];
@@ -200,17 +202,17 @@ async function portIntents(intents, state) {
                     knownIdSource = 'reference_map';
                 }
             }
-            
+
             // Step 3: If still not found, try substring matching in reference_map
             if (!knownId) {
                 const queryLower = rawLower;
                 for (const [key, value] of Object.entries(referenceMap)) {
                     // Check if reference map key contains the query, or query contains the key
                     // But skip generic keys like "it", "this", "them", "all", etc.
-                    const genericKeys = ['it', 'this', 'that', 'them', 'all', 'ones', 'the_ones', 'the_products', 'all_of_them', 
-                                       'first', 'second', 'third', 'fourth', 'fifth', 'the_first_one', 'the_second_one', 'the_third_one'];
+                    const genericKeys = ['it', 'this', 'that', 'them', 'all', 'ones', 'the_ones', 'the_products', 'all_of_them',
+                        'first', 'second', 'third', 'fourth', 'fifth', 'the_first_one', 'the_second_one', 'the_third_one'];
                     if (genericKeys.includes(key)) continue;
-                    
+
                     // Check if key contains query (e.g., "home_made_spaghetti" contains "spaghetti")
                     if (key.includes(queryLower) || queryLower.includes(key.replace(/_/g, ' '))) {
                         knownId = value;
@@ -220,7 +222,7 @@ async function portIntents(intents, state) {
                     }
                 }
             }
-            
+
             console.log(`[IntentPorter] 🔍 Checking purchase verb porting for "${productName}":`, {
                 hasPurchaseVerb: true,
                 productName,

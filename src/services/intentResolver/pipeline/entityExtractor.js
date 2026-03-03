@@ -86,7 +86,7 @@ const FILLERS = new Set([
     'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why',
     'some', 'any', 'many', 'much', 'more', 'most', 'other',
     'just', 'also', 'very', 'really', 'please', 'pls', 'plz',
-    'ok', 'okay', 'hi', 'hello', 'hey', 'yo', 'sup',
+    'ok', 'okay', 'yo', 'sup',
     'yeah', 'yes', 'yep', 'yup', 'nope', 'nah',
     'thanks', 'thank', 'thx', 'ty', 'cool', 'great', 'sure',
     'let',

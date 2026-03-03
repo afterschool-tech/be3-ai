@@ -309,6 +309,11 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 if (rr.whatsapp) base.whatsapp = rr.whatsapp;
             }
 
+            if (tool === 'cart.add' && rr) {
+                // Prioritize name from tool result (backend) then from pre-reconciled params
+                base.product_name = rr.product_name || tr.params?.product_name || null;
+            }
+
             // Suggested products (product.search fallbacks)
             if (Array.isArray(rr.suggested_products) && rr.suggested_products.length > 0) {
                 base.suggestion_message = rr.suggestion_message || null;
@@ -489,10 +494,10 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
     );
     const failuresInstruction = failedActions.length > 0
         ? `\nTOOL FAILURES: One or more tools failed. You MUST acknowledge the failure(s) clearly and helpfully in your reply.\n` +
-          `- Say what succeeded (if anything) AND what failed.\n` +
-          `- If a cart/remove/compare action failed, suggest a next step (retry, rephrase, or pick by ordinal like "remove the second item").\n` +
-          `- Do NOT pretend the failed action worked.\n` +
-          `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })))}\n`
+        `- Say what succeeded (if anything) AND what failed.\n` +
+        `- If a cart/remove/compare action failed, suggest a next step (retry, rephrase, or pick by ordinal like "remove the second item").\n` +
+        `- Do NOT pretend the failed action worked.\n` +
+        `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })))}\n`
         : '';
 
     const summarizedResultsForLLM = summarizeToolResultsForLLM(optimizedResults);
@@ -538,7 +543,7 @@ ${hasComparisonData ? `PRODUCT COMPARISON RULES (IMPORTANT):
 - Use "attributes" to justify the differences (storage, color, size, material, brand, price_tier, etc.).
 - If attributes exist, you MUST mention at least 3 non-price attribute differences overall (unless fewer are available).
 - If attributes are missing/empty, say so and ask ONE short question: "Which spec matters most to you (storage, color, size, etc.)?"`
-        : ''}
+            : ''}
 
 ${shouldIncludeRescueContext ? `RESCUE CONTEXT (ONLY FOR HELP WHEN TOOLS FAIL):\n${rescueContext}\n` : ''}
 

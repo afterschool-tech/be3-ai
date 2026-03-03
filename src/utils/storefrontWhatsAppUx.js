@@ -30,7 +30,7 @@ function buildProductCards(products) {
             image_url: imageUrl,
             text: buildCardText(p),
             buttons: [
-                { id: `add the ${n}${suffix} one`, title: 'Add to cart' },
+                { id: `__cart:add:${p.id}__`, title: 'Add to cart' },
                 { id: `__product:details:${p.id}__`, title: 'More info' }
             ]
         };
@@ -56,7 +56,7 @@ function deriveClauseNameFromAttributes(attributes) {
                 break;
             }
         }
-    } catch (_) {}
+    } catch (_) { }
     return clauseName;
 }
 
@@ -76,7 +76,7 @@ function buildFacetRefinerButtons({ facets, attributes, snapshotId }) {
                 if (!finalAttr || !finalClause) continue;
                 activeClauseByAttr[finalAttr] = finalClause.toLowerCase();
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const activeValueByAttr = {};
         try {
@@ -87,7 +87,7 @@ function buildFacetRefinerButtons({ facets, attributes, snapshotId }) {
                 if (v === undefined || v === null) continue;
                 activeValueByAttr[k] = String(v).trim().toLowerCase();
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const facetsAttrs = Array.isArray(facets?.attributes) ? facets.attributes : [];
         const clauseCandidates = [];
@@ -161,7 +161,7 @@ function buildFacetRefinerButtons({ facets, attributes, snapshotId }) {
                     });
                 }
             });
-    } catch (_) {}
+    } catch (_) { }
 
     return { clauseButtons, valueButtons };
 }

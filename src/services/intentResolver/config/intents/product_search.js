@@ -14,7 +14,8 @@ module.exports = {
         'look', 'browse', 'show me', 'let me see', 'i want to see', 'looking for',
         'do you have', 'what do you have', 'any', 'got any',
         'help me find', 'where can i find',
-        'display', 'view', 'buy', 'want', 'get', 'need'
+        'display', 'view', 'buy', 'want', 'get', 'need',
+        'hi', 'hello', 'hey', 'start', 'onboarding'
     ],
 
     parameters: {

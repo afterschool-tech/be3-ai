@@ -46,6 +46,49 @@ const { resolveEngineeredToken, resolveGroupedOrdinal, resolveOrdinal } = requir
 const { callBackendAPI } = require('../../utils/apiClient');
 const { processProductList } = require('../../utils/productUtility');
 
+/**
+ * Helper: Reconcile a product name from its ID using available state context.
+ * Used to restore personality context when technical tokens are processed.
+ */
+function reconcileNameFromId(state, productId) {
+    if (!productId) return null;
+
+    // 1. Check last_search results (most reliable: actual objects from last turn)
+    const lastResults = state.product_context?.last_search?.results;
+    if (Array.isArray(lastResults)) {
+        const found = lastResults.find(p => p.id === productId || p.product_id === productId || p.handle === productId);
+        if (found) return found.name || found.title;
+    }
+
+    // 2. Check reference_map (conversational aliases -> ID)
+    const refMap = state.reference_map || {};
+    for (const [alias, id] of Object.entries(refMap)) {
+        if (id === productId) {
+            // Reject technical ordinals, prefer human aliases
+            if (!/^\d+(st|nd|rd|th)$/i.test(alias)) {
+                return alias;
+            }
+        }
+    }
+
+    // 3. Check search_context attributes (if stored)
+    const sCtx = state.search_context;
+    if (sCtx?.product_attributes_map?.[productId]) {
+        const pAttrs = sCtx.product_attributes_map[productId];
+        if (pAttrs.name || pAttrs.title) return pAttrs.name || pAttrs.title;
+    }
+
+    // 4. Check user_query_map (queries like "spaghetti" -> ID)
+    const qMap = state.user_query_map || {};
+    for (const [query, idStr] of Object.entries(qMap)) {
+        if (typeof idStr === 'string' && idStr.split(',').includes(productId)) {
+            return query;
+        }
+    }
+
+    return null;
+}
+
 // Build IDF map once at module load
 const idfMap = intentRegistry.buildIdfMap();
 
@@ -294,15 +337,24 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     if (engineeredEarly && engineeredEarly.namespace === 'cart' && engineeredEarly.command === 'add' && userId) {
         const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
         if (productId) {
+            const resolvedName = reconcileNameFromId(state, productId);
+            const reason = resolvedName ? `Engineered add to cart: ${resolvedName}` : 'Engineered add to cart';
+
             return {
                 intents: [],
                 tools: [{
                     tool: 'cart.add',
-                    params: { product_id: productId },
-                    reason: 'Engineered add to cart'
+                    params: {
+                        product_id: productId,
+                        product_name: resolvedName // Context for personality layer
+                    },
+                    reason
                 }],
                 isMultiIntent: false,
-                corrections: { original: userMessage },
+                corrections: {
+                    original: userMessage,
+                    resolved: resolvedName ? `Add ${resolvedName} to cart` : userMessage
+                },
                 resolutions: [],
                 engineered_cart_add: true
             };

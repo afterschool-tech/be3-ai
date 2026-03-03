@@ -38,7 +38,7 @@ const ACTION_TO_INTENTS = {
     'cart_view': ['view_cart'],
     'cart_remove': ['remove_from_cart'],
     'cart_update': ['update_cart_quantity'],
-    'discovery': ['product_search', 'browse_collection', 'vendor_products', 'discovery_sentinel'],
+    'discovery': ['product_search', 'browse_collection', 'vendor_products'],
     'contact': ['vendor_contact'],
     'tracking': ['order_status'],
     'checkout': ['start_checkout'],
@@ -304,6 +304,12 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
                 score -= 4.0;
             }
+        }
+
+        // [Discovery Sentinel Suppression]: discovery_sentinel is a port-only intent.
+        // It should never win competition directly.
+        if (intentName === 'discovery_sentinel') {
+            score -= 15.0;
         }
 
         // [Search-Discovery Rule]: If we have a category AND a clause (e.g. "cheap smartphones"),
