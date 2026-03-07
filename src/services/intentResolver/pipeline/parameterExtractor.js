@@ -8,9 +8,9 @@
 
 const intentRegistry = require('../config/intentRegistry');
 const { CLAUSES } = require('../../../context/clauses');
-// NOTE: StructuralMatcher (compiled_index.json) and Clause Discovery (performClauseStripping) have been deprecated.
-// Clause/brand extraction is now handled EXCLUSIVELY by the Global Pre-pass (Stage 3).
-// Stage 5 now acts as a secondary validator and primitive extractor.
+const stateManager = require('../../../state/stateManager');
+const { extractProductIntel } = require('../utils/productIntelExtractor');
+const { logDebug } = require('../../../utils/debugLogger');
 
 /**
  * Deterministic extraction patterns.
@@ -103,90 +103,39 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         }
     });
 
-    // 4. Comparison Logic (New!)
-    // Only run this if product_compare is the WINNING intent (Top Candidate).
-    // This prevents "greedy" splitting from contaminating other intents.
+    // 4. Comparison Logic (New!) — POWERED BY PIE
     const isCompare = candidates.length > 0 && candidates[0].intentName === 'product_compare';
     if (isCompare) {
-        const products = [];
-        let textForRaw = text.toLowerCase();
-
-        // A. Start with any resolved IDs from contextResolver
-        if (resolutions.length > 0) {
-            resolutions.forEach(res => {
-                if (res.productId) {
-                    // ContextResolver can emit a comma-separated list for plural references
-                    // e.g. "them" → "id1,id2,id3". Split so compare gets a real array.
-                    const pid = String(res.productId).trim();
-                    if (pid.includes(',')) {
-                        pid.split(',')
-                            .map(x => x.trim())
-                            .filter(Boolean)
-                            .forEach(x => products.push(x));
-                    } else {
-                        products.push(pid);
-                    }
-
-                    // Remove ORIGINAL resolved phrase (e.g., "it")
-                    const escapedOriginal = (res.original || '').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    if (escapedOriginal) textForRaw = textForRaw.replace(new RegExp(`\\b${escapedOriginal}\\b`, 'gi'), ' ');
-
-                    // Remove RESOLVED name (e.g., "iphone 17 pro") to prevent double-extraction as raw
-                    const escapedResolved = (res.resolved || '').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    if (escapedResolved) textForRaw = textForRaw.replace(new RegExp(`\\b${escapedResolved}\\b`, 'gi'), ' ');
-                }
-            });
-        }
-
-        // B. Split text by comparison tokens to find raw names
-        const cleanMessage = textForRaw
-            .replace(/[;,:.?!]/g, ' | ')
-            .replace(/\b(?:compare|comparison|difference between|difference|between|vs|v\/s|versus|with|and|but|to)\b/gi, '|')
-            .split('|')
-            .map(p => p.trim())
-            .filter(p => p.length > 0);
-
-        cleanMessage.forEach(segment => {
-            // Extract words, filter out exclusions (don't skip numbers like '12')
-            const words = segment.split(/\s+/).filter(w => !excludeSet.has(w) && w.length > 0);
-            if (words.length > 0) {
-                const rawName = words.join(' ');
-                if (rawName.length < 3) return;
-                if (excludeSet.has(rawName)) return;
-                // Avoid adding duplicates (by name or ID)
-                if (!products.includes(rawName)) {
-                    products.push(rawName);
-                }
-            }
+        // Use PIE for intelligent, intel-aware multi-product extraction
+        const pieResults = extractProductIntel({
+            text,
+            entities,
+            resolutions,
+            intentName: 'product_compare',
+            excludeSet
         });
 
-        if (products.length > 0) {
-            extracted.products = products;
+        if (pieResults.length > 0) {
+            extracted.products = pieResults.map(p => p.intel.resolvedId || p.name);
         }
     }
 
-    // 5. Zero-AI Category & Product Name Discovery (Product Search)
-    // Only run this if product_search is the WINNING intent (Top Candidate).
+    // 5. Product Name Discovery (Product Search) — POWERED BY PIE
     const isSearch = candidates.length > 0 && candidates[0].intentName === 'product_search';
-    if (isSearch && storeContext.CATEGORIES) {
-        const words = text
-            .toLowerCase()
-            .split(/\s+/)
-            // Trim leading/trailing punctuation so tokens like "$2000" become "2000"
-            .map(w => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
-            .filter(w => w.length > 0);
+    if (isSearch) {
+        const pieResults = extractProductIntel({
+            text,
+            entities,
+            resolutions,
+            intentName: 'product_search',
+            excludeSet
+        });
 
-        // NOTE: N-Gram Category Scanning has been removed here. We strictly rely on 
-        // the protected 'categoryId' passed from Stage 4a (Entity Extractor) which respects consumed words.
-        // Pre-detected category words are already added to excludeSet.
-
-        // Product Name Discovery is now strictly a word-exclusion process.
-        // We no longer re-strip clauses here as they are already in the excludeSet from Stage 3.
-        const productWords = words.filter(w => !excludeSet.has(w) && w.length > 0);
-        const productName = productWords.length > 0 ? productWords.join(' ') : undefined;
-
-        if (productName) {
-            extracted.product_name = productName;
+        if (pieResults.length > 0 && pieResults[0].name) {
+            extracted.product_name = pieResults[0].name;
+            if (pieResults[0].intel.resolvedId) {
+                extracted._resolved_product_id = pieResults[0].intel.resolvedId;
+            }
         }
     }
 
@@ -512,6 +461,13 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     // Merge: base (deterministic) takes priority over AI
     const merged = { ...aiExtracted, ...combinedBase };
+
+    logDebug('PARAM:EXTRACT_FINAL', {
+        products: merged.products,
+        product_name: merged.product_name,
+        clause_words: merged.clause_words,
+        aiExtracted
+    });
 
     // ── SCOPING GUARD ──
     // Cross-reference all extracted clauses/attributes against the category's supported list.

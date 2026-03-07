@@ -799,7 +799,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 5: Parameter extraction (AI + Deterministic)
         // Uses the resolved candidates to fill remaining params
         const extractedParams = await parameterExtractor.extractParameters(
-            statement.text, candidates, aiQueryFn, storeContext, resolutions, extractionResult.entities
+            cleanedText, candidates, aiQueryFn, storeContext, resolutions, extractionResult.entities
         );
         logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
             _desc: 'Parameter extraction — map entities to intent slots, structural match, regex',
@@ -811,7 +811,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Merge schema-matched params with extractor params
         // Schema params take precedence for entities we already identified
-        const mergedParams = { ...extractedParams, ...resolution.winner.matchedParams };
+        const mergedParams = { ...resolution.winner.matchedParams, ...extractedParams };
 
         // Handle negation: invert intent if applicable
         let resolvedIntentName = resolution.winner.intentName;
