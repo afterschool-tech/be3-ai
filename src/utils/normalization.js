@@ -17,7 +17,7 @@ const CATEGORY_ALIASES = require('../context/categoryAliases');
 function normalizeCategory(cat, context = null, exactMatchOnly = false, options = {}) {
     if (!cat) return null;
     const cats = context || CATEGORIES;
-    let catLower = cat.trim().toLowerCase();
+    let catLower = String(cat || '').trim().toLowerCase();
 
     const debug = !!options?.debug;
     const initiator = options?.initiator || 'unknown';
@@ -560,7 +560,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 function normalizeVendor(vendor, history = [], context = null) {
     if (!vendor) return null;
     const vendors = Object.values(context || VENDORS);
-    const vendorLower = vendor.trim().toLowerCase();
+    const vendorLower = String(vendor || '').trim().toLowerCase();
 
     // 1. Resolve from history (e.g. "their", "this vendor")
     if (vendorLower === 'their' || vendorLower === 'this vendor' || vendorLower === 'that shop') {

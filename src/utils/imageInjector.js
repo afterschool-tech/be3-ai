@@ -11,6 +11,9 @@ async function injectImages(data, stateManager) {
 
     // Helper to process a single product
     const processProduct = async (product) => {
+        // Phase 4: Respect manual suppression
+        if (product && product.suppress_images) return;
+
         // If it looks like a product (has ID) and is missing an image
         if (product && product.id && !product.image_url) {
             const cachedImage = await stateManager.getProductImage(product.id);
@@ -71,6 +74,9 @@ function extractImages(data) {
         if (Array.isArray(obj)) {
             obj.forEach(item => traverse(item, depth + 1));
         } else {
+            // Phase 4: Respect manual suppression
+            if (obj.suppress_images) return;
+
             // Check if this is a product with an image
             if (obj.image_url) {
                 images.add(obj.image_url);

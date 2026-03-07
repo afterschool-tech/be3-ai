@@ -5,7 +5,6 @@
  * Verifies and normalizes vendors against official store tenants.
  */
 
-const { normalizeCategory } = require('../../../utils/normalization');
 const { CLAUSES } = require('../../../context/clauses');
 
 /**
@@ -152,7 +151,6 @@ function normalizeParameters(resolvedIntents, storeContext) {
         }
 
         // ── 2. Vendor Normalization ──
-        // Only allow official store tenants in the 'vendor' slot
         if (params.vendor && vendorsContext) {
             const vLower = params.vendor.toLowerCase();
             const officialVendor = Object.values(vendorsContext).find(v =>
@@ -162,7 +160,8 @@ function normalizeParameters(resolvedIntents, storeContext) {
             );
 
             if (officialVendor) {
-                params.vendor = officialVendor.id;
+                // The API expects the human-readable tag (e.g., 'Bola Foods'), not the UUID.
+                params.vendor = officialVendor.tag || officialVendor.business_name;
             } else {
                 // Not an official vendor. 
                 // If it looks like a brand name (already captured as an attribute), drop it from vendor.
@@ -189,38 +188,8 @@ function normalizeParameters(resolvedIntents, storeContext) {
             return intent;
         }
 
-        // ── 3. Category Shifting (Exact Matches) ──
-        if (params.product_name) {
-            const resolvedCatId = normalizeCategory(params.product_name, categoriesContext, true, { debug: true, topK: 5, initiator: 'parameterNormalizer' });
-            if (resolvedCatId) {
-                params.category = resolvedCatId;
-                params.product_name = null;
-                if (params.query === params.product_name) params.query = null;
-            } else if (params.category && categoriesContext) {
-                const cat = Object.values(categoriesContext).find(c => c.id === params.category || c.slug === params.category);
-                if (cat) {
-                    const catLabel = cat.label.toLowerCase();
-                    const prodLower = params.product_name.toLowerCase();
-                    if (prodLower.includes(catLabel.replace(/s$/, '')) && prodLower.length > catLabel.length) {
-                        params.category = null;
-                    }
-                }
-            }
-        }
-
-        // ── 4. List Normalization ──
-        if (params.products && Array.isArray(params.products)) {
-            const newProducts = [];
-            for (const p of params.products) {
-                const resolvedCatId = normalizeCategory(p, categoriesContext, true, { debug: true, topK: 5, initiator: 'parameterNormalizer' });
-                if (resolvedCatId) {
-                    params.category = resolvedCatId;
-                } else {
-                    newProducts.push(p);
-                }
-            }
-            params.products = newProducts;
-        }
+        // NOTE: Category Shifting and List Normalization have been removed.
+        // The pipeline solely relies on Stage 4a (Entity Extractor) for category detection to respect consumed words.
 
         // Preserve _ported_from flag through normalization
         // (intent object is mutated, so _ported_from should already be preserved, but be explicit)

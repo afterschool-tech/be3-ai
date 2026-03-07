@@ -103,7 +103,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // We re-run the last product.search with page increment.
     const rawEarly = String(userMessage || '').trim();
     const engineeredEarly = resolveEngineeredToken(rawEarly);
-    if (engineeredEarly && engineeredEarly.namespace === 'nav' && (engineeredEarly.command === 'more' || engineeredEarly.command === 'prev') && userId) {
+    if (engineeredEarly && engineeredEarly.namespace === 'nav' && (engineeredEarly.command === 'more' || engineeredEarly.command === 'prev' || engineeredEarly.command === 'results') && userId) {
         const last = state.product_context?.last_search;
         let baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;
 
@@ -120,8 +120,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         if (baseFilters) {
             const currentPage = Number.isFinite(baseFilters.page) ? Number(baseFilters.page) : 1;
-            const delta = engineeredEarly.command === 'prev' ? -1 : 1;
-            const nextPage = Math.max(1, currentPage + delta);
+            const delta = (engineeredEarly.command === 'prev') ? -1 : 1;
+            const nextPage = (engineeredEarly.command === 'results') ? 1 : Math.max(1, currentPage + delta);
+
+            const reason = (engineeredEarly.command === 'results')
+                ? 'Engineered see suggested products'
+                : 'Engineered pagination';
+
             return {
                 intents: [],
                 tools: [{
@@ -130,12 +135,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         ...baseFilters,
                         page: nextPage
                     },
-                    reason: 'Engineered pagination'
+                    reason
                 }],
                 isMultiIntent: false,
                 corrections: { original: userMessage },
                 resolutions: [],
-                engineered_pagination: true
+                engineered_pagination: true,
+                engineered_see_results: (engineeredEarly.command === 'results')
             };
         }
     }
@@ -260,6 +266,52 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
+    // Stage 0d½: Engineered facet-select buttons (bypasses NLU entirely)
+    // Emitted by product.facets handler. Format: __facet:select:<attrCode>:<encodedValue>[:<categoryId>]__
+    // Maps directly to product.search with the selected attribute value + optional category scope.
+    if (engineeredEarly && engineeredEarly.namespace === 'facet' && engineeredEarly.command === 'select' && userId) {
+        const arg = engineeredEarly.arg ? String(engineeredEarly.arg) : '';
+        const parts = arg.split(':').filter(Boolean);
+        // Minimum: attrCode + value (2 parts). Optional 3rd part = categoryId.
+        if (parts.length >= 2) {
+            const attrCode = parts[0];
+            // Value may contain encoded colons; everything between attrCode and optional last part is the value.
+            // We treat [0] = attrCode, last part = categoryId if 3+ parts, middle = value.
+            let value = null;
+            let categoryId = null;
+            if (parts.length === 2) {
+                // __facet:select:<attrCode>:<value>__
+                value = parts[1];
+            } else {
+                // __facet:select:<attrCode>:<value>:<categoryId>__
+                categoryId = parts[parts.length - 1];
+                value = parts.slice(1, parts.length - 1).join(':');
+            }
+            try { value = decodeURIComponent(value); } catch (_) { }
+
+            const searchParams = {
+                attributes: { [attrCode]: value },
+                limit: 5,
+                page: 1
+            };
+            if (categoryId) searchParams.category = categoryId;
+
+            return {
+                intent: 'product_search',
+                intents: [],
+                tools: [{
+                    tool: 'product.search',
+                    params: searchParams,
+                    reason: `Engineered facet select: ${attrCode}=${value}`
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_facet_select: true
+            };
+        }
+    }
+
     // Stage 0d: Engineered product details buttons (no microstate required)
     // Product card "More info" uses: __product:details:<productId>__
     if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'details' && userId) {
@@ -279,6 +331,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             };
         }
     }
+
 
     // Stage 0e: Engineered product compare buttons (no microstate required)
     // Product details screen "Compare" uses: __product:compare:<productId>__
@@ -791,7 +844,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             ...reconciledStmt,
             extractedParams,
             statementText: statement.text,
-            stage2Resolutions: resolutions
+            stage2Resolutions: resolutions,
+            candidates: resolution.candidates
         });
 
         // [TEST] Residual chunk analysis — background, log-only, product_search with residuals
@@ -917,22 +971,18 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
     // Build final intents array
     const intents = normalizedStatements.map(stmt => {
-        const intent = {
+        return {
             intentName: stmt.intentName,
             score: stmt.score,
             parameters: stmt.parameters,
             matchedKeywords: stmt.matchedKeywords,
+            candidates: stmt.candidates,
             invertedFrom: stmt.invertedFrom,
             bledParams: stmt.bledParams || [],
             reconciledFromContext: stmt.reconciledFromContext || false,
             extractedParams: stmt.extractedParams || {},
             _ported_from: stmt._ported_from
         };
-        // Debug: log ported intents
-        if (intent._ported_from) {
-            console.log(`[IntentResolver] ✅ Preserved _ported_from: ${intent.intentName} (from ${intent._ported_from})`);
-        }
-        return intent;
     });
 
     // ═══════════════════════════════════════════════
@@ -1728,6 +1778,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             afterContext
         },
         resolutions,
+        statementResolutions: resolvedStatements,
         stack_active: stackResult.stack_active || false,
         stack_remaining: stackResult.stack_active ? stackResult.total_intents - 1 : 0
     };

@@ -7,45 +7,16 @@
  */
 
 const intentRegistry = require('../config/intentRegistry');
-const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
 const { CLAUSES } = require('../../../context/clauses');
-// NOTE: StructuralMatcher (compiled_index.json) has been deprecated.
-// Clause/brand extraction is now handled by the Global Pre-pass (Stage 3).
-
-// ── Build a flat lookup of all clause trigger words (deterministic, no AI) ──
-const clauseWordSet = new Set();
-const clauseWordToId = new Map();
-for (const [clauseId, clause] of Object.entries(CLAUSES)) {
-    // Add the clause label words (e.g., "affordable" → "affordable")
-    const labelWords = clause.label.toLowerCase().split(/\s+/);
-    labelWords.forEach(w => {
-        clauseWordSet.add(w);
-        clauseWordToId.set(w, { clauseId, attribute: clause.attribute });
-    });
-    // Add the matches keywords (e.g., "budget", "midrange")
-    (clause.matches || []).forEach(m => {
-        const mLower = m.toLowerCase();
-        clauseWordSet.add(mLower);
-        clauseWordToId.set(mLower, { clauseId, attribute: clause.attribute });
-    });
-    // Add display prefix/suffix words (e.g., "cheap", "expensive")
-    const displayWords = `${clause.display?.prefix || ''} ${clause.display?.suffix || ''}`.toLowerCase().split(/\s+/).filter(Boolean);
-    displayWords.forEach(w => {
-        clauseWordSet.add(w);
-        clauseWordToId.set(w, { clauseId, attribute: clause.attribute });
-    });
-}
-// Remove overly generic words that would cause false positives
-['by', 'for', 'the', 'a', 'and', 'of', 'in', 'men', 'ladies', 'gaming', 'high', 'small', 'color'].forEach(w => {
-    clauseWordSet.delete(w);
-    clauseWordToId.delete(w);
-});
+// NOTE: StructuralMatcher (compiled_index.json) and Clause Discovery (performClauseStripping) have been deprecated.
+// Clause/brand extraction is now handled EXCLUSIVELY by the Global Pre-pass (Stage 3).
+// Stage 5 now acts as a secondary validator and primitive extractor.
 
 /**
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
  */
-function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null) {
+function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null, entities = []) {
     const extracted = {};
 
     // Identify supported attributes for scoping
@@ -94,13 +65,14 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     const excludeSet = new Set([
         'show', 'me', 'i', 'need', 'want', 'give', 'list', 'lists', 'under', 'below', 'for', 'the', 'a', 'an', 'any', 'some',
         'compare', 'comparison', 'difference', 'between', 'versus', 'vs', 'v/s',
-        'and', 'with',
-        'but', 'still', 'like', 'also',
-        'what', 'is', 'it', 'tell', 'about', 'by', 'those', 'these', 'this', 'that',
+        'and', 'with', 'by', 'at', 'on', 'of', 'in',
+        'but', 'still', 'like', 'also', 'just', 'very', 'really',
+        'what', 'is', 'it', 'tell', 'about', 'those', 'these', 'this', 'that', 'its',
         'yes', 'no', 'ok', 'okay', 'cool', 'thanks', 'thank', 'please', 'hi', 'hello', 'hey', 'ya', 'yeah', 'yup', 'nope', "i'm",
-        'to', 'its', 'my', 'your', 'get', 'based', 'own', 'which', 'one', 'two',
-        'can', 'you', 'could', 'would',
-        'so', "i'll", "i'll", 'ill', 'of', 'on',
+        'to', 'my', 'your', 'get', 'based', 'own', 'which', 'one', 'two',
+        'can', 'you', 'could', 'would', 'will', 'shall', 'should', 'may', 'might',
+        'so', "i'll", 'ill', 'do', 'does', 'did', 'doing',
+        'have', 'has', 'had', 'having',
         'advice', 'advise', 'recommend', 'recommendation', 'suggest', 'suggestion', 'guidance', 'help',
         'product', 'products', 'item', 'items', 'gadget', 'gadgets',
         // Action verbs that should never be product names
@@ -114,6 +86,15 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     if (extracted.price_max) excludeSet.add(extracted.price_max.toString());
     if (extracted.price_min) excludeSet.add(extracted.price_min.toString());
 
+    if (entities && entities.length > 0) {
+        entities.forEach(ent => {
+            if (['clause', 'brand', 'category', 'resolved_product'].includes(ent.type) && ent.value) {
+                const entWords = String(ent.value).toLowerCase().split(/\s+/);
+                entWords.forEach(w => excludeSet.add(w));
+            }
+        });
+    }
+
     candidates.forEach(c => {
         const intent = intentRegistry.get(c.intentName);
         if (intent) {
@@ -123,7 +104,9 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     });
 
     // 4. Comparison Logic (New!)
-    const isCompare = candidates.some(c => c.intentName === 'product_compare');
+    // Only run this if product_compare is the WINNING intent (Top Candidate).
+    // This prevents "greedy" splitting from contaminating other intents.
+    const isCompare = candidates.length > 0 && candidates[0].intentName === 'product_compare';
     if (isCompare) {
         const products = [];
         let textForRaw = text.toLowerCase();
@@ -183,7 +166,8 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     }
 
     // 5. Zero-AI Category & Product Name Discovery (Product Search)
-    const isSearch = candidates.some(c => c.intentName === 'product_search');
+    // Only run this if product_search is the WINNING intent (Top Candidate).
+    const isSearch = candidates.length > 0 && candidates[0].intentName === 'product_search';
     if (isSearch && storeContext.CATEGORIES) {
         const words = text
             .toLowerCase()
@@ -191,47 +175,18 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             // Trim leading/trailing punctuation so tokens like "$2000" become "2000"
             .map(w => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
             .filter(w => w.length > 0);
-        let foundCategoryUUID = null;
-        let categoryWords = [];
 
-        // N-Gram Scanning: Try Trigrams (3 words), Bigrams (2 words), then Monograms (1 word)
-        const textLower = text.toLowerCase();
-        // Build word position map for accurate context detection
-        let currentPos = 0;
-        const wordPositions = words.map(w => {
-            const pos = textLower.indexOf(w, currentPos);
-            currentPos = pos >= 0 ? pos + w.length : currentPos;
-            return pos;
-        });
+        // NOTE: N-Gram Category Scanning has been removed here. We strictly rely on 
+        // the protected 'categoryId' passed from Stage 4a (Entity Extractor) which respects consumed words.
+        // Pre-detected category words are already added to excludeSet.
 
-        for (let size = 3; size >= 1; size--) {
-            if (foundCategoryUUID) break;
-            for (let i = 0; i <= words.length - size; i++) {
-                const phrase = words.slice(i, i + size).join(' ');
-                const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
-                if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catId = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, initiator: 'parameterExtractor' });
-                if (catId) {
-                    foundCategoryUUID = catId;
-                    categoryWords = words.slice(i, i + size);
-                    extracted.category = catId;
-                    break;
-                }
-            }
-        }
-
-        // Add category words to the exclusion set for product name guessing
-        categoryWords.forEach(w => excludeSet.add(w));
-
+        // Product Name Discovery is now strictly a word-exclusion process.
+        // We no longer re-strip clauses here as they are already in the excludeSet from Stage 3.
         const productWords = words.filter(w => !excludeSet.has(w) && w.length > 0);
-        const { productName, clauses } = performClauseStripping(productWords, categoryId, supportedAttributes);
+        const productName = productWords.length > 0 ? productWords.join(' ') : undefined;
 
         if (productName) {
             extracted.product_name = productName;
-        }
-
-        if (clauses.length > 0) {
-            extracted.clause_words = clauses;
         }
     }
 
@@ -239,31 +194,9 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
 }
 
 /**
- * Helper to identify and strip clauses from a list of words.
+ * ── Stage 5a: Structural Alignment [DEPRECATED] ──
+ * Retired in favor of simpler deterministic and Stage 3 pipeline.
  */
-function performClauseStripping(words, categoryId = null, supportedAttributes = new Set()) {
-    const detectedClauses = [];
-    const cleanWords = [];
-
-    for (const word of words) {
-        const match = clauseWordToId.get(word.toLowerCase());
-        if (match) {
-            // Scoping Rule: If category is known, only allow supported attributes
-            if (categoryId && !supportedAttributes.has(match.attribute)) {
-                cleanWords.push(word);
-                continue;
-            }
-            detectedClauses.push({ word, clauseId: match.clauseId });
-        } else {
-            cleanWords.push(word);
-        }
-    }
-
-    return {
-        productName: cleanWords.length > 0 ? cleanWords.join(' ') : undefined,
-        clauses: detectedClauses
-    };
-}
 
 /**
  * ── Stage 5a: Structural Alignment ──
@@ -486,16 +419,31 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
                 if (!baseFromEntities.clause_words) baseFromEntities.clause_words = [];
                 baseFromEntities.clause_words.push({ word: ent.value, clauseId: ent.clauseId });
             }
+
+            // Shield these pre-detected semantic words from becoming part of the product name fallback
+            if (['clause', 'brand', 'category'].includes(ent.type) && ent.value) {
+                const entWords = String(ent.value).toLowerCase().split(/\s+/);
+                // Note: we can't easily add to excludeSet here because extractDeterministic
+                // defines its own internal excludeSet. But we can add them to a global exclusion array
+                // if we refactor. For now wait... We just need them stripped in deterministic!
+            }
         });
     }
 
     // 1. Run Deterministic Fallback (Keyword/Category Stripping)
     const categoryId = baseFromEntities.category;
-    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId);
+    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities);
 
     // Merge base results (entities + deterministic) with array awareness
     // NOTE: extractStructural has been deprecated (StructuralMatcher retired).
-    const combinedBase = { ...baseFromEntities, ...deterministic };
+    // ── INTEL SHIELD ──
+    // If we have a resolved product (Intel), we prepend any deterministic residuals (e.g. "best") to it.
+    // Since we now shield resolved_product words in deterministic extraction, 
+    // this correctly builds context-refined names like "best iPhone 16".
+    const combinedBase = { ...deterministic, ...baseFromEntities };
+    if (baseFromEntities.product_name && deterministic.product_name && baseFromEntities.product_name !== deterministic.product_name) {
+        combinedBase.product_name = `${deterministic.product_name} ${baseFromEntities.product_name}`;
+    }
 
     // Identify supported attributes for scoping (used by clause stripping)
     const supportedAttributes = new Set();
@@ -524,25 +472,10 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         combinedBase.products = Array.from(new Set([...(deterministic.products || [])]));
     }
 
-    // Final polish: clause-strip merged products (covers deterministic-only products like "cheap phone")
+    // NOTE: Multi-pass clause stripping has been removed for better performance and deterministic consistency.
+    // Stage 3 (Global Pre-pass) is the source of truth for all semantic clauses.
     if (combinedBase.products && Array.isArray(combinedBase.products) && combinedBase.products.length > 0) {
-        const extractedClauses = [];
-        const polishedProducts = combinedBase.products.map(p => {
-            const words = String(p).split(/\s+/).filter(Boolean);
-            const { productName, clauses } = performClauseStripping(words, categoryId, supportedAttributes);
-            if (clauses && clauses.length > 0) extractedClauses.push(...clauses);
-            return productName;
-        }).filter(Boolean);
-
-        if (polishedProducts.length > 0) {
-            combinedBase.products = polishedProducts;
-            combinedBase.product_name = polishedProducts[0];
-        }
-
-        if (extractedClauses.length > 0) {
-            if (!combinedBase.clause_words) combinedBase.clause_words = [];
-            combinedBase.clause_words.push(...extractedClauses);
-        }
+        combinedBase.product_name = combinedBase.products[0];
     }
 
     // Check which params still need AI
@@ -577,32 +510,35 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         }
     }
 
-    // ── HALLUCINATION GUARD ──
-    // Cross-reference AI-extracted attributes against the category's supported list.
-    // Drops any attribute the AI hallucinated that doesn't belong to this category.
-    const ATTRIBUTE_PARAMS = ['brand', 'color', 'material', 'storage', 'size', 'price_tier'];
-    if (categoryId && Object.keys(aiExtracted).length > 0 && storeContext.CATEGORIES) {
+    // Merge: base (deterministic) takes priority over AI
+    const merged = { ...aiExtracted, ...combinedBase };
+
+    // ── SCOPING GUARD ──
+    // Cross-reference all extracted clauses/attributes against the category's supported list.
+    // Drops any attribute that doesn't belong to this category (Zero-AI consistency).
+    if (categoryId && storeContext.CATEGORIES) {
         const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
         if (catObj) {
             const supported = new Set(catObj.attributes || []);
+
+            // 1. Validate top-level attribute params
+            const ATTRIBUTE_PARAMS = ['brand', 'color', 'material', 'storage', 'size', 'price_tier'];
             for (const attrName of ATTRIBUTE_PARAMS) {
-                if (aiExtracted[attrName] && !supported.has(attrName)) {
-                    logDebug('HALLUCINATION_GUARD:DROPPED', {
-                        _desc: 'Hallucination guard — drop AI-extracted attributes not in category',
-                        _example: 'AI said color for Food category → dropped',
-                        attr: attrName,
-                        value: aiExtracted[attrName],
-                        category: catObj.label,
-                        supported: Array.from(supported)
-                    });
-                    delete aiExtracted[attrName];
+                if (merged[attrName] && !supported.has(attrName)) {
+                    delete merged[attrName];
                 }
+            }
+
+            // 2. Validate clause_words
+            if (Array.isArray(merged.clause_words)) {
+                merged.clause_words = merged.clause_words.filter(cw => {
+                    const clause = CLAUSES[cw.clauseId];
+                    if (!clause || !clause.attribute) return true; // keep unknown or malformed for tool handling
+                    return supported.has(clause.attribute);
+                });
             }
         }
     }
-
-    // Merge: base (deterministic) takes priority over AI
-    const merged = { ...aiExtracted, ...combinedBase };
 
     return merged;
 }

@@ -33,7 +33,7 @@ async function executeTools(toolsSelected, sessionId) {
     let microstate = null;
     try {
         microstate = sessionId ? await stateManager.getMicrostate(sessionId) : null;
-    } catch (_) {}
+    } catch (_) { }
 
     const context = {
         CATEGORIES,
@@ -123,6 +123,11 @@ async function executeTools(toolsSelected, sessionId) {
         });
 
         try {
+            // Merge pipeline context (engineered flags) into the tool execution context
+            if (toolCall.pipelineContext) {
+                Object.assign(context, toolCall.pipelineContext);
+            }
+
             const result = await toolDef.handler(toolCall.params, context, results);
 
             const executionResult = {
@@ -134,7 +139,7 @@ async function executeTools(toolsSelected, sessionId) {
                 ported: !!toolCall.portedFrom,
                 portedFrom: toolCall.portedFrom || undefined
             };
-            
+
             // Debug: log ported tools
             if (executionResult.ported) {
                 console.log(`[Orchestrator] ✅ Tool ${toolName} is ported from ${executionResult.portedFrom}`);

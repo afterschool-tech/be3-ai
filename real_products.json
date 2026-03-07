@@ -1,0 +1,1170 @@
+{
+  "total": 65,
+  "products": [
+    {
+      "id": "77bb8c71-67ab-469f-bf1a-1430061d59c5",
+      "name": "Infinix Hot 60 pro",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "126.00",
+      "tags": "latest",
+      "attrs": {
+        "brand": "infinix",
+        "storage": "255",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "3f1a8bd0-bff2-44f5-bcb3-be4276f81d12",
+      "name": "Tecno Spark 40 pro",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "97.00",
+      "tags": "new",
+      "attrs": {
+        "brand": "tecno",
+        "storage": "255",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "25910fb7-bdb2-4022-b2e4-e0405fdbbfc2",
+      "name": "Nice Watch",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "12.96",
+      "tags": "fashion",
+      "attrs": {
+        "color": "brown",
+        "material": "leather"
+      },
+      "attrKeys": "color, material"
+    },
+    {
+      "id": "8eec3300-63cd-40df-89cd-f8fb3ae96fae",
+      "name": "Rattan 2 Drawers",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "15.00",
+      "tags": "Taye's Home Decor",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "62d41fb1-384a-4f22-9528-fa75b44234a5",
+      "name": "Home made Spaghetti",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "5.00",
+      "tags": "Bola Foods",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "190dd220-7fa9-4249-8232-1125205502e8",
+      "name": "Premium Smartphone Fold",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "78.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "a56dc4f2-f710-40e6-a5be-0bdf7453fde0",
+      "name": "Thin AMOLED Tablet",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "92.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "d24bf413-8940-4ea4-ab4f-c4a15ba5be9c",
+      "name": "Professional 12.9-inch Tablet",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "96.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "5f9094b0-2538-4ba3-bf2c-db95609e56f8",
+      "name": "Pro Smartphone AI Enhanced",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "143.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "770e36be-937e-4f7c-8942-52ad890b0b7a",
+      "name": "Ultra Smartphone with Stylus",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "44.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "12577200-8850-489b-b986-32a24038f767",
+      "name": "Flagship Smartphone 5G",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f"
+      ],
+      "price": "78.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "2a350ce4-15b4-4a51-85f1-2a610f38561e",
+      "name": "Bamboo Desk Organizer",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "144.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "7e25643f-1c54-413c-aeb2-33e3fbf9f524",
+      "name": "Decorative Woven Blanket",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "76.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "85a20360-090b-410f-a2a9-7996bef09d3c",
+      "name": "Modern Succulent Trio",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "125.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "884dbe68-d11e-4744-960f-8a3cb773df45",
+      "name": "Ceramic Scented Candle",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "67.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "fa5be29a-9db0-47fc-9ea8-cb94189357d3",
+      "name": "Abstract Canvas Wall Art",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "150.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "02265f53-99ca-4179-9281-62f7631f93ec",
+      "name": "Minimalist Desk Lamp",
+      "category_ids": [
+        "577c0281-bccb-4a16-9692-b73714c77299"
+      ],
+      "price": "141.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "8e318de1-e85d-41bb-91de-08465ccb9031",
+      "name": "Slim Convertible Laptop",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "99.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "023497fe-a62e-4284-bfda-4ce102f17962",
+      "name": "Portable Workstation Stealth",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "108.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "b244c97e-72f6-453e-a4fb-7bcd66f44d45",
+      "name": "High-Performance Gaming Laptop",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "57.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "fa204ec2-056c-4e4b-8179-6ec0de64ae17",
+      "name": "Premium 2-in-1 Tablet",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "139.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "9ae6e58e-88bf-4d13-8bed-32b911c29f42",
+      "name": "Business Ultra Laptop",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "117.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "66af1fca-acb8-4fb6-a903-f7994dd3ea91",
+      "name": "Professional Laptop Pro 14",
+      "category_ids": [
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "83.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "30ec77de-458b-430e-b674-a1408a2ef06b",
+      "name": "Surround Sound Headset",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "81.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "aafbe6d0-2cf5-444f-949a-6c32bf72dea3",
+      "name": "Virtual Reality Headset",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "136.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "83bb3f89-e452-4d69-8478-4bf45e3ea281",
+      "name": "Wireless Gaming Controller",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "115.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "6c8aaf75-af9b-4997-9561-06c5bf10cfb5",
+      "name": "Ergonomic Gaming Chair",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "77.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "d069224d-cb51-41d8-97d5-8706eb885876",
+      "name": "4K Ultra-Wide Monitor",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "53.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "0a37ac0d-0962-4ba6-8a83-df48471e417f",
+      "name": "RGB Wired Gaming Mouse",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930"
+      ],
+      "price": "80.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "a0ac9218-edbb-485a-acb7-ebb363416a8a",
+      "name": "Smart Home Hub",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "126.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "204b44a3-3b7c-41ca-bc5b-2336abc1b246",
+      "name": "Mechanical Backlit Keyboard",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "28.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "75ae5bf9-b4fc-4bf3-bac6-4a9518717718",
+      "name": "Mini Portable Projector",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "97.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "772ed639-758b-462e-8b5d-a4c07b159b61",
+      "name": "Portable Power Bank",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "91.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "adeac89c-4d2b-4249-8a3b-9c4a6de3c517",
+      "name": "Smart Digital Watch",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "35.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "877e217a-f1dc-4da5-8d06-a0530ab564a4",
+      "name": "Wireless Noise Cancelling Earbuds",
+      "category_ids": [
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "149.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "a788dcaf-1a5c-4311-91ee-57a2d65270ed",
+      "name": "Raw Manuka Honey",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "52.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "3089d5fc-b5ed-4f84-9545-1a5bd80f6b20",
+      "name": "Himalayan Pink Salt",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "95.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "79001ef8-947b-4570-8297-7707d0e847de",
+      "name": "Extra Virgin Olive Oil",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "62.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "50371fae-2d5e-406e-8b47-e59dd2702f91",
+      "name": "Artisan Sourdough Bread",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "73.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "98204c43-4c9c-4c86-b2f3-f5edb0383cfc",
+      "name": "Grade A Maple Syrup",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "16.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "19684e58-05fe-4741-be57-91dec815189f",
+      "name": "Organic Hass Avocado",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "125.99",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "1fe6aa05-35c3-4616-b12c-9d4ba5a9aeb3",
+      "name": "Food1 Item 2",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "347.66",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "ce44077e-201e-47a3-ab59-b845fd994aa2",
+      "name": "Food1 Item 1",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "489.81",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "194ae894-e4f4-4d6b-a414-d15d6c919763",
+      "name": "Tecno Maga Pad 11",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+        "63173747-a5b2-4cdb-942c-032a122631ad"
+      ],
+      "price": "115.00",
+      "tags": "",
+      "attrs": {
+        "brand": "tecno",
+        "storage": "127",
+        "price_tier": "budget"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "16f0d3e9-ccd5-4e8e-b247-8fb8d90e41dd",
+      "name": "Samsung Galaxy Tab s10 Ultra",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+        "63173747-a5b2-4cdb-942c-032a122631ad"
+      ],
+      "price": "397.00",
+      "tags": "latest",
+      "attrs": {
+        "brand": "samsung",
+        "storage": "1000",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "3835475c-df74-4b04-a130-30f8f49e82be",
+      "name": "Samsung Galaxy Tab s6",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+        "63173747-a5b2-4cdb-942c-032a122631ad"
+      ],
+      "price": "234.00",
+      "tags": "",
+      "attrs": {
+        "brand": "samsung",
+        "storage": "520",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "b265b489-74cd-435d-a2fa-d504117afa1c",
+      "name": "Iphone XS Max",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "9407551c-0204-4ffb-a054-1709177ebafc",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "200.00",
+      "tags": "",
+      "attrs": {
+        "brand": "apple",
+        "color": "white",
+        "storage": "128",
+        "material": "iron",
+        "price_tier": "budget"
+      },
+      "attrKeys": "brand, color, storage, material, price_tier"
+    },
+    {
+      "id": "dd5ccabd-42cc-4499-aeef-6f3cdd2129db",
+      "name": "Iphone 15",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "9407551c-0204-4ffb-a054-1709177ebafc",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "1687.00",
+      "tags": "latest",
+      "attrs": {
+        "brand": "apple",
+        "color": "black",
+        "storage": "512",
+        "material": "titanium",
+        "price_tier": "flagship"
+      },
+      "attrKeys": "brand, color, storage, material, price_tier"
+    },
+    {
+      "id": "000c7eae-a0c1-4770-9c82-8bb1b6c1b9a3",
+      "name": "Itel Super 26 Ultra",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "549.00",
+      "tags": "itel",
+      "attrs": {
+        "brand": "itel",
+        "storage": "255",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "d243a8b8-7c05-4c3a-bc86-d6738110d386",
+      "name": "Samsung s26 Ultra",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "2400.00",
+      "tags": "latest, flagship",
+      "attrs": {
+        "brand": "samsung",
+        "storage": "1000",
+        "price_tier": "flagship"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "96550d37-cf46-4571-9988-5c67146c98bd",
+      "name": "Tecno Cameon 40 Premier",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "300.00",
+      "tags": "new",
+      "attrs": {
+        "brand": "tecno",
+        "storage": "128",
+        "price_tier": "midrange"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "b161521f-6025-4257-b234-2b3284a4a06a",
+      "name": "Xbox series",
+      "category_ids": [
+        "1ea00631-9dba-468e-92b2-a48dd3ed6f77",
+        "63efd70e-2daf-46f9-b801-d9da53209930",
+        "2c86882a-c069-47c3-bdb6-9af4849672bb"
+      ],
+      "price": "258.00",
+      "tags": "",
+      "attrs": {
+        "brand": "microsoft",
+        "color": "white",
+        "price_tier": "flagship"
+      },
+      "attrKeys": "brand, color, price_tier"
+    },
+    {
+      "id": "8c1049aa-e321-47df-b6db-a8a3470820ed",
+      "name": "Apple Vision Pro",
+      "category_ids": [
+        "63efd70e-2daf-46f9-b801-d9da53209930",
+        "efb14888-9617-44c4-9081-aa22d1cf1ed3"
+      ],
+      "price": "2300.00",
+      "tags": "new, innovative",
+      "attrs": {
+        "brand": "apple"
+      },
+      "attrKeys": "brand"
+    },
+    {
+      "id": "0e00553a-068d-4fc7-a507-cdc9906ed569",
+      "name": "Iphone 12 Pro",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "9407551c-0204-4ffb-a054-1709177ebafc",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "299.00",
+      "tags": "",
+      "attrs": {
+        "brand": "apple",
+        "color": "white",
+        "storage": "256",
+        "material": "metal",
+        "price_tier": "premium",
+        "size": "254"
+      },
+      "attrKeys": "brand, color, storage, material, price_tier, size"
+    },
+    {
+      "id": "8ba1250d-ece4-4e97-b8ec-38b03e368a99",
+      "name": "Infinix Hot 30 i",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "75.00",
+      "tags": "new, cheap",
+      "attrs": {
+        "brand": "infinix",
+        "storage": "256",
+        "price_tier": "budget"
+      },
+      "attrKeys": "brand, storage, price_tier"
+    },
+    {
+      "id": "4cafd32f-9aa9-4889-b281-bf8c9af951c1",
+      "name": "Macbook air",
+      "category_ids": [
+        "8bc87612-cc22-41c4-9800-b616c787056d",
+        "dfa80cc4-f95a-4c87-949b-8b0438b28949"
+      ],
+      "price": "540.00",
+      "tags": "new",
+      "attrs": {
+        "brand": "apple",
+        "color": "white",
+        "price_tier": "flagship"
+      },
+      "attrKeys": "brand, color, price_tier"
+    },
+    {
+      "id": "acbf4217-68c6-4a2a-9b63-16d13f5f7264",
+      "name": "Magnetic field Studio headset",
+      "category_ids": [
+        "2ff218a6-65e9-456e-878a-300f1217798f",
+        "95bdfdb6-47ee-4faf-8f92-d3887ad4cf6b",
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "532.00",
+      "tags": "new, sound, magnetic",
+      "attrs": {
+        "color": "red",
+        "material": "leather"
+      },
+      "attrKeys": "color, material"
+    },
+    {
+      "id": "0f21c0e6-5fc8-4ae6-a13b-e392e26bbcff",
+      "name": "iphone 17 pro",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "9407551c-0204-4ffb-a054-1709177ebafc",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "2345.99",
+      "tags": "new, latest",
+      "attrs": {
+        "brand": "apple",
+        "color": "black",
+        "storage": "255",
+        "material": "gold",
+        "price_tier": "flagship",
+        "size": "245x764"
+      },
+      "attrKeys": "brand, color, storage, material, price_tier, size"
+    },
+    {
+      "id": "45130ace-fd60-4f05-8f91-320ddc4f5d1b",
+      "name": "Dell Laptop",
+      "category_ids": [],
+      "price": "123.00",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "58d5c65d-0a86-4044-8a80-6a9df9e6a3c5",
+      "name": "Laptop",
+      "category_ids": [
+        "2ff218a6-65e9-456e-878a-300f1217798f",
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "50.00",
+      "tags": "big, small, lol",
+      "attrs": {
+        "storage": "519",
+        "size": "large"
+      },
+      "attrKeys": "storage, size"
+    },
+    {
+      "id": "03abeca7-6dbf-41f0-8128-c5b9ccc9c8c0",
+      "name": "gch",
+      "category_ids": [
+        "9569c36b-343d-47b2-9aac-1f2046c82b0e"
+      ],
+      "price": "45.00",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "0ed37ec6-215c-4e33-9d55-20965f061d76",
+      "name": "Alaye",
+      "category_ids": [
+        "2ff218a6-65e9-456e-878a-300f1217798f",
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "34.00",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "f2bd0283-1c62-4c75-ac92-86bc805065c7",
+      "name": "Knife set",
+      "category_ids": [
+        "3e5781a6-5500-476f-8612-bdd1c2eeeb27",
+        "95bd9c7a-4c90-4d9e-950b-d27a12113c4b"
+      ],
+      "price": "30.00",
+      "tags": "",
+      "attrs": {
+        "color": "rede",
+        "storage": "13",
+        "material": "plastic",
+        "quality": "Grade A",
+        "size": "23"
+      },
+      "attrKeys": "color, storage, material, quality, size"
+    },
+    {
+      "id": "acd407bd-c313-453a-a414-41550709759b",
+      "name": "gch",
+      "category_ids": [],
+      "price": "45.00",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    },
+    {
+      "id": "2567e802-92a4-4767-bd77-e178905f7de7",
+      "name": "hgch",
+      "category_ids": [],
+      "price": "34.00",
+      "tags": "",
+      "attrs": {},
+      "attrKeys": "none"
+    }
+  ],
+  "facets": [
+    {
+      "id": "4b41a785-a8f1-46e4-ae95-9b0957f00f0d",
+      "code": "s",
+      "label": "size",
+      "type": "text",
+      "clauses": [],
+      "options": [
+        {
+          "value": "23",
+          "count": 1
+        },
+        {
+          "value": "254",
+          "count": 1
+        },
+        {
+          "value": "large",
+          "count": 1
+        },
+        {
+          "value": "245x764",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "7b125323-a6eb-47a5-9c5d-3fd98ca31dca",
+      "code": "p",
+      "label": "price tier",
+      "type": "select",
+      "clauses": [
+        {
+          "name": "p",
+          "label": "affordable",
+          "value": [
+            "budget",
+            "midrange"
+          ],
+          "prefix": "cheap",
+          "suffix": "",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [
+            "d64b240e-3146-4386-a98a-418057f66614",
+            "349f5c65-17ea-4de0-ba85-6079bbca62ab",
+            "2ca7dc14-667b-4050-adbf-8ef3615ec1a9",
+            "3e010193-84c6-4a1b-8e8d-77f63fdec648"
+          ],
+          "count": 9
+        },
+        {
+          "name": "e",
+          "label": "expensive",
+          "value": [
+            "premium",
+            "flagship"
+          ],
+          "prefix": "expensive",
+          "suffix": "",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [],
+          "count": 6
+        }
+      ],
+      "options": [
+        {
+          "value": "flagship",
+          "count": 5
+        },
+        {
+          "value": "budget",
+          "count": 3
+        },
+        {
+          "value": "premium",
+          "count": 1
+        },
+        {
+          "value": "midrange",
+          "count": 6
+        }
+      ]
+    },
+    {
+      "id": "2eaf76d8-8872-46f3-8f96-e56e36b9a32c",
+      "code": "b",
+      "label": "brand",
+      "type": "select",
+      "clauses": [
+        {
+          "name": "a",
+          "label": "apple product",
+          "value": [
+            "apple"
+          ],
+          "prefix": "",
+          "suffix": "by apple",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [
+            "5cba5153-0772-450a-b8b7-8a4fa532ecc1",
+            "63173747-a5b2-4cdb-942c-032a122631ad",
+            "0534dfd3-7f1b-47bb-8891-c0bf6033425e",
+            "d64b240e-3146-4386-a98a-418057f66614",
+            "349f5c65-17ea-4de0-ba85-6079bbca62ab",
+            "2ca7dc14-667b-4050-adbf-8ef3615ec1a9",
+            "3e010193-84c6-4a1b-8e8d-77f63fdec648"
+          ],
+          "count": 6
+        },
+        {
+          "name": "i",
+          "label": "infinix product",
+          "value": [
+            "infinix"
+          ],
+          "prefix": "",
+          "suffix": "by infinix",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [],
+          "count": 2
+        },
+        {
+          "name": "m",
+          "label": "Microsoft product",
+          "value": [
+            "microsoft"
+          ],
+          "prefix": "Microsoft",
+          "suffix": "",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [],
+          "count": 1
+        }
+      ],
+      "options": [
+        {
+          "value": "apple",
+          "count": 6
+        },
+        {
+          "value": "infinix",
+          "count": 2
+        },
+        {
+          "value": "tecno",
+          "count": 3
+        },
+        {
+          "value": "itel",
+          "count": 1
+        },
+        {
+          "value": "samsung",
+          "count": 3
+        },
+        {
+          "value": "microsoft",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "9925207b-ca88-4be2-bee7-cd402c9ee98f",
+      "code": "m",
+      "label": "material",
+      "type": "text",
+      "clauses": [],
+      "options": [
+        {
+          "value": "plastic",
+          "count": 1
+        },
+        {
+          "value": "leather",
+          "count": 2
+        },
+        {
+          "value": "metal",
+          "count": 1
+        },
+        {
+          "value": "iron",
+          "count": 1
+        },
+        {
+          "value": "gold",
+          "count": 1
+        },
+        {
+          "value": "titanium",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "4d7af189-7f57-405a-8cc3-d9e87eadacdc",
+      "code": "q",
+      "label": "quality",
+      "type": "text",
+      "clauses": [
+        {
+          "name": "t",
+          "label": "High quality",
+          "value": [
+            "Grade A"
+          ],
+          "prefix": "High quality",
+          "suffix": "",
+          "operator": "=",
+          "seo_template": "",
+          "excluded_category_ids": [],
+          "count": 1
+        }
+      ],
+      "options": [
+        {
+          "value": "Grade A",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "b078374b-efeb-412e-8a46-bc6c383fb5e8",
+      "code": "c",
+      "label": "color",
+      "type": "text",
+      "clauses": [
+        {
+          "name": "v",
+          "label": "color for ladies",
+          "value": [
+            "red",
+            "green",
+            "blue",
+            "yellow",
+            "pink",
+            "grey",
+            "white"
+          ],
+          "prefix": "vibrant",
+          "suffix": "for ladies",
+          "operator": "LIKE",
+          "seo_template": "",
+          "count": 5
+        },
+        {
+          "name": "c",
+          "label": "color for men",
+          "value": [
+            "black",
+            "brown"
+          ],
+          "prefix": "",
+          "suffix": "for men",
+          "operator": "LIKE",
+          "seo_template": "",
+          "excluded_category_ids": [],
+          "count": 3
+        }
+      ],
+      "options": [
+        {
+          "value": "rede",
+          "count": 1
+        },
+        {
+          "value": "white",
+          "count": 4
+        },
+        {
+          "value": "brown",
+          "count": 1
+        },
+        {
+          "value": "red",
+          "count": 1
+        },
+        {
+          "value": "black",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": "a15ebfba-3bc6-4819-867c-ae57b74ce4b6",
+      "code": "j",
+      "label": "storage",
+      "type": "number",
+      "clauses": [],
+      "options": [
+        {
+          "value": "13",
+          "count": 1
+        },
+        {
+          "value": "127",
+          "count": 1
+        },
+        {
+          "value": "128",
+          "count": 2
+        },
+        {
+          "value": "255",
+          "count": 4
+        },
+        {
+          "value": "256",
+          "count": 2
+        },
+        {
+          "value": "512",
+          "count": 1
+        },
+        {
+          "value": "519",
+          "count": 1
+        },
+        {
+          "value": "520",
+          "count": 1
+        },
+        {
+          "value": "1000",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

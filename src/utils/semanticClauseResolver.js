@@ -118,40 +118,51 @@ function resolveClausesGlobal(text, resolutions = []) {
     });
 
     // ── Step 1: Deterministic Pass (exact matches from CLAUSE_LOOKUP + BRAND_LOOKUP) ──
-    for (let i = 0; i < words.length; i++) {
-        if (consumed.has(i) || FILLERS.has(words[i])) continue;
+    for (let size = 3; size >= 1; size--) {
+        for (let i = 0; i <= words.length - size; i++) {
+            let skip = false;
+            for (let j = 0; j < size; j++) {
+                if (consumed.has(i + j)) skip = true;
+            }
+            if (skip) continue;
 
-        // Check brands first (higher priority)
-        const brandMatch = BRAND_LOOKUP.get(words[i]);
-        if (brandMatch) {
-            globalEntities.push({
-                type: 'brand',
-                value: brandMatch.label,
-                clauseId: brandMatch.clauseId,
-                clauseLabel: brandMatch.label,
-                attribute: 'brand',
-                source: 'PREPASS_DETERMINISTIC',
-                categories: brandMatch.categories,
-                globalWordIndex: i
-            });
-            consumed.add(i);
-            continue;
-        }
+            const phrase = words.slice(i, i + size).join(' ').trim();
+            if (FILLERS.has(phrase) && size === 1) continue;
 
-        // Check non-brand clauses
-        const clauseMatch = CLAUSE_LOOKUP.get(words[i]);
-        if (clauseMatch) {
-            globalEntities.push({
-                type: 'clause',
-                value: clauseMatch.word,
-                clauseId: clauseMatch.clauseId,
-                clauseLabel: clauseMatch.label,
-                attribute: clauseMatch.attribute,
-                source: 'PREPASS_DETERMINISTIC',
-                categories: clauseMatch.categories,
-                globalWordIndex: i
-            });
-            consumed.add(i);
+            // Check brands first (higher priority)
+            const brandMatch = BRAND_LOOKUP.get(phrase);
+            if (brandMatch) {
+                globalEntities.push({
+                    type: 'brand',
+                    value: brandMatch.label,
+                    clauseId: brandMatch.clauseId,
+                    clauseLabel: brandMatch.label,
+                    attribute: 'brand',
+                    source: 'PREPASS_DETERMINISTIC',
+                    categories: brandMatch.categories,
+                    globalWordIndex: i, // Anchor to the start of the phrase
+                    wordCount: size
+                });
+                for (let j = 0; j < size; j++) consumed.add(i + j);
+                continue;
+            }
+
+            // Check non-brand clauses
+            const clauseMatch = CLAUSE_LOOKUP.get(phrase);
+            if (clauseMatch) {
+                globalEntities.push({
+                    type: 'clause',
+                    value: clauseMatch.word,
+                    clauseId: clauseMatch.clauseId,
+                    clauseLabel: clauseMatch.label,
+                    attribute: clauseMatch.attribute,
+                    source: 'PREPASS_DETERMINISTIC',
+                    categories: clauseMatch.categories,
+                    globalWordIndex: i,
+                    wordCount: size
+                });
+                for (let j = 0; j < size; j++) consumed.add(i + j);
+            }
         }
     }
 

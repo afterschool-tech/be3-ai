@@ -309,6 +309,23 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 if (rr.whatsapp) base.whatsapp = rr.whatsapp;
             }
 
+            // Facet results: pass structured options to personality layer
+            if (tool === 'product.facets' && rr && typeof rr === 'object') {
+                base.facet_target = rr.facet_target || null;
+                base.attribute_code = rr.attribute_code || null;
+                base.scope = rr.scope || null;
+                base.scope_label = rr.scope_label || null;
+                if (Array.isArray(rr.options)) {
+                    base.facet_options = rr.options.slice(0, 15).map(o => ({
+                        value: o.value,
+                        count: o.count ?? null
+                    }));
+                }
+                if (Array.isArray(rr.clauses) && rr.clauses.length > 0) {
+                    base.facet_clauses = rr.clauses.slice(0, 10);
+                }
+            }
+
             if (tool === 'cart.add' && rr) {
                 // Prioritize name from tool result (backend) then from pre-reconciled params
                 base.product_name = rr.product_name || tr.params?.product_name || null;

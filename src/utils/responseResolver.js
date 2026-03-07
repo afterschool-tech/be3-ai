@@ -33,9 +33,22 @@ function resolveEngineeredToken(text) {
     const aliasMap = {
         '__navmore__': { namespace: 'nav', command: 'more', arg: null },
         '__navprev__': { namespace: 'nav', command: 'prev', arg: null },
+        '__navresults__': { namespace: 'nav', command: 'results', arg: null },
         '__flowcancel__': { namespace: 'flow', command: 'cancel', arg: null },
         '__flowskip__': { namespace: 'flow', command: 'skip', arg: null }
     };
+
+    // Dynamic alias format: __navresults<id>__ or __navmore<id>__
+    const dynamicM = raw.match(/^__(nav)(more|prev|results)([a-z0-9]+)__$/i);
+    if (dynamicM) {
+        return {
+            raw: raw,
+            namespace: dynamicM[1].toLowerCase(),
+            command: dynamicM[2].toLowerCase(),
+            arg: dynamicM[3]
+        };
+    }
+
     const aliased = aliasMap[String(raw).toLowerCase()];
     if (aliased) {
         return {

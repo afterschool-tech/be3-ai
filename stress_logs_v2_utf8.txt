@@ -1,0 +1,275 @@
+﻿====================================================
+   BE3 AI STRESS TEST V2 - AMBIGUITY & COVERAGE
+====================================================
+
+Query: "show me iphone 255gb storage"
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+­ƒôí [SemanticMatcher:GlobalPrepass] Loaded single bench: 9 clusters.
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'small_storage',
+  clauseWord: 'storage',
+  attribute: 'storage',
+  resulting_attributes: { 'j:u': '200' }
+}
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'small_storage',
+  clauseWord: 'storage',
+  attribute: 'storage',
+  resulting_attributes: { 'j:u': '200' }
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒô© Search context SET: {
+  category: '9407551c-0204-4ffb-a054-1709177ebafc',
+  clauses: '[small_storage,small_storage]',
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  attributes: { 'j:u': '200' },
+  sample_product_attrs: {}
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [ 'small_storage', 'small_storage' ],
+  attributes: { 'j:u': '200' },
+  sample_attrs_map: {}
+}
+[MicrostateRegistry] Indexed 15 triggers across 13 intents
+  Intent:   product_search Ô£à
+  Params:   {"query":["storage"],"category":"9407551c-0204-4ffb-a054-1709177ebafc","attributes":{"j:u":"200"},"limit":5} ÔØî
+  ERROR:    queryVal.toLowerCase is not a function
+
+Query: "what storage options for iphone"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'small_storage',
+  clauseWord: 'storage',
+  attribute: 'storage',
+  resulting_attributes: { 'j:u': '200' }
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [ 'small_storage', 'small_storage' ],
+  attributes: { 'j:u': '200' },
+  sample_attrs_map: {}
+}
+  Intent:   facet_list Ô£à
+  Params:   {"facet_target":"storage","category":"9407551c-0204-4ffb-a054-1709177ebafc","attributes":{"j:u":"200"}} Ô£à
+
+Query: "tell me about Bola Foods"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [ 'small_storage', 'small_storage' ],
+  attributes: { 'j:u': '200' },
+  sample_attrs_map: {}
+}
+  Intent:   vendor_info Ô£à
+  Params:   {"vendor_name":"Bola Foods"} ÔØî
+
+Query: "how do i call Bola Foods"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [ 'small_storage', 'small_storage' ],
+  attributes: { 'j:u': '200' },
+  sample_attrs_map: {}
+}
+  Intent:   vendor_contact Ô£à
+  Params:   {"vendor_name":"Bola Foods"} ÔØî
+
+Query: "what does Bola Foods sell?"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [ 'small_storage', 'small_storage' ],
+  attributes: { 'j:u': '200' },
+  sample_attrs_map: {}
+}
+  Intent:   vendor_products Ô£à
+  Params:   {"vendor_name":"Bola Foods"} ÔØî
+
+Query: "show my bag"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ÔÅ░ Search context EXPIRED (TTL=0) for test-user
+[StateManager] Retrieved from memory cache: test-user
+  Intent:   view_cart Ô£à
+
+Query: "i want to pay now"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+  Intent:   start_checkout Ô£à
+
+Query: "change the infinix to 3 items"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒô© Search context SET: {
+  category: 'none',
+  clauses: '[]',
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  attributes: { b: 'infinix' },
+  sample_product_attrs: {}
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+  Intent:   product_search ÔØî (Expected: update_cart_quantity)
+  Params:   {"query":"items","attributes":{"b":"infinix"},"limit":5} ÔØî
+  Ground:   NO DATA FOUND ÔØî
+
+Query: "where is my order #5521"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+  Intent:   order_status Ô£à
+  Params:   {"order_number":"5521"} ÔØî
+
+Query: "show my previous orders"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+  Intent:   list_orders Ô£à
+
+Query: "cancel my latest order"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+  ERROR:    suggestedIntents.forEach is not a function
+
+Query: "compare infinix and tecno"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+  Intent:   product_compare Ô£à
+  Params:   {"product_ids":["tecno"]} ÔØî
+
+Query: "show me infinix and tecno phones"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒôÜ Stack SET: 1 remaining, index=0
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒô© Search context SET: {
+  category: 'none',
+  clauses: '[]',
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  attributes: { b: 'infinix' },
+  sample_product_attrs: {}
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöÆ Microstate OPENED: "missing_query" for intent "product_search" (test-user)
+  Intent:   product_search Ô£à
+  Params:   {"paramName":"query","message":"What would you like to search for?","hint":"e.g., \"cheap smartphones\" or \"blue shirts\"","parentIntent":"product_search"} ÔØî
+  Ground:   FOUND 65 items Ô£à
+
+Query: "i need help with my checkout"
+[StateManager] Retrieved from memory cache: test-user
+[SchemaResolver] Match for vendor_contact: "help" in words: [i, need, help, with, my, checkout] with IDF 1.9095425048844383
+[MicrostateRunner] ­ƒÆÑ Breakthrough! Intent "get_help" broke through the sandbox
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöô Microstate CLEARED for test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒôÜ Stack CLEARED for test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[SchemaResolver] Match for vendor_contact: "help" in words: [i, need, help, with, my, checkout] with IDF 1.9095425048844383
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: { b: 'infinix' },
+  sample_attrs_map: {}
+}
+  Intent:   get_help Ô£à
+
+Query: "the app is too slow"
+[StateManager] Retrieved from memory cache: test-user
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒô© Search context SET: {
+  category: '3e5781a6-5500-476f-8612-bdd1c2eeeb27',
+  clauses: '[]',
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  attributes: {},
+  sample_product_attrs: {}
+}
+[StateManager] Retrieved from memory cache: test-user
+[StateManager] ­ƒöì Retrieved search_context: {
+  product_ids_count: 0,
+  product_attributes_map_count: 0,
+  clauses: [],
+  attributes: {},
+  sample_attrs_map: {}
+}
+  Intent:   product_search ÔØî (Expected: give_feedback)
+  ERROR:    queryVal.toLowerCase is not a function
+
+FINAL SCORE: 5/15 Passed

@@ -1,0 +1,32 @@
+You are an expert at generating semantic variations for a 'facet_list' intent in an eCommerce chatbot.
+CRITICAL: The goal is ONLY to discover metadata (attributes/options) about products, NOT to find or buy the products themselves.
+
+CONTEXT:
+Internal Attribute Codes: [color, storage, brand, material, quality]
+User Synonyms: [ROM, memory, disk space, capacity, shades, built with, made of, who made, manufacturer]
+
+STRICT GUIDELINES:
+1. Every variation MUST ask about a SPECIFIC property or list of options.
+2. Every variation MUST contain one of these triggers: "what", "which", "available", "list", "show options".
+3. Use placeholder [product] for the category.
+4. DO NOT generate phrases about "buying", "finding", "searching", or "trending".
+5. DO NOT generate phrases about "reviews", "feedback", "budget", or "longevity".
+
+NEGATIVE EXAMPLES (DO NOT GENERATE):
+- "I want to see [product]" -> (This is product_search)
+- "[product] near me" -> (This is product_search)
+- "What [product] is best?" -> (This is get_advice)
+- "Show me [product] reviews" -> (This is product_info)
+- "Budget friendly [product]" -> (This is product_search)
+
+POSITIVE EXAMPLES (MUST EMULATE):
+- "What colors of [product] do you sell?"
+- "Which storage sizes are available for [product]?"
+- "List the brands of [product] you carry."
+- "What materials is this [product] made of?"
+- "What are the available RAM options for [product]?"
+- "Which [product] manufacturers do you have?"
+- "Show me the color palette for [product]."
+- "What capacity of [product] is in stock?"
+
+Generate 30 unique variations following these strict rules.

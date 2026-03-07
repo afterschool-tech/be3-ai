@@ -1,5 +1,6 @@
 const natural = require('natural');
 const fs = require('fs');
+const path = require('path');
 
 /**
  * Shared Semantic Engine
@@ -7,9 +8,9 @@ const fs = require('fs');
  */
 class SemanticMatcher {
     constructor(benchPath, label = 'General') {
-        this.benchPath = benchPath;
+        this.benchPath = benchPath; // Can be a file OR a directory
         this.label = label;
-        this.benchData = null;
+        this.benchData = {}; // Initialize as empty object for aggregation
         this.tfidf = new natural.TfIdf();
         this.isLoaded = false;
 
@@ -18,12 +19,35 @@ class SemanticMatcher {
 
     _load() {
         if (!fs.existsSync(this.benchPath)) {
-            console.warn(`[SemanticMatcher:${this.label}] Bench file not found: ${this.benchPath}`);
+            console.warn(`[SemanticMatcher:${this.label}] Path not found: ${this.benchPath}`);
             return;
         }
 
         try {
-            this.benchData = JSON.parse(fs.readFileSync(this.benchPath, 'utf8'));
+            const stats = fs.statSync(this.benchPath);
+
+            if (stats.isDirectory()) {
+                // Aggregated Loading (Decentralized)
+                const intentsDir = this.benchPath;
+                const intentFolders = fs.readdirSync(intentsDir);
+
+                for (const folder of intentFolders) {
+                    const benchFile = path.join(intentsDir, folder, 'bench.json');
+                    if (fs.existsSync(benchFile)) {
+                        try {
+                            const data = JSON.parse(fs.readFileSync(benchFile, 'utf8'));
+                            Object.assign(this.benchData, data);
+                        } catch (e) {
+                            console.warn(`[SemanticMatcher:${this.label}] Failed to read ${folder}/bench.json:`, e.message);
+                        }
+                    }
+                }
+                console.log(`📡 [SemanticMatcher:${this.label}] Aggregated ${Object.keys(this.benchData).length} intent benches from directory.`);
+            } else {
+                // Single File Loading (Legacy/Standard)
+                this.benchData = JSON.parse(fs.readFileSync(this.benchPath, 'utf8'));
+                console.log(`📡 [SemanticMatcher:${this.label}] Loaded single bench: ${Object.keys(this.benchData).length} clusters.`);
+            }
 
             // Index each cluster
             for (const [id, entry] of Object.entries(this.benchData)) {
@@ -33,7 +57,6 @@ class SemanticMatcher {
                 }
             }
             this.isLoaded = true;
-            console.log(`📡 [SemanticMatcher:${this.label}] Index built for ${Object.keys(this.benchData).length} clusters.`);
         } catch (e) {
             console.error(`[SemanticMatcher:${this.label}] Load error:`, e.message);
         }
@@ -62,7 +85,11 @@ class SemanticMatcher {
 
             const vectorMatch = vectorResults.find(r => r.id === id);
             const vectorScore = vectorMatch ? vectorMatch.vectorScore : 0;
-            const normalizedVectorBias = Math.log1p(vectorScore);
+
+            // Normalize by corpus size so larger benches don't dominate smaller, precise ones.
+            // A bench with 300 variations shouldn't automatically outscore one with 80.
+            const sizeNorm = Math.log1p(50) / Math.log1p(benchSamples.length); // anchored at 50 variations
+            const normalizedVectorBias = Math.log1p(vectorScore) * sizeNorm;
 
             // Optimization: Only run Dice if there's some vector signal
             let maxSimilarity = 0;
@@ -79,7 +106,6 @@ class SemanticMatcher {
                     id,
                     vectorScore: normalizedVectorBias,
                     similarity: maxSimilarity,
-                    // Generic boost formula
                     boost: (maxSimilarity * 2.5) + (normalizedVectorBias * 1.5)
                 });
             }

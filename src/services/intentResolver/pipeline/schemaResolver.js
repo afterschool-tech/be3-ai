@@ -27,7 +27,8 @@ const ENTITY_TO_PARAM = {
     'price_max': 'price_max',
     'price_min': 'price_min',
     'clause': 'clause_words',
-    'resolved_product': 'product_name'  // Context-resolved products → product_name slot
+    'resolved_product': 'product_name',  // Context-resolved products → product_name slot
+    'facet_target': 'facet_target'       // New: semantic attribute targets
 };
 
 // ── Action category to intent name mapping ──
@@ -51,8 +52,9 @@ const ACTION_TO_INTENTS = {
     'list': ['list_vendors', 'list_orders', 'browse_collection'],
     'availability': ['check_availability'],
     'confirm': ['confirm_order'],
-    'cancel': ['cancel_order'],
-    'delivery': ['set_delivery']
+    'cancel': 'cancel_order',
+    'delivery': 'set_delivery',
+    'discovery_meta': ['facet_list']
 };
 
 
@@ -380,6 +382,38 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     });
                 }
             }
+        }
+        // 3k. Facet Dominance Rule
+        if (intentName === 'facet_list' && entityParams['facet_target']) {
+            const hasDiscoveryMeta = actionEntities.some(e => e.category === 'discovery_meta');
+            const hasDiscovery = actionEntities.some(e => e.category === 'discovery');
+
+            if (hasDiscoveryMeta) {
+                score += 10.0; // Massive boost if attribute target IS asked about ("what colors...")
+                logDebug('SCORING:FACET_DOMINANCE', {
+                    _desc: 'Facet dominance rule — explicit attribute target + discovery verb boosts facet_list',
+                    _example: '"what colors..." → facet_list +10',
+                    target: entityParams['facet_target'].value,
+                    intent: intentName,
+                    boost: 10.0
+                });
+            } else if (hasDiscovery) {
+                score += 8.0; // Strong boost for searching a facet list ("browse colors", "show materials")
+                logDebug('SCORING:FACET_DOMINANCE_SEARCH', {
+                    _desc: 'Facet dominance rule — explicit attribute target + search verb boosts facet_list',
+                    _example: '"browse colors..." → facet_list +8',
+                    target: entityParams['facet_target'].value,
+                    intent: intentName,
+                    boost: 8.0
+                });
+            } else {
+                score += 2.0; // Mild boost for just mentioning an attribute ("small storage phones")
+            }
+        }
+
+        // 3l. Search Interrogative Penalty
+        if (intentName === 'product_search' && actionEntities.some(e => e.category === 'discovery_meta')) {
+            score -= 5.0; // Penalize search if query is purely interrogative
         }
 
         // [New] Orphan Noun Rule: product_search should win over vendor_identity for simple product mentions.

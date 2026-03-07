@@ -2,11 +2,9 @@ const path = require('path');
 const fs = require('fs');
 const SemanticMatcher = require('../semanticLab/utils/SemanticMatcher');
 
-// Prefer modular joint_bench.json; fallback to monolith intent_bench.json
-const JOINT_BENCH = path.join(__dirname, '../semanticLab/intents/joint_bench.json');
-const LEGACY_BENCH = path.join(__dirname, '../semanticLab/intents/intent_bench.json');
-const BENCH_FILE = fs.existsSync(JOINT_BENCH) ? JOINT_BENCH : LEGACY_BENCH;
-const matcher = new SemanticMatcher(BENCH_FILE, 'Intents');
+// Load semantic variations from individual intent benches (Decentralized)
+const INTENTS_DIR = path.join(__dirname, '../semanticLab/intents');
+const matcher = new SemanticMatcher(INTENTS_DIR, 'Intents');
 const semanticCache = new Map();
 const MAX_CACHE_SIZE = 500;
 

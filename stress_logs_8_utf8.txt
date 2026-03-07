@@ -1,0 +1,117 @@
+﻿====================================================
+   BE3 AI STRESS TEST - INTENT & GROUNDING
+====================================================
+
+Query: "what phone brands do you sell?"
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+­ƒôí [SemanticMatcher:GlobalPrepass] Loaded single bench: 9 clusters.
+­ƒôí [SemanticMatcher:FacetResolver] Loaded single bench: 6 clusters.
+  Intent:   facet_list Ô£à
+  Ground:   FOUND 10 items Ô£à
+  Params:   {"facet_target":"brands","category":"7b8b5bb4-7878-4203-a550-a0941e1e3eb9"}
+
+Query: "browse colors for watches"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+  Intent:   facet_list Ô£à
+  Ground:   FOUND 65 items Ô£à
+  Params:   {"facet_target":"colors"}
+
+Query: "what storage options are there for the infinix hot 60?"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'small_storage',
+  clauseWord: 'storage',
+  attribute: 'storage',
+  resulting_attributes: { 'j:u': '200' }
+}
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+  Intent:   facet_list Ô£à
+  Ground:   NO DATA FOUND ÔØî
+  Params:   {"facet_target":"storage","category":"3e010193-84c6-4a1b-8e8d-77f63fdec648","attributes":{"j:u":"200","b":"infinix"}}
+
+Query: "show me available materials for brown watches"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'color_for_men',
+  clauseWord: 'brown',
+  attribute: 'color',
+  resulting_attributes: { 'c:c': 'black,brown' }
+}
+  Intent:   facet_list Ô£à
+  Ground:   FOUND 65 items Ô£à
+  Params:   {"facet_target":"materials","attributes":{"c:c":"black,brown"}}
+
+Query: "show me cheap smartphones"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'affordable',
+  clauseWord: 'affordable',
+  attribute: 'price_tier',
+  resulting_attributes: { 'p:p': 'budget,midrange' }
+}
+  Intent:   product_search Ô£à
+  Ground:   FOUND 10 items Ô£à
+  Params:   {"category":"7b8b5bb4-7878-4203-a550-a0941e1e3eb9","price_max":200,"attributes":{"p:p":"budget,midrange"},"limit":5}
+
+Query: "i want small storage phones"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'small_storage',
+  clauseWord: 'small_storage',
+  attribute: 'storage',
+  resulting_attributes: { 'j:u': '200' }
+}
+  Intent:   product_search Ô£à
+  Ground:   FOUND 10 items Ô£à
+  Params:   {"category":"7b8b5bb4-7878-4203-a550-a0941e1e3eb9","attributes":{"j:u":"200"},"limit":5}
+
+Query: "infinix phones with high quality"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒöä Mapped clause to attribute: {
+  clauseId: 'high_quality',
+  clauseWord: 'high_quality',
+  attribute: 'quality',
+  resulting_attributes: { 'q:t': 'Grade A' }
+}
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+  Intent:   product_search Ô£à
+  Ground:   EXPECTED 0 items Ô£à
+  Params:   {"category":"7b8b5bb4-7878-4203-a550-a0941e1e3eb9","attributes":{"q:t":"Grade A","b":"infinix"},"limit":5}
+
+Query: "add the infinix hot 60 pro to my cart"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+  Intent:   add_to_cart Ô£à
+  Ground:   N/A
+  Params:   {"product_id":"hot 60 pro","quantity":1}
+
+Query: "compare the infinix hot 60 and tecno spark 40"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+[ParameterNormalizer] ­ƒÅÀ´©Å Folded top-level brand into attributes: { original: 'infinix product', normalized: 'infinix', key: 'b' }
+  Intent:   product_compare Ô£à
+  Ground:   N/A
+  Params:   {"product_ids":["hot 60","tecno spark 40"]}
+
+Query: "what are your top categories?"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+  Intent:   browse_categories Ô£à
+  Ground:   N/A
+  Params:   {}
+
+Query: "show me everything by Bola Foods"
+[StateManager] Retrieved from memory cache: undefined
+[ContextResolver] resolveReferences: no state or reference_map, passing through
+  Intent:   product_search Ô£à
+  Ground:   FOUND 1 items Ô£à
+  Params:   {"query":"everything","category":"9569c36b-343d-47b2-9aac-1f2046c82b0e","tag":"Bola Foods","limit":5}
+
+FINAL SCORE: 10/11 Passed

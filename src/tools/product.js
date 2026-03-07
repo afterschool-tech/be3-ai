@@ -3,7 +3,7 @@
  * Capabilities related to product search and details.
  */
 
-const { CATEGORIES, VENDORS } = require('../context/storeContext');
+const { CATEGORIES, VENDORS, ATTRIBUTES } = require('../context/storeContext');
 const { normalizeCategory, normalizeVendor, isOrdinalOrReferencePhrase } = require('../utils/normalization');
 const { resolveProduct } = require('../utils/productResolver');
 const { performSemanticSearch } = require('../utils/searchUtility');
@@ -37,6 +37,7 @@ const productTools = {
         },
         handler: async (params, context) => {
             const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {} } = params;
+            const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
             try {
@@ -46,240 +47,22 @@ const productTools = {
             } catch (_) { }
 
             const searchParams = new URLSearchParams({
+                type: 'product',
                 per_page: limit,
                 page: page,
                 sort: sort
             });
-
             if (query) searchParams.append('q', query);
             if (price_min) searchParams.append('price_min', price_min);
             if (price_max) searchParams.append('price_max', price_max);
             if (tag) searchParams.append('tag', tag);
 
             let catId = normalizeCategory(category);
-
-            // --- STAGE -1: Category Auto-Discovery ---
-            // If no category was passed, but the query contains a category name, auto-discover it.
-            // This supports semantic search even when the intent resolver follows mutual exclusivity rules.
-            if (!catId && query) {
-                const { logDebug } = require('../utils/debugLogger');
-                // Handle query as either string or array (from products param mapping)
-                const queryStr = Array.isArray(query) ? query[0] : query;
-                if (!queryStr) return; // Empty array case - skip auto-discovery
-                const words = queryStr.toLowerCase().split(/\s+/).filter(Boolean);
-                const queryLower = queryStr.toLowerCase();
-                let currentPos = 0;
-                const wordPositions = words.map(w => {
-                    const pos = queryLower.indexOf(w, currentPos);
-                    currentPos = pos >= 0 ? pos + w.length : currentPos;
-                    return pos;
-                });
-
-                const inferWords = [];
-                for (let i = 0; i < words.length; i++) {
-                    const word = words[i];
-                    const wordIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
-                    if (isOrdinalOrReferencePhrase(word, queryLower, wordIndex)) continue;
-                    const cleaned = word.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
-                    if (cleaned) inferWords.push(cleaned);
-                }
-
-                const makeVariants = (w) => {
-                    const out = new Set();
-                    if (!w) return [];
-                    out.add(w);
-                    if (!w.endsWith('s')) out.add(`${w}s`);
-                    if (w.endsWith('s') && w.length > 2) out.add(w.slice(0, -1));
-                    if (!w.endsWith('es')) out.add(`${w}es`);
-                    if (w.endsWith('es') && w.length > 3) out.add(w.slice(0, -2));
-                    return Array.from(out).filter(Boolean);
-                };
-
-                const tokenize = (s) => {
-                    return String(s || '')
-                        .toLowerCase()
-                        .split(/[\s\-_\/]+/g)
-                        .map(t => t.trim())
-                        .filter(Boolean);
-                };
-
-                const byId = {};
-                for (const c of Object.values(context.CATEGORIES || {})) {
-                    if (c && c.id) byId[c.id] = c;
-                }
-
-                const getDepth = (cat) => {
-                    let depth = 0;
-                    const seen = new Set();
-                    let cur = cat;
-                    while (cur && cur.parent_id && !seen.has(cur.parent_id)) {
-                        seen.add(cur.parent_id);
-                        const parent = byId[cur.parent_id];
-                        if (!parent) break;
-                        depth += 1;
-                        cur = parent;
-                        if (depth > 20) break;
-                    }
-                    return depth;
-                };
-
-                const invBonus = (n) => {
-                    const x = Number(n || 0);
-                    if (!Number.isFinite(x) || x <= 0) return 0;
-                    return 8 * Math.log10(1 + x);
-                };
-
-                const scored = [];
-                const categories = Object.values(context.CATEGORIES || {});
-                for (const cat of categories) {
-                    if (!cat) continue;
-                    const label = String(cat.label || '').toLowerCase().trim();
-                    const slug = String(cat.slug || '').toLowerCase().trim();
-                    if (!label && !slug) continue;
-
-                    const labelTokens = tokenize(label);
-                    const slugTokens = tokenize(slug);
-                    const allTokens = [...new Set([...labelTokens, ...slugTokens])];
-
-                    const wordMatches = [];
-                    for (const w of inferWords) {
-                        const variants = makeVariants(w);
-                        let bestTier = 0;
-                        let bestTierScore = 0;
-                        let bestDetails = null;
-
-                        // Tier 4: exact query token equals whole label/slug (rare, but keep)
-                        if (label === w || slug === w) {
-                            bestTier = 4;
-                            bestTierScore = 100;
-                            bestDetails = { type: 'exact_query', word: w, variant: w };
-                        }
-
-                        for (const v of variants) {
-                            // Tier 4: exact token match
-                            if (bestTier < 4 && allTokens.includes(v)) {
-                                bestTier = 4;
-                                bestTierScore = 95;
-                                bestDetails = { type: 'token_exact', word: w, variant: v };
-                                break;
-                            }
-                        }
-
-                        // Tier 3: compound prefix/suffix match (keeps phone->smartphone and phone->iphones strong)
-                        if (bestTier < 3) {
-                            for (const v of variants) {
-                                for (const t of allTokens) {
-                                    if (!t) continue;
-                                    if (t === v) continue;
-                                    if (t.startsWith(v) || t.endsWith(v)) {
-                                        bestTier = 3;
-                                        bestTierScore = 75;
-                                        bestDetails = { type: 'token_compound', word: w, variant: v, token: t };
-                                        break;
-                                    }
-                                }
-                                if (bestTier === 3) break;
-                            }
-                        }
-
-                        // Tier 2: raw substring match
-                        if (bestTier < 2) {
-                            for (const v of variants) {
-                                if ((label && label.includes(v)) || (slug && slug.includes(v))) {
-                                    bestTier = 2;
-                                    bestTierScore = 35;
-                                    bestDetails = { type: 'substring', word: w, variant: v };
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (bestTier > 0) {
-                            wordMatches.push({ word: w, tier: bestTier, score: bestTierScore, details: bestDetails });
-                        }
-                    }
-
-                    if (wordMatches.length === 0) continue;
-
-                    wordMatches.sort((a, b) => b.score - a.score);
-                    const best = wordMatches[0];
-                    const top2Sum = (wordMatches[0]?.score || 0) + Math.floor((wordMatches[1]?.score || 0) * 0.35);
-                    const matchedWords = wordMatches.length;
-                    const coverageBonus = Math.min(20, Math.max(0, (matchedWords - 1) * 8));
-                    const lexScore = top2Sum + coverageBonus;
-                    const lexTier = best.tier;
-
-                    const depth = getDepth(cat);
-                    const depthBonus = Math.min(4, depth) * 6;
-                    const inventoryBonus = invBonus(cat.total_count);
-                    const finalScore = lexScore + depthBonus + inventoryBonus;
-
-                    scored.push({
-                        id: cat.id,
-                        label: cat.label,
-                        slug: cat.slug,
-                        total_count: cat.total_count,
-                        parent_id: cat.parent_id,
-                        score: finalScore,
-                        lexTier,
-                        lexScore,
-                        match: best.details,
-                        depth,
-                        bonuses: { depth: depthBonus, inventory: inventoryBonus, coverage: coverageBonus }
-                    });
-                }
-
-                scored.sort((a, b) => {
-                    if (b.lexTier !== a.lexTier) return b.lexTier - a.lexTier;
-                    if (b.lexScore !== a.lexScore) return b.lexScore - a.lexScore;
-                    if (b.depth !== a.depth) return b.depth - a.depth;
-                    if (b.score !== a.score) return b.score - a.score;
-                    const bl = String(b.label || '').length;
-                    const al = String(a.label || '').length;
-                    if (bl !== al) return bl - al;
-                    return String(a.id || '').localeCompare(String(b.id || ''));
-                });
-
-                if (scored.length > 0) {
-                    const winner = scored[0];
-                    catId = winner.id;
-                    logDebug('TOOL:CATEGORY_AUTO_DISCOVERY [product.search]', {
-                        _desc: 'Category auto-discovery — competition scoring across categories',
-                        query: queryStr,
-                        inferWords,
-                        winner: {
-                            id: winner.id,
-                            label: winner.label,
-                            slug: winner.slug,
-                            score: winner.score,
-                            lexTier: winner.lexTier,
-                            lexScore: winner.lexScore,
-                            match: winner.match,
-                            bonuses: winner.bonuses,
-                            depth: winner.depth,
-                            total_count: winner.total_count
-                        },
-                        topCandidates: scored.slice(0, 5).map(c => ({
-                            id: c.id,
-                            label: c.label,
-                            score: c.score,
-                            lexTier: c.lexTier,
-                            lexScore: c.lexScore,
-                            match: c.match,
-                            bonuses: c.bonuses,
-                            depth: c.depth,
-                            total_count: c.total_count
-                        }))
-                    });
-                    console.log(`[ProductTool] Auto-discovered category via competition: ${winner.label} (${winner.id}) score=${winner.score}`);
-                }
-            }
-
             const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
             const cat = catKey ? context.CATEGORIES[catKey] : null;
 
             if (catId) {
-                searchParams.append('category', cat?.slug || catId);
+                searchParams.append('category_id', cat?.slug || catId);
             }
 
             // --- STAGE 0: Context-First Check ---
@@ -292,54 +75,9 @@ const productTools = {
                 };
             }
 
-            const hasAttributeFilters = attributes && typeof attributes === 'object' && Object.keys(attributes).length > 0;
-            const hasStructuredFilters = hasAttributeFilters || tag || price_min || price_max;
             const shouldUseSemantic = Number(page) === 1;
-
-            // --- STAGE 0.5: PRECISION-FIRST SEARCH ---
-            // Run the structured backend call FIRST to check if there are exact results.
-            // Semantic search only fires as a fallback when precision returns 0 results.
             let precisionTotal = null;
-            if (cat && shouldUseSemantic && query) {
-                const { logDebug: logDbg } = require('../utils/debugLogger');
-                try {
-                    // Quick structured probe: ask the backend for results using exact params
-                    const probeParams = new URLSearchParams({
-                        per_page: 1,  // Only need 1 result to check existence
-                        page: 1,
-                        sort: sort
-                    });
-                    const queryStr = Array.isArray(query) ? query[0] : query;
-                    if (queryStr) probeParams.append('q', queryStr);
-                    if (price_min) probeParams.append('price_min', price_min);
-                    if (price_max) probeParams.append('price_max', price_max);
-                    if (tag) probeParams.append('tag', tag);
-                    if (catId) probeParams.append('category_id', cat?.slug || catId);
-                    probeParams.append('type', 'product');
 
-                    const safeAttrs = attributes || {};
-                    Object.entries(safeAttrs).forEach(([key, val]) => {
-                        const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
-                        probeParams.append(`attribute.${key}`, finalVal);
-                    });
-
-                    const probeResult = await callBackendAPI(`/search?${probeParams.toString()}`);
-                    if (probeResult?.success) {
-                        precisionTotal = probeResult.data?.pagination?.total ?? probeResult.data?.total ?? null;
-                    }
-
-                    logDbg('TOOL:PRECISION_PROBE [product.search]', {
-                        _desc: 'Precision-first probe — check structured backend for exact results before semantic fallback',
-                        _example: '"cheap phones" → backend has 12 results → skip semantic search',
-                        query: queryStr,
-                        category: cat.label,
-                        precisionTotal,
-                        willUseSemantic: precisionTotal === 0 || precisionTotal === null
-                    });
-                } catch (_) {
-                    // Probe failed — fall through to semantic as before
-                }
-            }
 
             // --- STAGE 0.5b: Semantic Search (FALLBACK only when precision returns 0) ---
             // Only run semantic/vector search when the structured backend returned NO results.
@@ -393,18 +131,13 @@ const productTools = {
                             if (price_max) facetParams.append('price_max', price_max);
                             if (tag) facetParams.append('tag', tag);
                             if (catId) facetParams.append('category', cat?.slug || catId);
-                            const safeAttributes = attributes || {};
                             Object.entries(safeAttributes).forEach(([key, val]) => {
                                 const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
                                 facetParams.append(`attribute.${key}`, finalVal);
                             });
 
-                            // IMPORTANT: /search/products does NOT return facets. Facets live on the main /search endpoint.
-                            const facetQuery = new URLSearchParams(facetParams);
-                            facetQuery.delete('category');
-                            if (catId) facetQuery.append('category_id', cat?.slug || catId);
-                            facetQuery.append('type', 'product');
-                            const metaRes = await callBackendAPI(`/search?${facetQuery.toString()}`);
+                            // MASTER ENDPOINT: Consolidate both products and facets in one call
+                            const metaRes = await callBackendAPI(`/search?${facetParams.toString()}`);
                             if (metaRes?.success) {
                                 backendFacets = metaRes.data?.facets || null;
                                 backendPagination = metaRes.data?.pagination || null;
@@ -658,55 +391,26 @@ const productTools = {
                 }
             }
 
-            // Add dynamic attributes
-            const safeAttributes = attributes || {};
+            // --- STAGE 1: Unified Precision Search ---
+            // Consolidate Products + Facets into a single trip to the master /search endpoint.
+            const searchTotalParams = new URLSearchParams(searchParams);
             Object.entries(safeAttributes).forEach(([key, val]) => {
                 const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
-                searchParams.append(`attribute.${key}`, finalVal);
+                searchTotalParams.append(`attribute.${key}`, finalVal);
             });
 
-            const hasAttributeFiltersForBackend = safeAttributes && typeof safeAttributes === 'object' && Object.keys(safeAttributes).length > 0;
-
-            // IMPORTANT:
-            // /search/products currently does NOT parse arbitrary attribute.* query params (it only supports vendor explicitly).
-            // Clause/value filtering relies on attribute.* filters, so use the main /search endpoint when attributes are present.
-            let result;
-            if (hasAttributeFiltersForBackend) {
-                const searchQuery = new URLSearchParams(searchParams);
-                searchQuery.delete('category');
-                if (catId) searchQuery.append('category_id', cat?.slug || catId);
-                searchQuery.append('type', 'product');
-                result = await callBackendAPI(`/search?${searchQuery.toString()}`);
-            } else {
-                // Call Legacy Search specialized products endpoint
-                result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
-            }
+            const result = await callBackendAPI(`/search?${searchTotalParams.toString()}`);
 
             if (!result.success) {
                 return { error: "Failed to search products", details: result.error };
             }
 
-            // /search/products does not return facets. Fetch facets via /search so we can emit clause buttons.
-            // If we already used /search, facets are already present.
-            if (!hasAttributeFiltersForBackend && result?.success && !result?.data?.facets) {
-                try {
-                    const facetQuery = new URLSearchParams(searchParams);
-                    facetQuery.delete('category');
-                    if (catId) facetQuery.append('category_id', cat?.slug || catId);
-                    facetQuery.append('type', 'product');
-                    const facetRes = await callBackendAPI(`/search?${facetQuery.toString()}`);
-                    if (facetRes?.success && facetRes?.data?.facets) {
-                        result.data.facets = facetRes.data.facets;
-                        // Keep totals consistent with facets/pagination when available
-                        if (facetRes.data?.pagination) {
-                            result.data.pagination = facetRes.data.pagination;
-                        }
-                        if (facetRes.data?.pagination?.total !== undefined && facetRes.data?.pagination?.total !== null) {
-                            result.data.total = facetRes.data.pagination.total;
-                        }
-                    }
-                } catch (_) { }
-            }
+            // Normalize structure: result.data.products is the standard
+            if (!result.data) result.data = {};
+            if (result.data.results && !result.data.products) result.data.products = result.data.results;
+
+            // Sync precisionTotal for semantic fallback logic
+            precisionTotal = result.data?.pagination?.total ?? result.data?.total ?? 0;
 
             let rawProducts = result.data.products || result.data.results || [];
 
@@ -810,19 +514,11 @@ const productTools = {
                 }
 
                 if (catId) {
-                    sParams.append('category', cat?.slug || catId);
+                    sParams.append('category_id', cat?.slug || catId);
                 }
+                sParams.append('type', 'product');
 
-                let res;
-                if (hasAttributeFilters) {
-                    const searchQuery = new URLSearchParams(sParams);
-                    searchQuery.delete('category');
-                    if (catId) searchQuery.append('category_id', cat?.slug || catId);
-                    searchQuery.append('type', 'product');
-                    res = await callBackendAPI(`/search?${searchQuery.toString()}`);
-                } else {
-                    res = await callBackendAPI(`/search/products?${sParams.toString()}`);
-                }
+                let res = await callBackendAPI(`/search?${sParams.toString()}`);
 
                 if (!res?.success) {
                     return { success: false, res };
@@ -835,9 +531,7 @@ const productTools = {
                     console.log(`[ProductTool] 🌊 Relaxed match detected for precision probe. Expanding results.`);
                     const expandParams = new URLSearchParams(sParams);
                     expandParams.set('per_page', 5);
-                    const expandRes = hasAttributeFilters
-                        ? await callBackendAPI(`/search?${expandParams.toString()}`)
-                        : await callBackendAPI(`/search/products?${expandParams.toString()}`);
+                    const expandRes = await callBackendAPI(`/search?${expandParams.toString()}`);
 
                     if (expandRes && expandRes.success) {
                         res = expandRes;
@@ -893,7 +587,19 @@ const productTools = {
 
                 const suggestionSnapshotId = crypto.randomBytes(4).toString('hex');
                 const attempt1 = await buildSearchCall({ dropQuery: true, dropOtherFilters: false, snapshotIdOverride: suggestionSnapshotId });
-                if (attempt1.success && Array.isArray(attempt1.products) && attempt1.products.length > 0) {
+
+                // Bridge: If this is an explicit "See Results" action (from a suggestion click),
+                // we "promote" the results from the relaxed search to primary products.
+                // This ensures they render as functional product cards with images, rather than a suggestion list.
+                if (context.engineered_see_results && attempt1.success && attempt1.products.length > 0) {
+                    products = attempt1.products;
+                    hasNextPage = attempt1.meta.hasNextPage;
+                    snapshotId = suggestionSnapshotId;
+                    logDebug('TOOL:PRODUCT_SEARCH_PROMOTION', {
+                        _desc: 'Implicit promotion — "See Results" context detected; treating fallback results as primary products',
+                        count: products.length
+                    });
+                } else if (attempt1.success && Array.isArray(attempt1.products) && attempt1.products.length > 0) {
                     suggestedProducts = attempt1.products;
                     suggestedMeta = {
                         strategy: 'retry_without_query',
@@ -910,7 +616,16 @@ const productTools = {
                     });
                 } else {
                     const attempt2 = await buildSearchCall({ dropQuery: true, dropOtherFilters: true, snapshotIdOverride: suggestionSnapshotId });
-                    if (attempt2.success && Array.isArray(attempt2.products) && attempt2.products.length > 0) {
+
+                    if (context.engineered_see_results && attempt2.success && attempt2.products.length > 0) {
+                        products = attempt2.products;
+                        hasNextPage = attempt2.meta.hasNextPage;
+                        snapshotId = suggestionSnapshotId;
+                        logDebug('TOOL:PRODUCT_SEARCH_PROMOTION_FALLBACK', {
+                            _desc: 'Implicit promotion — "See Results" context detected; treating level-2 fallback results as primary products',
+                            count: products.length
+                        });
+                    } else if (attempt2.success && Array.isArray(attempt2.products) && attempt2.products.length > 0) {
                         suggestedProducts = attempt2.products;
                         suggestedMeta = {
                             strategy: 'retry_without_query_and_filters',
@@ -931,6 +646,11 @@ const productTools = {
 
             // --- STAGE 2: Reference Mapping (Phase 8) ---
             const productsForContext = (products.length > 0) ? products : (suggestedProducts.length > 0 ? suggestedProducts : []);
+
+            // Phase 4: Flag suggestions as image-suppressed
+            if (products.length === 0 && suggestedProducts.length > 0) {
+                suggestedProducts.forEach(p => { p.suppress_images = true; });
+            }
             if (productsForContext.length > 0 && context.sessionId) {
                 const { logDebug } = require('../utils/debugLogger');
                 logDebug('TOOL:REFERENCE_MAP_UPDATE [product.search]', {
@@ -1157,7 +877,10 @@ const productTools = {
             } catch (_) { }
 
             // Transactional product cards (sent separately by WA layer)
-            const pickedForCards = Array.isArray(productsForContext) ? productsForContext.filter(Boolean) : [];
+            // Phase 4: Suppress cards when actual results are 0 to allow suggestion-first UI
+            const pickedForCards = (products.length > 0 && Array.isArray(productsForContext))
+                ? productsForContext.filter(Boolean)
+                : [];
             const cardsPayload = buildProductCards(pickedForCards);
             const cards = cardsPayload.cards;
 
@@ -1205,6 +928,19 @@ const productTools = {
                 if (refiners.length > 0) globalButtons.push(...refiners);
             }
 
+            // Phase 4: Suggestions -> global buttons bridge
+            // Do NOT emit product cards for suggestions — just two global buttons:
+            //   "See product details" — replays the suggestion search with the exact same params
+            //     (snapshot-backed), which naturally returns product cards to the client.
+            //   "See more" — pagination over suggestions when there are more pages.
+            if (products.length === 0 && suggestedProducts.length > 0 && suggestedMeta?.snapshotId) {
+                globalButtons.push({
+                    id: `__nav:results:${suggestedMeta.snapshotId}__`,
+                    title: 'See product details',
+                    priority: 200
+                });
+            }
+
             const suggestionButtons = [];
             if (products.length === 0 && suggestedProducts.length > 0 && suggestedMeta?.hasNextPage && suggestedMeta?.snapshotId) {
                 suggestionButtons.push({
@@ -1224,11 +960,7 @@ const productTools = {
                     ? "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
                     : undefined,
                 whatsapp_product_cards: (cards.length > 0)
-                    ? {
-                        type: 'button',
-                        transaction: 'product_card',
-                        cards
-                    }
+                    ? { type: 'button', transaction: 'product_card', cards }
                     : undefined,
                 whatsapp: ((globalButtons.length > 0) || (suggestionButtons.length > 0))
                     ? {
@@ -1626,6 +1358,184 @@ const productTools = {
                 message: `Here are the images for "${params.query || 'your request'}":`,
                 products: strippedProducts,
                 instruction: "Display these images to the user. Do not generate detailed descriptions."
+            };
+        }
+    },
+
+    'product.facets': {
+        description: 'Discover available options (facets) for product attributes like storage, brand, or color. Runs the same search as product.search but focuses on facet aggregation.',
+        params: {
+            facet_target: { type: 'string', description: 'The attribute to list (e.g., storage, brand, color)' },
+            query: { type: 'string', description: 'Product name/query to scope the facet search' },
+            category: { type: 'string', description: 'Category to scope the facet search (ID or slug)' },
+            vendor: { type: 'string', description: 'Vendor to scope the facet search' },
+            attributes: { type: 'object', description: 'Dynamic attribute filters (e.g., { "b:i": "infinix" })' }
+        },
+        handler: async (params, context) => {
+            const { facet_target, query, category, vendor, attributes = {} } = params;
+
+            // ── 1. Resolve facet_target (plural → canonical) ──
+            let canonicalCode = facet_target ? facet_target.toLowerCase().trim() : null;
+            if (canonicalCode && !ATTRIBUTES[canonicalCode]) {
+                const singular = canonicalCode.replace(/s$/, '');
+                if (ATTRIBUTES[singular]) {
+                    canonicalCode = singular;
+                } else {
+                    for (const [code, attr] of Object.entries(ATTRIBUTES)) {
+                        if (attr.label?.toLowerCase() === canonicalCode || attr.label?.toLowerCase() === singular) {
+                            canonicalCode = code;
+                            break;
+                        }
+                    }
+                    if (!ATTRIBUTES[canonicalCode]) {
+                        try {
+                            const { resolveFacetAttribute } = require('../utils/semanticFacetResolver');
+                            const resolved = resolveFacetAttribute(canonicalCode);
+                            if (resolved) canonicalCode = resolved;
+                        } catch (_) { }
+                    }
+                }
+            }
+            const attrDef = ATTRIBUTES[canonicalCode];
+            const attrCode = attrDef ? attrDef.code : canonicalCode;
+            const resolvedLabel = attrDef ? attrDef.label : (canonicalCode || 'attribute');
+
+            // ── 2. Build search params — category is already resolved by pipeline ──
+            const CATS = context.CATEGORIES || CATEGORIES || {};
+            const catKey = category ? Object.keys(CATS).find(k => CATS[k].id === category || CATS[k].slug === category) : null;
+            const cat = catKey ? CATS[catKey] : null;
+            const catLabel = cat ? cat.label : null;
+
+            const queryStr = Array.isArray(query) ? query[0] : query;
+
+            const searchParams = new URLSearchParams();
+            searchParams.append('per_page', '1'); // We only need facets, not products
+            searchParams.append('type', 'product');
+            if (queryStr) searchParams.append('q', queryStr);
+            if (category) searchParams.append('category_id', cat?.slug || category);
+            if (vendor) {
+                const resolvedVendor = normalizeVendor(vendor);
+                if (resolvedVendor) searchParams.append('tag', resolvedVendor);
+            }
+            // Pass through resolved attributes (e.g. attribute.b:i=infinix)
+            // Stringify all values to prevent SQL type mismatches (numeric vs numeric[])
+            const safeAttributes = attributes || {};
+            Object.entries(safeAttributes).forEach(([key, val]) => {
+                const finalVal = key === 'vendor' ? normalizeVendor(val) : String(val);
+                searchParams.append(`attribute.${key}`, finalVal);
+            });
+
+            // ── 3. Call /search (same endpoint product.search uses for facets) ──
+            let facetData = null;
+            try {
+                const result = await callBackendAPI(`/search?${searchParams.toString()}`);
+                if (result?.success) {
+                    facetData = result.data?.facets || null;
+                }
+            } catch (err) {
+                console.error(`[product.facets] Search API error:`, err.message);
+            }
+
+            if (!facetData || !Array.isArray(facetData.attributes) || facetData.attributes.length === 0) {
+                // Fallback: return predefined values from store context
+                if (attrDef && attrDef.predefined_values && attrDef.predefined_values.length > 0) {
+                    const predefined = attrDef.predefined_values.map(pv => pv.label || pv.value || pv);
+                    const scopeDesc = catLabel ? ` in **${catLabel}**` : queryStr ? ` for "${queryStr}"` : '';
+                    return {
+                        message: `We have these **${resolvedLabel}** options${scopeDesc}: ${predefined.join(', ')}.`,
+                        facet_target: resolvedLabel,
+                        options: predefined.map(v => ({ value: v })),
+                        scope: catLabel ? 'category' : queryStr ? 'query' : 'global',
+                        scope_label: catLabel || queryStr || null,
+                        source: 'predefined',
+                        whatsapp: {
+                            type: 'button',
+                            buttons: [{ id: '__nav:results__', title: 'See products' }]
+                        }
+                    };
+                }
+                return {
+                    message: `I couldn't find any specific **${resolvedLabel}** options${catLabel ? ` in ${catLabel}` : ''}${queryStr ? ` for "${queryStr}"` : ''} at the moment.`,
+                    whatsapp: {
+                        type: 'button',
+                        buttons: [{ id: '__nav:results__', title: 'See products' }]
+                    }
+                };
+            }
+
+            // ── 4. Find the target attribute in backend facet response ──
+            // Backend format: attributes: [{ code, label, options: [{value, count}], clauses: [...] }]
+            let targetFacet = facetData.attributes.find(
+                a => a.code === attrCode || a.code === canonicalCode || a.label?.toLowerCase() === resolvedLabel
+            );
+            if (!targetFacet) {
+                targetFacet = facetData.attributes.find(
+                    a => a.label?.toLowerCase()?.includes(canonicalCode) || canonicalCode?.includes(a.label?.toLowerCase())
+                );
+            }
+
+            if (!targetFacet || (!targetFacet.options?.length && !targetFacet.clauses?.length)) {
+                const scopeDesc = catLabel ? ` in **${catLabel}**` : queryStr ? ` for "${queryStr}"` : '';
+                return {
+                    message: `There are no specific **${resolvedLabel}** options${scopeDesc} at the moment.`,
+                    facet_target: resolvedLabel,
+                    options: [],
+                    whatsapp: {
+                        type: 'button',
+                        buttons: [{ id: '__nav:results__', title: 'See products' }]
+                    }
+                };
+            }
+
+            // ── 5. Build the response with values + counts ──
+            const options = (targetFacet.options || []).filter(o => o.count > 0);
+            const clauses = (targetFacet.clauses || []).filter(c => c.count > 0);
+            const formattedOptions = options.map(o => `${o.value} (${o.count})`).slice(0, 15);
+
+            // Scope-aware messaging
+            let scopePhrase = '';
+            if (catLabel && queryStr) {
+                scopePhrase = ` for "${queryStr}" in **${catLabel}**`;
+            } else if (queryStr) {
+                scopePhrase = ` for "${queryStr}"`;
+            } else if (catLabel) {
+                scopePhrase = ` in **${catLabel}**`;
+            } else {
+                scopePhrase = ' across all our products';
+            }
+
+            const message = `Here are the available **${targetFacet.label || resolvedLabel}** options${scopePhrase}: ${formattedOptions.join(', ')}.`;
+
+            // WhatsApp buttons for top facet value options.
+            // Use engineered tokens (__facet:select:...) so clicks bypass the intent resolver
+            // entirely and map directly to product.search in the pipeline's Stage 0.
+            const topOptions = options.slice(0, 3);
+            const resolvedAttrCode = targetFacet.code || canonicalCode || attrCode;
+            const whatsappButtons = topOptions.map(o => {
+                const encodedValue = encodeURIComponent(String(o.value));
+                // Include category only when one is available so the search stays scoped.
+                const tokenId = category
+                    ? `__facet:select:${resolvedAttrCode}:${encodedValue}:${category}__`
+                    : `__facet:select:${resolvedAttrCode}:${encodedValue}__`;
+                return { id: tokenId, title: `${o.value} (${o.count})` };
+            });
+
+            return {
+                message,
+                facet_target: targetFacet.label || resolvedLabel,
+                attribute_code: resolvedAttrCode,
+                options: options.map(o => ({ value: o.value, count: o.count })),
+                clauses: clauses.length > 0 ? clauses.map(c => ({ label: c.label || c.name, count: c.count })) : undefined,
+                scope: catLabel ? 'category' : queryStr ? 'query' : 'global',
+                scope_label: catLabel || queryStr || null,
+                source: 'backend_aggregation',
+                whatsapp: whatsappButtons.length > 0 ? {
+                    type: 'button',
+                    buttons: whatsappButtons
+                } : {
+                    type: 'button',
+                    buttons: [{ id: '__nav:results__', title: 'See products' }]
+                }
             };
         }
     }

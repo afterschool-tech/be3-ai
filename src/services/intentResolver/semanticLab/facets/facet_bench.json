@@ -1,0 +1,77 @@
+{
+    "color": {
+        "variations": [
+            "colour",
+            "colors",
+            "colours",
+            "shades",
+            "looks",
+            "tint",
+            "appearance",
+            "hue",
+            "pigment"
+        ]
+    },
+    "storage": {
+        "variations": [
+            "capacity",
+            "disk space",
+            "memory",
+            "rom",
+            "gigabytes",
+            "gb",
+            "space",
+            "size",
+            "internal",
+            "drive",
+            "storages"
+        ]
+    },
+    "brand": {
+        "variations": [
+            "brands",
+            "make",
+            "makes",
+            "manufacturer",
+            "manufacturers",
+            "vendor",
+            "vendors",
+            "company",
+            "labels",
+            "builders",
+            "who made",
+            "brand name"
+        ]
+    },
+    "material": {
+        "variations": [
+            "materials",
+            "build",
+            "substance",
+            "composition",
+            "texture",
+            "made of",
+            "fabric",
+            "metal",
+            "plastic"
+        ]
+    },
+    "quality": {
+        "variations": [
+            "qualities",
+            "condition",
+            "grade",
+            "state",
+            "standard",
+            "rating",
+            "level"
+        ]
+    },
+    "size": {
+        "variations": [
+            "sizes",
+            "dimensions",
+            "proportions"
+        ]
+    }
+}

@@ -171,7 +171,7 @@ Optionally also add an entity-style entry:
 When an intent expects `product_name` / `product_id`:
 - prefer `productMatch.product_id` if high confidence and present
 - else use `productMatch.product_canonical` if high confidence
-- else use `productMatch.product_mention` if medium confidence
+- else use `productMatch.product_mention`
 - else fallback to existing residual-lump behavior
 
 **Important invariant**: never overwrite an already-solid structured extraction (e.g. if structural template already extracted `product_name`).
@@ -184,6 +184,60 @@ If:
 Trigger microstate:
 - “Which one did you mean?”
 - show canonical names
+
+---
+
+# Fixing Suggestion Button Logic and Image Suppression
+
+The user wants product suggestions to remain as a text list with "See product details" and "See more" buttons (no cards, no images). 
+However, when "See product details" is clicked, it should trigger a re-search using the fallback parameters, and THIS re-search should return product cards and images.
+
+Currently, the re-search fails to show cards because:
+1. The `engineered_see_results` flag (triggered by the button) isn't reaching the `product.search` tool.
+2. `product.search` suppresses cards if `products.length` is 0, and fallback results are currently kept in `suggestedProducts`.
+
+## Proposed Changes
+
+### Core Orchestrator
+
+#### [MODIFY] [orchestrator.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/core/orchestrator.js)
+
+- Update `executeTools` to pass `pipelineContext` (which contains `engineered_*` flags like `engineered_see_results`) into the `context` object passed to tool handlers.
+
+---
+
+### Product Search Tool
+
+#### [MODIFY] [product.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/tools/product.js)
+
+- Update `product.search` handler to check for `context.engineered_see_results`.
+- **Primary Change**: If `engineered_see_results` is present, the tool should intentionally "promote" fallback results to primary products.
+- In `buildSearchCall`, if `engineered_see_results` is true, the re-searched products should be returned as `products` (not `suggestedProducts`).
+- Ensure `suppress_images` is set on suggestions (list mode) but **not** on replayed results (card mode).
+
+---
+
+### Image Injection
+
+#### [MODIFY] [imageInjector.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/utils/imageInjector.js) (Verify)
+
+- Confirm `extractImages` and `injectImages` respect the `suppress_images` flag.
+
+## Verification Plan
+
+### Automated Tests
+- Modify `test_see_results.js` to simulate the `engineered_see_results` flag and verify `whatsapp_product_cards` is present.
+
+### Manual Verification
+1. Search for a non-existent item (e.g. "iPhone 99").
+2. Verify:
+   - AI response is a text list of suggestions.
+   - NO product cards or images are visible.
+   - "See product details" button is at the bottom.
+3. Click "See product details".
+4. Verify:
+   - The bot returns product cards for the suggested items.
+   - Images are shown on these cards.
 
 ---
 

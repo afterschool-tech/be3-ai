@@ -1,0 +1,731 @@
+[
+  {
+    "q": "which phone brands do you sell?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "product_name": "do",
+      "facet_target": "brands"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "brand",
+      "label": "brand",
+      "options": [
+        {
+          "value": "apple",
+          "count": 4
+        },
+        {
+          "value": "infinix",
+          "count": 2
+        },
+        {
+          "value": "tecno",
+          "count": 2
+        },
+        {
+          "value": "itel",
+          "count": 1
+        },
+        {
+          "value": "samsung",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [
+        "Apple",
+        "Samsung",
+        "Dell",
+        "Lenovo",
+        "HP",
+        "Infinix",
+        "Microsoft",
+        "Tecno",
+        "Itel"
+      ],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (infinix)",
+        "Tecno Spark 40 pro (tecno)",
+        "Iphone XS Max (apple)"
+      ]
+    },
+    "top5": "facet_list:14.1, list_vendors:2.6, product_search:2.5, vendor_identity:1.2, add_to_cart:1.0"
+  },
+  {
+    "q": "what brands of tablets are available?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+      "facet_target": "brands"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "brand",
+      "label": "brand",
+      "options": [
+        {
+          "value": "samsung",
+          "count": 2
+        },
+        {
+          "value": "tecno",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [
+        "Apple",
+        "Samsung",
+        "Dell",
+        "Lenovo",
+        "HP",
+        "Infinix",
+        "Microsoft",
+        "Tecno",
+        "Itel"
+      ],
+      "matchCount": 3,
+      "scope": "category",
+      "scopeLabel": "Tablets",
+      "sampleItems": [
+        "Tecno Maga Pad 11 (tecno)",
+        "Samsung Galaxy Tab s10 Ultra (samsung)",
+        "Samsung Galaxy Tab s6 (samsung)"
+      ]
+    },
+    "top5": "facet_list:16.8, list_vendors:2.6, check_availability:1.9, add_to_cart:0.5, get_advice:0.5"
+  },
+  {
+    "q": "what phone brands do you carry?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "facet_target": "brands"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "brand",
+      "label": "brand",
+      "options": [
+        {
+          "value": "apple",
+          "count": 4
+        },
+        {
+          "value": "infinix",
+          "count": 2
+        },
+        {
+          "value": "tecno",
+          "count": 2
+        },
+        {
+          "value": "itel",
+          "count": 1
+        },
+        {
+          "value": "samsung",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [
+        "Apple",
+        "Samsung",
+        "Dell",
+        "Lenovo",
+        "HP",
+        "Infinix",
+        "Microsoft",
+        "Tecno",
+        "Itel"
+      ],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (infinix)",
+        "Tecno Spark 40 pro (tecno)",
+        "Iphone XS Max (apple)"
+      ]
+    },
+    "top5": "facet_list:13.5, product_search:4.5, list_vendors:2.6, add_to_cart:1.0, product_compare:1.0"
+  },
+  {
+    "q": "what colors does the Nice Watch come in?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "d3ef8b79-d7a8-4925-9f94-677a74e400e5",
+      "product_name": "nice watch come in",
+      "facet_target": "colors"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "color",
+      "label": "color",
+      "options": [],
+      "globalPredefined": [],
+      "matchCount": 0,
+      "scope": "category",
+      "scopeLabel": "Nintendo Switch",
+      "sampleItems": []
+    },
+    "top5": "facet_list:14.5, product_search:2.5, vendor_identity:1.0, add_to_cart:0.5, check_availability:0.5"
+  },
+  {
+    "q": "do you have phones in different colors?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "facet_target": "colors"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "color",
+      "label": "color",
+      "options": [
+        {
+          "value": "white",
+          "count": 2
+        },
+        {
+          "value": "black",
+          "count": 2
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Iphone XS Max (white)"
+      ]
+    },
+    "top5": "facet_list:12.5, product_search:6.0, add_to_cart:1.0, product_compare:1.0, check_availability:0.5"
+  },
+  {
+    "q": "what color options are there for watches?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "products": [
+        "color options are there watches"
+      ],
+      "product_name": "color options are there watches",
+      "facet_target": "color"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "color",
+      "label": "color",
+      "options": [
+        {
+          "value": "white",
+          "count": 4
+        },
+        {
+          "value": "black",
+          "count": 2
+        },
+        {
+          "value": "brown",
+          "count": 1
+        },
+        {
+          "value": "red",
+          "count": 1
+        },
+        {
+          "value": "rede",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 65,
+      "scope": "global",
+      "scopeLabel": null,
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Nice Watch (brown)"
+      ]
+    },
+    "top5": "facet_list:13.0, vendor_identity:1.0, add_to_cart:0.5, check_availability:0.5, product_compare:0.5"
+  },
+  {
+    "q": "what colors are available for iphones?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": null,
+      "products": [
+        "colors are iphones"
+      ],
+      "product_name": "colors are iphones",
+      "facet_target": "colors"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "color",
+      "label": "color",
+      "options": [
+        {
+          "value": "white",
+          "count": 4
+        },
+        {
+          "value": "black",
+          "count": 2
+        },
+        {
+          "value": "brown",
+          "count": 1
+        },
+        {
+          "value": "red",
+          "count": 1
+        },
+        {
+          "value": "rede",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 65,
+      "scope": "global",
+      "scopeLabel": null,
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Nice Watch (brown)"
+      ]
+    },
+    "top5": "facet_list:16.8, check_availability:1.9, add_to_cart:0.5, get_advice:0.5, product_compare:0.5"
+  },
+  {
+    "q": "what materials are the laptops made of?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "dfa80cc4-f95a-4c87-949b-8b0438b28949",
+      "products": [],
+      "product_name": null,
+      "facet_target": "materials"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "material",
+      "label": "material",
+      "options": [],
+      "globalPredefined": [],
+      "matchCount": 7,
+      "scope": "category",
+      "scopeLabel": "Laptops & Computers",
+      "sampleItems": [
+        "Slim Convertible Laptop (N/A)",
+        "Portable Workstation Stealth (N/A)",
+        "High-Performance Gaming Laptop (N/A)"
+      ]
+    },
+    "top5": "facet_list:13.5, product_search:4.5, add_to_cart:1.0, product_compare:1.0, check_availability:0.5"
+  },
+  {
+    "q": "what materials do your products come in?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "product_name": "materials do come in",
+      "facet_target": "materials"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "material",
+      "label": "material",
+      "options": [
+        {
+          "value": "leather",
+          "count": 2
+        },
+        {
+          "value": "iron",
+          "count": 1
+        },
+        {
+          "value": "titanium",
+          "count": 1
+        },
+        {
+          "value": "metal",
+          "count": 1
+        },
+        {
+          "value": "gold",
+          "count": 1
+        },
+        {
+          "value": "plastic",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 65,
+      "scope": "global",
+      "scopeLabel": null,
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Nice Watch (leather)"
+      ]
+    },
+    "top5": "facet_list:13.0, product_search:4.7, browse_collection:2.2, vendor_products:2.2, vendor_identity:1.0"
+  },
+  {
+    "q": "what condition are the phones in?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "facet_target": "condition"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "condition",
+      "label": "condition",
+      "options": [],
+      "globalPredefined": [],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Iphone XS Max (N/A)"
+      ]
+    },
+    "top5": "facet_list:13.5, product_search:2.0, add_to_cart:0.5, get_advice:0.5, product_compare:0.5"
+  },
+  {
+    "q": "what qualities of products do you have?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "product_name": "qualities do have",
+      "facet_target": "qualities"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "qualities",
+      "label": "qualities",
+      "options": [],
+      "globalPredefined": [],
+      "matchCount": 65,
+      "scope": "global",
+      "scopeLabel": null,
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Nice Watch (N/A)"
+      ]
+    },
+    "top5": "facet_list:13.0, product_search:3.7, browse_collection:2.2, vendor_products:2.2"
+  },
+  {
+    "q": "what sizes do the phones come in?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "facet_target": "sizes"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "size",
+      "label": "size",
+      "options": [
+        {
+          "value": "254",
+          "count": 1
+        },
+        {
+          "value": "245x764",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Iphone XS Max (N/A)"
+      ]
+    },
+    "top5": "facet_list:13.5, product_search:4.5, add_to_cart:1.0, product_compare:1.0, check_availability:0.5"
+  },
+  {
+    "q": "what sizes are available for electronics?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": null,
+      "products": [
+        "sizes are electronics"
+      ],
+      "product_name": "sizes are electronics",
+      "facet_target": "sizes"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "size",
+      "label": "size",
+      "options": [
+        {
+          "value": "23",
+          "count": 1
+        },
+        {
+          "value": "254",
+          "count": 1
+        },
+        {
+          "value": "245x764",
+          "count": 1
+        },
+        {
+          "value": "large",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 65,
+      "scope": "global",
+      "scopeLabel": null,
+      "sampleItems": [
+        "Infinix Hot 60 pro (N/A)",
+        "Tecno Spark 40 pro (N/A)",
+        "Nice Watch (N/A)"
+      ]
+    },
+    "top5": "facet_list:15.3, check_availability:1.9, add_to_cart:0.5, get_advice:0.5, product_compare:0.5"
+  },
+  {
+    "q": "what storage options do you have for phones?",
+    "expected": "facet_list",
+    "got": "facet_list",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "facet_target": "storage"
+    },
+    "tool": "product.facets",
+    "sim": {
+      "targetAttribute": "storage",
+      "label": "storage",
+      "options": [
+        {
+          "value": "255",
+          "count": 4
+        },
+        {
+          "value": "128",
+          "count": 2
+        },
+        {
+          "value": "256",
+          "count": 2
+        },
+        {
+          "value": "512",
+          "count": 1
+        },
+        {
+          "value": "1000",
+          "count": 1
+        }
+      ],
+      "globalPredefined": [],
+      "matchCount": 10,
+      "scope": "category",
+      "scopeLabel": "Smartphones",
+      "sampleItems": [
+        "Infinix Hot 60 pro (255)",
+        "Tecno Spark 40 pro (255)",
+        "Iphone XS Max (128)"
+      ]
+    },
+    "top5": "facet_list:15.0, product_search:4.0, add_to_cart:1.0, product_compare:1.0, check_availability:0.5"
+  },
+  {
+    "q": "i want to buy the infinix hot 60 pro",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "products": [
+        "hot 60 pro"
+      ],
+      "product_name": "hot 60 pro",
+      "clause_words": [
+        {
+          "word": "infinix",
+          "clauseId": "infinix_product"
+        },
+        {
+          "word": "infinix",
+          "clauseId": "infinix_product"
+        }
+      ],
+      "attributes": {
+        "b:i": "infinix"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:7.3, add_to_cart:0.5, check_availability:0.5, product_compare:0.5"
+  },
+  {
+    "q": "show me all samsung phones",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": "all samsung"
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:7.1, add_to_cart:1.0, product_compare:1.0, check_availability:0.5, get_advice:0.5"
+  },
+  {
+    "q": "add the black samsung tablet to my cart",
+    "expected": [
+      "add_to_cart",
+      "product_search"
+    ],
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "clause_words": "color_for_men",
+      "category": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+      "products": [
+        "black samsung tablet"
+      ],
+      "product_name": "samsung",
+      "attributes": {
+        "c:c": "black,brown"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:5.7, add_to_cart:5.6, view_cart:3.4, product_compare:1.2, check_availability:1.0"
+  },
+  {
+    "q": "do you have budget phones?",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "clause_words": "affordable",
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "price_max": 200,
+      "products": [],
+      "product_name": null,
+      "attributes": {
+        "p:p": "budget,midrange"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:6.0, add_to_cart:1.0, product_compare:1.0, check_availability:0.5, get_advice:0.5"
+  },
+  {
+    "q": "show me premium tablets",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "clause_words": "expensive",
+      "category": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
+      "products": [],
+      "product_name": null,
+      "attributes": {
+        "p:e": "premium,flagship"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:7.1, add_to_cart:1.0, product_compare:1.0, check_availability:0.5, get_advice:0.5"
+  },
+  {
+    "q": "what infinix phones do you have?",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "category": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
+      "products": [],
+      "product_name": null,
+      "attributes": {
+        "b": "infinix"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:3.5, add_to_cart:0.5, get_advice:0.5, product_compare:0.5"
+  },
+  {
+    "q": "do you carry any apple products?",
+    "expected": "product_search",
+    "got": "product_search",
+    "pass": true,
+    "params": {
+      "product_name": "carry",
+      "clause_words": [
+        {
+          "word": "apple",
+          "clauseId": "apple_product"
+        }
+      ],
+      "attributes": {
+        "b:a": "apple"
+      }
+    },
+    "tool": "product.search",
+    "sim": null,
+    "top5": "product_search:6.2, browse_collection:2.2, vendor_products:2.2, add_to_cart:0.5, check_availability:0.5"
+  }
+]

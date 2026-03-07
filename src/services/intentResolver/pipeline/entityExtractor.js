@@ -18,6 +18,7 @@
  */
 
 const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../utils/normalization');
+const { resolveFacetAttribute } = require('../../../utils/semanticFacetResolver');
 const { levenshtein } = require('../utils/levenshtein');
 const { logDebug } = require('../../../utils/debugLogger');
 
@@ -69,7 +70,9 @@ const ACTION_VERBS = {
     // Cancellation
     'cancel': 'cancel',
     // Delivery
-    'delivery': 'delivery', 'shipping': 'delivery', 'deliver': 'delivery'
+    'delivery': 'delivery', 'shipping': 'delivery', 'deliver': 'delivery',
+    // Discovery Meta (Facets)
+    'what': 'discovery_meta', 'which': 'discovery_meta', 'available': 'discovery_meta'
     // NOTE: "order", "all", "yes", "thanks" intentionally EXCLUDED — too ambiguous
 };
 
@@ -168,7 +171,13 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
     if (preDetectedEntities && preDetectedEntities.length > 0) {
         for (const preEnt of preDetectedEntities) {
             const localIdx = preEnt.localWordIndex;
+            const wordCount = preEnt.wordCount || 1; // Default to 1 if not provided
             if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
+
+            // Generate full range of indices
+            const indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
+
+            // Only skip if the VERY FIRST word is already consumed
             if (consumed.has(localIdx)) continue;
 
             entities.push({
@@ -179,9 +188,9 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 attribute: preEnt.attribute,
                 source: preEnt.source,
                 similarity: preEnt.similarity,
-                wordIndices: [localIdx]
+                wordIndices: indices
             });
-            consumed.add(localIdx);
+            indices.forEach(idx => consumed.add(idx));
         }
 
         logDebug('ENTITY:PREPASS_INGESTED', {
@@ -259,6 +268,31 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 wordIndices: [i]
             });
             consumed.add(i);
+        }
+
+        // ── 2c. Facet Target Detection (Semantic Resolver) ──
+        // Try to resolve ANY word that isn't already consumed (except fillers) as a facet target
+        // if it's near a discovery or discovery_meta verb or looks like an attribute name.
+        const prevWordAction = i > 0 ? ACTION_VERBS[words[i - 1]] : null;
+        const actionCat = actionCategory || '';
+        const prevCat = prevWordAction || '';
+        const isNearDiscovery = actionCat.includes('discovery') || prevCat.includes('discovery');
+
+        if (isNearDiscovery || ['colors', 'brands', 'storage', 'materials', 'sizes', 'qualities'].includes(word)) {
+            const resolvedAttr = resolveFacetAttribute(word);
+            if (resolvedAttr) {
+                entities.push({
+                    type: 'facet_target',
+                    value: word,
+                    attribute: resolvedAttr,
+                    source: 'semanticFacetResolver',
+                    wordIndices: [i]
+                });
+
+                // CRITICAL: Consume the word so it doesn't accidentally trigger a category 
+                // match (e.g. "storage" triggering the "ram_&_storage" category)
+                consumed.add(i);
+            }
         }
     }
 
