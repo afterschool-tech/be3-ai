@@ -799,7 +799,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 5: Parameter extraction (AI + Deterministic)
         // Uses the resolved candidates to fill remaining params
         const extractedParams = await parameterExtractor.extractParameters(
-            cleanedText, candidates, aiQueryFn, storeContext, resolutions, extractionResult.entities
+            cleanedText, candidates, aiQueryFn, storeContext, resolutions, extractionResult.entities,
+            textForExtraction // rawText: pre-clean, comma-preserved — used by PIE for segmentation
         );
         logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
             _desc: 'Parameter extraction — map entities to intent slots, structural match, regex',

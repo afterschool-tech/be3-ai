@@ -1,0 +1,32 @@
+You are an expert at generating semantic variations for a 'vendor_facet' intent in an eCommerce chatbot.
+CRITICAL: The goal is ONLY to ask for a list of stores, vendors, or sellers that have a particular product or exist in a category. This intent is essentially a facet listing search, but specifically locking the facet target onto "vendors".
+
+CONTEXT:
+Vendor Synonyms: [vendors, sellers, stores, merchants, shops, retailers, platforms, guys selling]
+Target Context: The user wants to know "WHO" sells a product, not "WHAT" the product is. They want a list of available sellers.
+
+STRICT GUIDELINES:
+1. Every variation MUST ask about the sellers/vendors of a product or category.
+2. Use placeholder [product] for the specific product (e.g., iPhone 12) being inquired about.
+3. DO NOT generate phrases about "buying from a specific vendor" (e.g., "buy iPhone from Amazon"). The user doesn't know the vendor yet! They are ASKING for the vendors.
+4. DO NOT generate phrases identifying a single unknown vendor based on a barcode/image (e.g., "whose product is this").
+
+NEGATIVE EXAMPLES (DO NOT GENERATE):
+- "I want to see [product]" -> (This is simple product_search)
+- "Show me products from Dareymi" -> (This is vendor_products)
+- "What [product] is best?" -> (This is get_advice)
+- "Is this [product] sold by Samsung?" -> (This is vendor_identity)
+
+POSITIVE EXAMPLES (MUST EMULATE):
+- "Who sells [product] here?"
+- "Which stores have [product] in stock?"
+- "What vendors carry [product]?"
+- "Can you list the sellers for [product]?"
+- "Show me all the shops that sell [product]."
+- "Where can I find [product] sellers?"
+- "Which merchants provide [product]?"
+- "Give me a list of stores selling [product]."
+- "Who are the vendors for [product]?"
+- "What retailers offer [product]?"
+
+Generate 30 unique, natural, and conversational variations following these strict rules.

@@ -6,6 +6,7 @@
  */
 
 const { CLAUSES } = require('../../../context/clauses');
+const intentRegistry = require('../config/intentRegistry');
 
 /**
  * Normalizes parameters for a list of resolved intents.
@@ -21,6 +22,10 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
     return resolvedIntents.map(intent => {
         const params = intent.parameters;
+
+        const intentDef = intentRegistry.get(intent.intentName);
+        const schema = intentDef?.parameters || {};
+        const expectsVendor = !!schema.vendor;
 
         // Compare intents should not treat clause words (e.g. brand tokens inside resolved product names)
         // as semantic search refinements. This prevents side effects like setting brand=infinix when the
@@ -161,12 +166,22 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
             if (officialVendor) {
                 // The API expects the human-readable tag (e.g., 'Bola Foods'), not the UUID.
-                params.vendor = officialVendor.tag || officialVendor.business_name;
+                const vendorTag = officialVendor.tag || officialVendor.business_name;
+
+                if (!expectsVendor) {
+                    if (!params.attributes) params.attributes = {};
+                    params.attributes.vendor = vendorTag;
+                    delete params.vendor; // Remove from root params since it's now an attribute
+                    console.log(`[ParameterNormalizer] 🏪 Folded top-level vendor into attributes for ${intent.intentName}:`, vendorTag);
+                } else {
+                    params.vendor = vendorTag;
+                }
             } else {
                 // Not an official vendor. 
                 // If it looks like a brand name (already captured as an attribute), drop it from vendor.
                 if (params.attributes && params.attributes.brand) {
-                    params.vendor = null;
+                    // Delete rather than just set to null, to keep params clean
+                    delete params.vendor;
                 } else {
                     // Possible unknown vendor - leave as is for tool to handle? 
                     // Or check if it's a known brand from clauses anyway.
@@ -177,7 +192,10 @@ function normalizeParameters(resolvedIntents, storeContext) {
                     if (brandClause) {
                         if (!params.attributes) params.attributes = {};
                         params.attributes.brand = vLower;
-                        params.vendor = null;
+                        delete params.vendor;
+                    } else if (!expectsVendor) {
+                        // If intent doesn't expect vendor, we should clean it up to prevent schema pollution
+                        delete params.vendor;
                     }
                 }
             }

@@ -34,7 +34,10 @@ function extractProductIntel(options) {
 
     if (!text) return [];
 
-    const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    // Normalize commas into standalone tokens so they can act as segment splitters.
+    // "iphone 12, iphone 15" → "iphone 12 , iphone 15" → words: [..., "12", ",", "iphone", ...]
+    const normalizedText = text.toLowerCase().replace(/,/g, ' , ');
+    const words = normalizedText.split(/\s+/).filter(w => w.length > 0);
     const wordMap = words.map((word, index) => ({
         word,
         index,
@@ -43,6 +46,19 @@ function extractProductIntel(options) {
         isConsumed: false
     }));
 
+    // ── Index Remapping ──
+    // Entity wordIndices come from the clean text (no commas). PIE's wordMap has
+    // extra "," tokens injected. Build a mapping: cleanIndex → rawIndex.
+    // Non-comma words in order map 0→0, 1→1, 2→3 (if index 2 is ","), etc.
+    const cleanToRawIndex = {};
+    let cleanIdx = 0;
+    for (let rawIdx = 0; rawIdx < words.length; rawIdx++) {
+        if (words[rawIdx] !== ',') {
+            cleanToRawIndex[cleanIdx] = rawIdx;
+            cleanIdx++;
+        }
+    }
+
     // ── Phase 1: Mapping Intel ──
 
     // Fillers & Noise
@@ -50,18 +66,20 @@ function extractProductIntel(options) {
         if (excludeSet.has(item.word)) item.level = LEVELS.NOISE;
     });
 
-    // Entity Overlay
+    // Entity Overlay (with index remapping for comma-injected tokens)
     entities.forEach(ent => {
-        const fullIndices = ent.wordIndices || [];
-        // For categories, we explicitly distinguish between what matched (consumed) and the surrounding window
-        const consumedIndices = new Set((ent.type === 'category' && ent.consumedWordIndices) ? ent.consumedWordIndices : fullIndices);
+        const rawFullIndices = (ent.wordIndices || []).map(i => cleanToRawIndex[i]).filter(i => i !== undefined);
+        const rawConsumedSet = new Set(
+            ((ent.type === 'category' && ent.consumedWordIndices) ? ent.consumedWordIndices : (ent.wordIndices || []))
+                .map(i => cleanToRawIndex[i]).filter(i => i !== undefined)
+        );
 
-        fullIndices.forEach(idx => {
+        rawFullIndices.forEach(idx => {
             if (wordMap[idx]) {
                 wordMap[idx].entities.push(ent);
 
                 let newLevel = LEVELS.TRAIT;
-                if (consumedIndices.has(idx)) {
+                if (rawConsumedSet.has(idx)) {
                     if (ent.type === 'resolved_product') newLevel = LEVELS.PIVOT;
                     else if (ent.type === 'brand') newLevel = LEVELS.PIVOT;
                     else if (ent.type === 'category') newLevel = LEVELS.CONTEXT;
@@ -85,6 +103,11 @@ function extractProductIntel(options) {
 
     // Glue Detection (Heuristic for model numbers/specs)
     wordMap.forEach(item => {
+        // Comma tokens are segment splitters, never product words
+        if (item.word === ',') {
+            item.level = LEVELS.NOISE;
+            return;
+        }
         if (item.level === LEVELS.TRAIT) {
             // Numbers, mixed alphanumeric (e.g. s24, 16, 5g) or very short words (pro, max)
             if (/\d/.test(item.word) || item.word.length <= 3) {
@@ -96,7 +119,7 @@ function extractProductIntel(options) {
     // ── Phase 2: Segmentation ──
     const splits = [0];
     if (intentName === 'product_compare') {
-        const splitters = ['vs', 'versus', 'and', 'with', 'between'];
+        const splitters = ['vs', 'versus', 'and', 'with', 'between', ','];
         for (let i = 0; i < wordMap.length; i++) {
             const item = wordMap[i];
             // Split if it's a splitter AND not part of a pivot entity (like "Soap AND Glory")
@@ -210,10 +233,10 @@ function extractProductIntel(options) {
         // Extract associated intel
         const segmentEntities = segment.flatMap(s => s.entities);
         const intel = {
-            brand: segmentEntities.find(e => e.type === 'brand')?.value || null,
-            category: segmentEntities.find(e => e.type === 'category')?.id || null,
-            resolvedId: segmentEntities.find(e => e.type === 'resolved_product')?.productId || null,
-            clauses: segmentEntities.filter(e => e.type === 'clause').map(e => e.clauseId)
+            brand: segmentEntities.find(e => e.type === 'brand') || null,
+            category: segmentEntities.find(e => e.type === 'category') || null,
+            resolvedId: segmentEntities.find(e => e.type === 'resolved_product') || null,
+            clauses: segmentEntities.filter(e => e.type === 'clause')
         };
 
         return {

@@ -503,7 +503,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 label: winner.label,
                 score: winner.score.toFixed(2),
                 viz: {
-                    purityBar: '▓'.repeat(Math.round(winner.multipliers.purity / 10)) + '░'.repeat(10 - Math.round(winner.multipliers.purity / 10)),
+                    purityBar: '▓'.repeat(Math.min(10, Math.round(winner.multipliers.purity / 10))) + '░'.repeat(Math.max(0, 10 - Math.round(winner.multipliers.purity / 10))),
                     coverageIcon: '🔥'.repeat(winner.multipliers.coverage)
                 },
                 breakdown: {
@@ -522,7 +522,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 score: x.score.toFixed(2),
                 status: x.id === winner?.id ? 'WINNER' : 'CANDIDATE',
                 viz: {
-                    purityBar: '▓'.repeat(Math.round(x.multipliers.purity / 10)) + '░'.repeat(10 - Math.round(x.multipliers.purity / 10)),
+                    purityBar: '▓'.repeat(Math.min(10, Math.round(x.multipliers.purity / 10))) + '░'.repeat(Math.max(0, 10 - Math.round(x.multipliers.purity / 10))),
                     coverageIcon: '🔥'.repeat(x.multipliers.coverage)
                 },
                 breakdown: {

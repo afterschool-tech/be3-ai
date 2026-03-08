@@ -21,6 +21,7 @@ module.exports = {
 
     parameters: {
         products: { type: 'list', required: false, description: 'List of product names ONLY (e.g. ["iphone 12", "samsung s21"]). Do NOT include comparison verbs or sentences.' },
+        product_segments: { type: 'list', required: false, description: 'Structured product segments with localized metadata.' },
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
         query: { type: 'string', required: false, description: 'Single product query (fallback)' },
         category: { type: 'string', required: false, description: 'Category context' },
@@ -33,6 +34,7 @@ module.exports = {
     toolName: 'product.compare',
 
     paramMap: {
+        product_segments: 'product_segments',
         products: 'product_ids',
         product_name: 'product_ids',
         query: 'product_ids'
@@ -46,9 +48,10 @@ module.exports = {
         missing_products: {
             trigger: (params, entities) => {
                 const products = params.products || [];
+                const segments = params.product_segments || [];
                 const hasProductName = !!params.product_name;
                 // Need at least 2 products to compare; trigger if fewer
-                return products.length < 2 && !hasProductName;
+                return products.length < 2 && segments.length < 2 && !hasProductName;
             },
             sandbox: 'soft',
             boostScore: 10.0,

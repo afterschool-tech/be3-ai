@@ -58,11 +58,14 @@ async function buildComprehensiveContext() {
         console.log(`✅ ${Object.keys(categoriesMap).length} categories loaded`);
 
         // ===== 2. ATTRIBUTES (with predefined values and clauses) =====
-        console.log('🏷️  Fetching attributes...');
+        console.log('🏷️  Fetching attributes & system_attributes...');
         const attrRes = await pool.query(`
             SELECT id, label, code, type, options, clauses
             FROM attributes
             WHERE tenant_id = $1
+            UNION ALL
+            SELECT id, label, code, type, options, NULL as clauses
+            FROM system_attributes
         `, [process.env.TENANT_ID]);
 
         const attributesMap = {};
@@ -110,6 +113,21 @@ async function buildComprehensiveContext() {
 
         console.log(`✅ ${Object.keys(attributesMap).length} attributes loaded`);
         console.log('📊 Sample attribute:', JSON.stringify(Object.values(attributesMap)[0], null, 2));
+
+        // Note: system_attributes apply globally to ALL categories so lets map them implicitly first
+        const systemAttrRes = await pool.query(`SELECT id, label FROM system_attributes`);
+        const systemAttributeKeys = systemAttrRes.rows.map(a => a.label.toLowerCase().replace(/\s+/g, '_'));
+
+        Object.keys(categoriesMap).forEach(catKey => {
+            systemAttributeKeys.forEach(sysAttrKey => {
+                if (!categoriesMap[catKey].attributes.includes(sysAttrKey)) {
+                    categoriesMap[catKey].attributes.push(sysAttrKey);
+                }
+                if (attributesMap[sysAttrKey] && !attributesMap[sysAttrKey].categories.includes(catKey)) {
+                    attributesMap[sysAttrKey].categories.push(catKey);
+                }
+            });
+        });
 
         // ===== 3. CATEGORY-ATTRIBUTE RELATIONSHIPS =====
         console.log('🔗 Mapping category-attribute relationships...');

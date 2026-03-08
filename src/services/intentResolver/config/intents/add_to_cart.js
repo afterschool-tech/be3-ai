@@ -27,13 +27,12 @@ module.exports = {
         products: { type: 'list', required: false, description: 'List of product names ONLY (e.g. ["iphone 12"]). Do NOT include cart verbs or sentences.' },
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
         category: { type: 'string', required: false, description: 'Category filter' },
-        vendor: { type: 'string', required: false, description: 'Vendor/brand filter' },
         quantity: { type: 'int', required: false, default: 1, description: 'Quantity to add' },
         attributes: { type: 'dict', required: false, description: 'Product attributes like color, size' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' }
     },
 
-    slotTags: ['[action]', '[product]', '[quantity]', '[clause]', '[vendor]', '[category]'],
+    slotTags: ['[action]', '[product]', '[quantity]', '[clause]', '[category]'],
 
     toolName: 'cart.add',
 
@@ -41,8 +40,7 @@ module.exports = {
         products: { target: 'product_id', expand: true },
         product_name: 'product_id',
         quantity: 'quantity',
-        category: 'category',
-        vendor: 'tag'
+        category: 'category'
     },
 
     minProducts: 1,

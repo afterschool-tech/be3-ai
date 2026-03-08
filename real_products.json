@@ -1,6 +1,26 @@
 {
-  "total": 65,
+  "total": 66,
   "products": [
+    {
+      "id": "55f3c6ea-a10c-40fd-9093-60a6982bf2eb",
+      "name": "Iphone 12 pro",
+      "category_ids": [
+        "d8aed750-6164-4065-881c-652ef888179f",
+        "9407551c-0204-4ffb-a054-1709177ebafc",
+        "7b8b5bb4-7878-4203-a550-a0941e1e3eb9"
+      ],
+      "price": "176.00",
+      "tags": "cool, Taye's Home Decor",
+      "attrs": {
+        "brand": "apple",
+        "color": "black",
+        "storage": "256",
+        "material": "aluminum",
+        "price_tier": "midrange",
+        "vendor": "Taye's Home Decor"
+      },
+      "attrKeys": "brand, color, storage, material, price_tier, vendor"
+    },
     {
       "id": "77bb8c71-67ab-469f-bf1a-1430061d59c5",
       "name": "Infinix Hot 60 pro",
@@ -14,9 +34,10 @@
       "attrs": {
         "brand": "infinix",
         "storage": "255",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Dareymi"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "3f1a8bd0-bff2-44f5-bcb3-be4276f81d12",
@@ -31,9 +52,10 @@
       "attrs": {
         "brand": "tecno",
         "storage": "255",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Dareymi"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "25910fb7-bdb2-4022-b2e4-e0405fdbbfc2",
@@ -45,9 +67,10 @@
       "tags": "fashion",
       "attrs": {
         "color": "brown",
-        "material": "leather"
+        "material": "leather",
+        "vendor": "Dareymi"
       },
-      "attrKeys": "color, material"
+      "attrKeys": "color, material, vendor"
     },
     {
       "id": "8eec3300-63cd-40df-89cd-f8fb3ae96fae",
@@ -57,8 +80,10 @@
       ],
       "price": "15.00",
       "tags": "Taye's Home Decor",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Taye's Home Decor"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "62d41fb1-384a-4f22-9528-fa75b44234a5",
@@ -68,8 +93,10 @@
       ],
       "price": "5.00",
       "tags": "Bola Foods",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Bola Foods"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "190dd220-7fa9-4249-8232-1125205502e8",
@@ -79,8 +106,10 @@
       ],
       "price": "78.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "a56dc4f2-f710-40e6-a5be-0bdf7453fde0",
@@ -90,8 +119,10 @@
       ],
       "price": "92.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "d24bf413-8940-4ea4-ab4f-c4a15ba5be9c",
@@ -101,8 +132,10 @@
       ],
       "price": "96.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "5f9094b0-2538-4ba3-bf2c-db95609e56f8",
@@ -112,8 +145,10 @@
       ],
       "price": "143.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "770e36be-937e-4f7c-8942-52ad890b0b7a",
@@ -123,8 +158,10 @@
       ],
       "price": "44.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "12577200-8850-489b-b986-32a24038f767",
@@ -134,8 +171,10 @@
       ],
       "price": "78.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "2a350ce4-15b4-4a51-85f1-2a610f38561e",
@@ -145,8 +184,10 @@
       ],
       "price": "144.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "7e25643f-1c54-413c-aeb2-33e3fbf9f524",
@@ -156,8 +197,10 @@
       ],
       "price": "76.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "85a20360-090b-410f-a2a9-7996bef09d3c",
@@ -167,8 +210,10 @@
       ],
       "price": "125.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "884dbe68-d11e-4744-960f-8a3cb773df45",
@@ -178,8 +223,10 @@
       ],
       "price": "67.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "fa5be29a-9db0-47fc-9ea8-cb94189357d3",
@@ -189,8 +236,10 @@
       ],
       "price": "150.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "02265f53-99ca-4179-9281-62f7631f93ec",
@@ -200,8 +249,10 @@
       ],
       "price": "141.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "8e318de1-e85d-41bb-91de-08465ccb9031",
@@ -211,8 +262,10 @@
       ],
       "price": "99.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "023497fe-a62e-4284-bfda-4ce102f17962",
@@ -222,8 +275,10 @@
       ],
       "price": "108.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "b244c97e-72f6-453e-a4fb-7bcd66f44d45",
@@ -233,8 +288,10 @@
       ],
       "price": "57.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "fa204ec2-056c-4e4b-8179-6ec0de64ae17",
@@ -244,8 +301,10 @@
       ],
       "price": "139.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "9ae6e58e-88bf-4d13-8bed-32b911c29f42",
@@ -255,8 +314,10 @@
       ],
       "price": "117.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "66af1fca-acb8-4fb6-a903-f7994dd3ea91",
@@ -266,8 +327,10 @@
       ],
       "price": "83.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "30ec77de-458b-430e-b674-a1408a2ef06b",
@@ -277,8 +340,10 @@
       ],
       "price": "81.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "aafbe6d0-2cf5-444f-949a-6c32bf72dea3",
@@ -288,8 +353,10 @@
       ],
       "price": "136.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "83bb3f89-e452-4d69-8478-4bf45e3ea281",
@@ -299,8 +366,10 @@
       ],
       "price": "115.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "6c8aaf75-af9b-4997-9561-06c5bf10cfb5",
@@ -310,8 +379,10 @@
       ],
       "price": "77.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "d069224d-cb51-41d8-97d5-8706eb885876",
@@ -321,8 +392,10 @@
       ],
       "price": "53.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "0a37ac0d-0962-4ba6-8a83-df48471e417f",
@@ -332,8 +405,10 @@
       ],
       "price": "80.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "a0ac9218-edbb-485a-acb7-ebb363416a8a",
@@ -343,8 +418,10 @@
       ],
       "price": "126.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "204b44a3-3b7c-41ca-bc5b-2336abc1b246",
@@ -354,8 +431,10 @@
       ],
       "price": "28.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "75ae5bf9-b4fc-4bf3-bac6-4a9518717718",
@@ -365,8 +444,10 @@
       ],
       "price": "97.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "772ed639-758b-462e-8b5d-a4c07b159b61",
@@ -376,8 +457,10 @@
       ],
       "price": "91.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "adeac89c-4d2b-4249-8a3b-9c4a6de3c517",
@@ -387,8 +470,10 @@
       ],
       "price": "35.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "877e217a-f1dc-4da5-8d06-a0530ab564a4",
@@ -398,8 +483,10 @@
       ],
       "price": "149.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "a788dcaf-1a5c-4311-91ee-57a2d65270ed",
@@ -409,8 +496,10 @@
       ],
       "price": "52.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "3089d5fc-b5ed-4f84-9545-1a5bd80f6b20",
@@ -420,8 +509,10 @@
       ],
       "price": "95.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "79001ef8-947b-4570-8297-7707d0e847de",
@@ -431,8 +522,10 @@
       ],
       "price": "62.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "50371fae-2d5e-406e-8b47-e59dd2702f91",
@@ -442,8 +535,10 @@
       ],
       "price": "73.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "98204c43-4c9c-4c86-b2f3-f5edb0383cfc",
@@ -453,8 +548,10 @@
       ],
       "price": "16.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "19684e58-05fe-4741-be57-91dec815189f",
@@ -464,8 +561,10 @@
       ],
       "price": "125.99",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "1fe6aa05-35c3-4616-b12c-9d4ba5a9aeb3",
@@ -475,8 +574,10 @@
       ],
       "price": "347.66",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "ce44077e-201e-47a3-ab59-b845fd994aa2",
@@ -486,8 +587,10 @@
       ],
       "price": "489.81",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "194ae894-e4f4-4d6b-a414-d15d6c919763",
@@ -502,9 +605,10 @@
       "attrs": {
         "brand": "tecno",
         "storage": "127",
-        "price_tier": "budget"
+        "price_tier": "budget",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "16f0d3e9-ccd5-4e8e-b247-8fb8d90e41dd",
@@ -519,9 +623,10 @@
       "attrs": {
         "brand": "samsung",
         "storage": "1000",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "3835475c-df74-4b04-a130-30f8f49e82be",
@@ -536,9 +641,10 @@
       "attrs": {
         "brand": "samsung",
         "storage": "520",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "b265b489-74cd-435d-a2fa-d504117afa1c",
@@ -555,9 +661,10 @@
         "color": "white",
         "storage": "128",
         "material": "iron",
-        "price_tier": "budget"
+        "price_tier": "budget",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, storage, material, price_tier"
+      "attrKeys": "brand, color, storage, material, price_tier, vendor"
     },
     {
       "id": "dd5ccabd-42cc-4499-aeef-6f3cdd2129db",
@@ -574,9 +681,10 @@
         "color": "black",
         "storage": "512",
         "material": "titanium",
-        "price_tier": "flagship"
+        "price_tier": "flagship",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, storage, material, price_tier"
+      "attrKeys": "brand, color, storage, material, price_tier, vendor"
     },
     {
       "id": "000c7eae-a0c1-4770-9c82-8bb1b6c1b9a3",
@@ -591,9 +699,10 @@
       "attrs": {
         "brand": "itel",
         "storage": "255",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "d243a8b8-7c05-4c3a-bc86-d6738110d386",
@@ -608,9 +717,10 @@
       "attrs": {
         "brand": "samsung",
         "storage": "1000",
-        "price_tier": "flagship"
+        "price_tier": "flagship",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "96550d37-cf46-4571-9988-5c67146c98bd",
@@ -625,9 +735,10 @@
       "attrs": {
         "brand": "tecno",
         "storage": "128",
-        "price_tier": "midrange"
+        "price_tier": "midrange",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "b161521f-6025-4257-b234-2b3284a4a06a",
@@ -642,9 +753,10 @@
       "attrs": {
         "brand": "microsoft",
         "color": "white",
-        "price_tier": "flagship"
+        "price_tier": "flagship",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, price_tier"
+      "attrKeys": "brand, color, price_tier, vendor"
     },
     {
       "id": "8c1049aa-e321-47df-b6db-a8a3470820ed",
@@ -656,9 +768,10 @@
       "price": "2300.00",
       "tags": "new, innovative",
       "attrs": {
-        "brand": "apple"
+        "brand": "apple",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand"
+      "attrKeys": "brand, vendor"
     },
     {
       "id": "0e00553a-068d-4fc7-a507-cdc9906ed569",
@@ -676,9 +789,10 @@
         "storage": "256",
         "material": "metal",
         "price_tier": "premium",
-        "size": "254"
+        "size": "254",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, storage, material, price_tier, size"
+      "attrKeys": "brand, color, storage, material, price_tier, size, vendor"
     },
     {
       "id": "8ba1250d-ece4-4e97-b8ec-38b03e368a99",
@@ -693,9 +807,10 @@
       "attrs": {
         "brand": "infinix",
         "storage": "256",
-        "price_tier": "budget"
+        "price_tier": "budget",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, storage, price_tier"
+      "attrKeys": "brand, storage, price_tier, vendor"
     },
     {
       "id": "4cafd32f-9aa9-4889-b281-bf8c9af951c1",
@@ -709,9 +824,10 @@
       "attrs": {
         "brand": "apple",
         "color": "white",
-        "price_tier": "flagship"
+        "price_tier": "flagship",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, price_tier"
+      "attrKeys": "brand, color, price_tier, vendor"
     },
     {
       "id": "acbf4217-68c6-4a2a-9b63-16d13f5f7264",
@@ -725,9 +841,10 @@
       "tags": "new, sound, magnetic",
       "attrs": {
         "color": "red",
-        "material": "leather"
+        "material": "leather",
+        "vendor": "Be3"
       },
-      "attrKeys": "color, material"
+      "attrKeys": "color, material, vendor"
     },
     {
       "id": "0f21c0e6-5fc8-4ae6-a13b-e392e26bbcff",
@@ -745,9 +862,10 @@
         "storage": "255",
         "material": "gold",
         "price_tier": "flagship",
-        "size": "245x764"
+        "size": "245x764",
+        "vendor": "Be3"
       },
-      "attrKeys": "brand, color, storage, material, price_tier, size"
+      "attrKeys": "brand, color, storage, material, price_tier, size, vendor"
     },
     {
       "id": "45130ace-fd60-4f05-8f91-320ddc4f5d1b",
@@ -755,8 +873,10 @@
       "category_ids": [],
       "price": "123.00",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "58d5c65d-0a86-4044-8a80-6a9df9e6a3c5",
@@ -769,9 +889,10 @@
       "tags": "big, small, lol",
       "attrs": {
         "storage": "519",
-        "size": "large"
+        "size": "large",
+        "vendor": "Be3"
       },
-      "attrKeys": "storage, size"
+      "attrKeys": "storage, size, vendor"
     },
     {
       "id": "03abeca7-6dbf-41f0-8128-c5b9ccc9c8c0",
@@ -781,8 +902,10 @@
       ],
       "price": "45.00",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "0ed37ec6-215c-4e33-9d55-20965f061d76",
@@ -793,8 +916,10 @@
       ],
       "price": "34.00",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "f2bd0283-1c62-4c75-ac92-86bc805065c7",
@@ -810,9 +935,10 @@
         "storage": "13",
         "material": "plastic",
         "quality": "Grade A",
-        "size": "23"
+        "size": "23",
+        "vendor": "Be3"
       },
-      "attrKeys": "color, storage, material, quality, size"
+      "attrKeys": "color, storage, material, quality, size, vendor"
     },
     {
       "id": "acd407bd-c313-453a-a414-41550709759b",
@@ -820,8 +946,10 @@
       "category_ids": [],
       "price": "45.00",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     },
     {
       "id": "2567e802-92a4-4767-bd77-e178905f7de7",
@@ -829,8 +957,10 @@
       "category_ids": [],
       "price": "34.00",
       "tags": "",
-      "attrs": {},
-      "attrKeys": "none"
+      "attrs": {
+        "vendor": "Be3"
+      },
+      "attrKeys": "vendor"
     }
   ],
   "facets": [
@@ -882,7 +1012,7 @@
             "2ca7dc14-667b-4050-adbf-8ef3615ec1a9",
             "3e010193-84c6-4a1b-8e8d-77f63fdec648"
           ],
-          "count": 9
+          "count": 10
         },
         {
           "name": "e",
@@ -914,7 +1044,7 @@
         },
         {
           "value": "midrange",
-          "count": 6
+          "count": 7
         }
       ]
     },
@@ -943,7 +1073,7 @@
             "2ca7dc14-667b-4050-adbf-8ef3615ec1a9",
             "3e010193-84c6-4a1b-8e8d-77f63fdec648"
           ],
-          "count": 6
+          "count": 7
         },
         {
           "name": "i",
@@ -975,7 +1105,7 @@
       "options": [
         {
           "value": "apple",
-          "count": 6
+          "count": 7
         },
         {
           "value": "infinix",
@@ -1007,10 +1137,6 @@
       "clauses": [],
       "options": [
         {
-          "value": "plastic",
-          "count": 1
-        },
-        {
           "value": "leather",
           "count": 2
         },
@@ -1023,11 +1149,19 @@
           "count": 1
         },
         {
+          "value": "titanium",
+          "count": 1
+        },
+        {
+          "value": "aluminum",
+          "count": 1
+        },
+        {
           "value": "gold",
           "count": 1
         },
         {
-          "value": "titanium",
+          "value": "plastic",
           "count": 1
         }
       ]
@@ -1095,14 +1229,10 @@
           "operator": "LIKE",
           "seo_template": "",
           "excluded_category_ids": [],
-          "count": 3
+          "count": 4
         }
       ],
       "options": [
-        {
-          "value": "rede",
-          "count": 1
-        },
         {
           "value": "white",
           "count": 4
@@ -1112,12 +1242,16 @@
           "count": 1
         },
         {
-          "value": "red",
+          "value": "black",
+          "count": 3
+        },
+        {
+          "value": "rede",
           "count": 1
         },
         {
-          "value": "black",
-          "count": 2
+          "value": "red",
+          "count": 1
         }
       ]
     },
@@ -1146,7 +1280,7 @@
         },
         {
           "value": "256",
-          "count": 2
+          "count": 3
         },
         {
           "value": "512",
@@ -1162,6 +1296,31 @@
         },
         {
           "value": "1000",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": "daf35101-63ed-4937-8609-cc9c14e65fbe",
+      "code": "vendor",
+      "label": "vendor",
+      "type": "text",
+      "clauses": [],
+      "options": [
+        {
+          "value": "Be3",
+          "count": 60
+        },
+        {
+          "value": "Dareymi",
+          "count": 3
+        },
+        {
+          "value": "Bola Foods",
+          "count": 1
+        },
+        {
+          "value": "Taye's Home Decor",
           "count": 2
         }
       ]

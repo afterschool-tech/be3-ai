@@ -69,37 +69,34 @@ function isConjunctionGuarded(text, conjPosition, conjunction) {
  * Returns array of statement strings.
  */
 function splitStatements(text) {
-    // First, treat commas as soft separators for multi-intent queries.
-    // Example: "iphone 17, cheap smartphones and a laptop, i also need dareymi contact"
-    //   → ["iphone 17", "cheap smartphones and a laptop", "i also need dareymi contact"]
-    //
-    // We deliberately keep this simple and domain-biased:
-    // in shopping queries, splitting on commas is almost always "list of things to do/buy".
-    // If we later find bad cases (e.g., "lagos, nigeria"), we can add targeted guards.
-    let statements = text
-        .split(/\s*,\s*/g)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
+    // Commas and conjunctions are potential split points for multi-intent queries.
+    // Both are checked against conjunctionGuards (e.g., "compare" prevents splitting).
+    // PIE handles product segmentation separately via rawText.
+    let statements = [text];
 
-    // Try each conjunction (already sorted: multi-word first)
-    for (const conj of conjunctions) {
+    const allSeparators = [
+        ...conjunctions.map(c => ({ type: 'word', value: c })),
+        { type: 'char', value: ',' }
+    ];
+
+    for (const sep of allSeparators) {
         const newStatements = [];
 
         for (const stmt of statements) {
-            // Build a regex that matches the conjunction as a word boundary
-            const escaped = conj.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`\\s+${escaped}\\s+`, 'gi');
+            let regex;
+            if (sep.type === 'word') {
+                const escaped = sep.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                regex = new RegExp(`\\s+${escaped}\\s+`, 'gi');
+            } else {
+                regex = new RegExp(`\\s*${sep.value}\\s*`, 'gi');
+            }
 
             const match = regex.exec(stmt);
             if (match) {
-                // Check if a guard keyword precedes this conjunction
-                // Pass 'conj' along so we can exempt specific ones like "then"
-                if (isConjunctionGuarded(stmt, match.index, conj)) {
-                    // Guarded: don't split, keep the statement intact
+                if (isConjunctionGuarded(stmt, match.index, sep.value)) {
                     newStatements.push(stmt);
                 } else {
-                    // Not guarded: split normally
-                    regex.lastIndex = 0; // reset regex state
+                    regex.lastIndex = 0;
                     const parts = stmt.split(regex).map(s => s.trim()).filter(s => s.length > 0);
                     newStatements.push(...parts);
                 }

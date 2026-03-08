@@ -34,13 +34,24 @@
             "makes",
             "manufacturer",
             "manufacturers",
-            "vendor",
-            "vendors",
             "company",
             "labels",
             "builders",
             "who made",
             "brand name"
+        ]
+    },
+    "vendor": {
+        "variations": [
+            "vendor",
+            "vendors",
+            "merchant",
+            "merchants",
+            "seller",
+            "sellers",
+            "store",
+            "shop",
+            "provider"
         ]
     },
     "material": {

@@ -27,7 +27,7 @@ module.exports = {
     toolName: 'vendor.getInfo',
 
     paramMap: {
-        vendor: 'vendor_name'
+        vendor: 'vendor'
     },
 
     minProducts: 0,

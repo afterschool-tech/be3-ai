@@ -22,7 +22,6 @@ module.exports = {
         products: { type: 'list', required: false, description: 'List of product names' },
         product_name: { type: 'string', required: false, description: 'Extracted product name or keywords ONLY' },
         category: { type: 'string', required: false, description: 'Category filter' },
-        vendor: { type: 'string', required: false, description: 'Vendor/brand filter' },
         price_min: { type: 'number', required: false, description: 'Minimum price' },
         price_max: { type: 'number', required: false, description: 'Maximum price' },
         sort: { type: 'string', required: false, description: 'Sort order' },
@@ -31,7 +30,7 @@ module.exports = {
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' }
     },
 
-    slotTags: ['[clause]', '[product]', '[category]', '[vendor]', '[price]'],
+    slotTags: ['[clause]', '[product]', '[category]', '[price]'],
 
     toolName: 'product.search',
 
@@ -39,7 +38,6 @@ module.exports = {
         products: { target: 'query', expand: false },
         product_name: 'query',
         category: 'category',
-        vendor: 'tag',
         price_min: 'price_min',
         price_max: 'price_max',
         sort: 'sort',
@@ -54,7 +52,7 @@ module.exports = {
     microstates: {
         missing_query: {
             trigger: (params, entities) => {
-                return !params.query && !params.product_name && !params.category && !params.vendor;
+                return !params.query && !params.product_name && !params.category;
             },
             sandbox: 'soft',
             boostScore: 10.0,

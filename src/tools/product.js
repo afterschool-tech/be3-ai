@@ -1095,20 +1095,39 @@ const productTools = {
     'product.compare': {
         description: 'Compare multiple products side-by-side',
         params: {
-            product_ids: { type: 'array', description: 'List of product UUIDs to compare' }
+            product_ids: { type: 'array', description: 'List of product UUIDs to compare' },
+            product_segments: { type: 'array', description: 'List of product segments with localized metadata' }
         },
         handler: async (params, context) => {
+            const { product_segments = [] } = params;
             let { product_ids = [] } = params;
             if (typeof product_ids === 'string') product_ids = [product_ids];
 
-            if (product_ids.length < 2) return { error: "Please provide at least 2 products to compare." };
-
             const products = [];
-            for (const id of product_ids) {
-                const resolvedId = await resolveProduct(id, context);
-                if (resolvedId) {
-                    const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
-                    if (!res.error) products.push(res.product);
+
+            if (product_segments.length >= 2) {
+                // --- NEW SEGMENTED FLOW ---
+                for (const seg of product_segments) {
+                    const identifier = seg.query;
+                    const constraints = {};
+                    if (seg.category) constraints.category = seg.category;
+                    if (seg.attributes?.brand) constraints.brand = seg.attributes.brand;
+
+                    const resolvedId = seg._resolved_product_id || await resolveProduct(identifier, context, constraints);
+                    if (resolvedId) {
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
+                        if (!res.error) products.push(res.product);
+                    }
+                }
+            } else {
+                // --- LEGACY FALLBACK FLOW ---
+                if (product_ids.length < 2) return { error: "Please provide at least 2 products to compare." };
+                for (const id of product_ids) {
+                    const resolvedId = await resolveProduct(id, context);
+                    if (resolvedId) {
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
+                        if (!res.error) products.push(res.product);
+                    }
                 }
             }
 

@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Semantic Clauses
- * Generated: 2026-02-13T06:25:38.439Z
+ * Generated: 2026-03-07T23:44:00.513Z
  */
 const CLAUSES = {
     "apple_product": {
@@ -147,11 +147,10 @@ const CLAUSES = {
     },
     "affordable": {
         "label": "affordable",
-        "attribute": "price_tier",
+        "attribute": "price tier",
         "matches": [
             "budget",
-            "midrange",
-            "cheap"
+            "midrange"
         ],
         "display": {
             "prefix": "cheap",
@@ -173,7 +172,7 @@ const CLAUSES = {
     },
     "expensive": {
         "label": "expensive",
-        "attribute": "price_tier",
+        "attribute": "price tier",
         "matches": [
             "premium",
             "flagship"

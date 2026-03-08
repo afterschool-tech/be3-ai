@@ -1,6 +1,7 @@
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
+const { normalizeCategory } = require('../utils/normalization');
 const {
     buildProductCards,
     buildFacetRefinerButtons,
@@ -101,6 +102,7 @@ const vendorTools = {
         description: "Get products belonging to a specific vendor using multiple lookup methods (Tags, Collections, and Creator IDs). Use this when the user asks 'What does [Vendor] sell?' or 'Show me products from [Vendor]'.",
         params: {
             vendor: { type: 'string', description: 'Vendor name or "their" for current sequence' },
+            category: { type: 'string', description: 'Category name or slug' },
             limit: { type: 'number', description: 'Max products to return (default 5)' },
             page: { type: 'number', description: 'Pagination page (1-indexed, default 1)' },
             sort: { type: 'string', description: 'price_asc, price_desc, date_desc, relevance' },
@@ -109,7 +111,7 @@ const vendorTools = {
         handler: async (params, context) => {
             // Tool registry sometimes passes "vendor_name" instead of "vendor".
             const vendorName = params.vendor || params.vendor_name;
-            const { limit = 5, page = 1, sort = 'relevance', attributes = {} } = params;
+            const { category, limit = 5, page = 1, sort = 'relevance', attributes = {} } = params;
 
             const vendor = resolveVendorFromContext(vendorName, context);
             if (!vendor) return { error: `Vendor "${vendorName}" not found.` };
@@ -125,7 +127,7 @@ const vendorTools = {
                     // Store a snapshot compatible with __nav:more:<snapshotId>__ → product.search paging.
                     await stateManager.setSearchSnapshot(context.sessionId, snapshotId, {
                         query: null,
-                        category: null,
+                        category: category || null,
                         price_min: null,
                         price_max: null,
                         limit,
@@ -135,15 +137,24 @@ const vendorTools = {
                         attributes
                     });
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const searchQuery = new URLSearchParams({
                 per_page: limit,
                 page: page,
                 sort: sort
             });
-            searchQuery.append('tag', vendorTag);
+            // 🚨 Use attribute.vendor instead of tag because vendor is now a global system attribute
+            searchQuery.append('attribute.vendor', vendorTag);
             searchQuery.append('type', 'product');
+
+            let catId = normalizeCategory(category);
+            const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
+            const cat = catKey ? context.CATEGORIES[catKey] : null;
+
+            if (catId) {
+                searchQuery.append('category_id', cat?.slug || catId);
+            }
 
             const safeAttributes = attributes || {};
             Object.entries(safeAttributes).forEach(([key, val]) => {
@@ -217,7 +228,8 @@ const vendorTools = {
             vendor: { type: 'string', description: 'Vendor name or tag' }
         },
         handler: async (params, context) => {
-            const { product: productId, vendor: vendorName } = params;
+            const productId = params.product || params.product_name;
+            const vendorName = params.vendor || params.vendor_name;
             const vendor = resolveVendorFromContext(vendorName, context);
             if (!vendor) return { error: "Vendor not found" };
 
@@ -247,7 +259,8 @@ const vendorTools = {
             vendor: { type: 'string', description: 'Vendor name or tag' }
         },
         handler: async (params, context) => {
-            const vendor = resolveVendorFromContext(params.vendor, context);
+            const vendorName = params.vendor || params.vendor_name;
+            const vendor = resolveVendorFromContext(vendorName, context);
             if (!vendor) return { error: 'Vendor not found' };
 
             const vendorKeyRaw = vendor.tag || vendor.business_name || vendor.id;

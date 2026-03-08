@@ -22,12 +22,11 @@ module.exports = {
         products: { type: 'list', required: false, description: 'List of product names ONLY (e.g. ["iphone 12"]). Do NOT include availability verbs or sentences.' },
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
         query: { type: 'string', required: false, description: 'Single product query (fallback)' },
-        vendor: { type: 'string', required: false, description: 'Vendor filter' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Semantic attributes' }
     },
 
-    slotTags: ['[product]', '[clause]', '[vendor]'],
+    slotTags: ['[product]', '[clause]'],
 
     toolName: 'product.checkAvailability',
 

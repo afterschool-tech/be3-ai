@@ -54,7 +54,8 @@ const ACTION_TO_INTENTS = {
     'confirm': ['confirm_order'],
     'cancel': 'cancel_order',
     'delivery': 'set_delivery',
-    'discovery_meta': ['facet_list']
+    'delivery': 'set_delivery',
+    'discovery_meta': ['facet_list', 'vendor_facet']
 };
 
 
@@ -408,6 +409,30 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                 });
             } else {
                 score += 2.0; // Mild boost for just mentioning an attribute ("small storage phones")
+            }
+        }
+
+        // 3k.2. Vendor Facet Dominance
+        // If the query asks "who sells [product]" or "what stores have [product]", prefer vendor_facet over identity
+        if (intentName === 'vendor_facet') {
+            const hasVendorStorePhrasing = /who sells\b|which store\b|what store\b|which vendor\b|what vendor\b|what seller\b|which seller\b/i.test(text);
+
+            // If the query explicitly asks for a list of vendors/stores
+            if (hasVendorStorePhrasing) {
+                score += 8.0;
+                logDebug('SCORING:VENDOR_FACET_BOOST', {
+                    _desc: 'Vendor Facet rule — phrases asking for sellers/stores boost vendor_facet',
+                    _example: '"who sells iphone 12" → vendor_facet +8',
+                    intent: intentName,
+                    boost: 8.0
+                });
+            }
+        }
+        if (intentName === 'vendor_identity') {
+            const hasVendorStorePhrasing = /who sells\b|which store\b|what store\b|which vendor\b|what vendor\b|what seller\b|which seller\b/i.test(text);
+            // Downweight identity if they are asking for a *list* of who sells it (which is a facet search)
+            if (hasVendorStorePhrasing) {
+                score -= 5.0;
             }
         }
 

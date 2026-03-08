@@ -26,11 +26,6 @@ module.exports = {
             required: false,
             description: 'The category to scope the facet search'
         },
-        vendor: {
-            type: 'string',
-            required: false,
-            description: 'The vendor to scope the facet search'
-        },
         product_query: {
             type: 'string',
             required: false,
@@ -45,14 +40,12 @@ module.exports = {
     slotTags: {
         facet_target: ['[facet_target]'],
         category: ['[category]'],
-        vendor: ['[vendor]'],
         product_query: ['[residual]', '[product]']
     },
     toolName: 'product.facets',
     paramMap: {
         facet_target: 'facet_target',
         category: 'category',
-        vendor: 'vendor',
         product_query: 'query',
         attributes: 'attributes'
     }

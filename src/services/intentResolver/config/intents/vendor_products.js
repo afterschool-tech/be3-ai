@@ -20,17 +20,19 @@ module.exports = {
 
     parameters: {
         vendor: { type: 'string', required: true, description: 'Vendor name or identifier' },
+        category: { type: 'string', required: false, description: 'Category filter' },
         limit: { type: 'number', required: false, description: 'Max products to return' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Semantic attributes' }
     },
 
-    slotTags: ['[vendor]', '[product]'],
+    slotTags: ['[vendor]', '[product]', '[category]'],
 
     toolName: 'vendor.getProducts',
 
     paramMap: {
         vendor: 'vendor_name',
+        category: 'category',
         limit: 'limit'
     },
 

@@ -28,8 +28,8 @@ module.exports = {
     toolName: 'vendor.checkIdentity',
 
     paramMap: {
-        product_name: 'product_name',
-        vendor: 'vendor_name'
+        product_name: 'product',
+        vendor: 'vendor'
     },
 
     minProducts: 1,

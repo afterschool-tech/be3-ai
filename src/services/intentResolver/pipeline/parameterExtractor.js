@@ -16,7 +16,7 @@ const { logDebug } = require('../../../utils/debugLogger');
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
  */
-function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null, entities = []) {
+function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null, entities = [], rawText = null) {
     const extracted = {};
 
     // Identify supported attributes for scoping
@@ -106,9 +106,12 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     // 4. Comparison Logic (New!) — POWERED BY PIE
     const isCompare = candidates.length > 0 && candidates[0].intentName === 'product_compare';
     if (isCompare) {
-        // Use PIE for intelligent, intel-aware multi-product extraction
+        // Use PIE for intelligent, intel-aware multi-product extraction.
+        // IMPORTANT: PIE uses rawText (pre-cleanText, comma-preserved) so it can
+        // segment comma-separated product lists (e.g. "iphone 12, iphone 15").
+        // The pipeline continues to use the cleaned text — this is intentional.
         const pieResults = extractProductIntel({
-            text,
+            text: rawText || text,
             entities,
             resolutions,
             intentName: 'product_compare',
@@ -116,6 +119,24 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         });
 
         if (pieResults.length > 0) {
+            extracted.product_segments = pieResults.map(p => {
+                const seg = {
+                    query: p.intel.resolvedId || p.name,
+                    category: p.intel.category ? p.intel.category.id : null,
+                    attributes: {}
+                };
+
+                if (p.intel.clauses && p.intel.clauses.length > 0) {
+                    seg.clause_words = p.intel.clauses.map(c => ({ word: c.value, clauseId: c.clauseId }));
+                }
+
+                if (p.intel.brand) {
+                    seg.attributes.brand = p.intel.brand.value;
+                }
+                if (p.isResolved) seg._resolved_product_id = p.intel.resolvedId;
+                return seg;
+            });
+            // Legacy fallback for tool mapping compatibility until refactored
             extracted.products = pieResults.map(p => p.intel.resolvedId || p.name);
         }
     }
@@ -343,7 +364,7 @@ Return a JSON object with parameter names as keys. Use null for parameters that 
  * Main extraction function.
  * Runs deterministic extraction first, then AI for remaining gaps.
  */
-async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = [], entities = []) {
+async function extractParameters(text, candidates, aiQueryFn, storeContext = {}, resolutions = [], entities = [], rawText = null) {
     const schema = buildParameterSchema(candidates);
 
     // 0. Fill primitive parameters from pre-detected entities (Stage 4a)
@@ -381,18 +402,22 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     // 1. Run Deterministic Fallback (Keyword/Category Stripping)
     const categoryId = baseFromEntities.category;
-    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities);
+    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities, rawText);
 
     // Merge base results (entities + deterministic) with array awareness
     // NOTE: extractStructural has been deprecated (StructuralMatcher retired).
-    // ── INTEL SHIELD ──
-    // If we have a resolved product (Intel), we prepend any deterministic residuals (e.g. "best") to it.
-    // Since we now shield resolved_product words in deterministic extraction, 
-    // this correctly builds context-refined names like "best iPhone 16".
+    // Merge base results (entities + deterministic) with array awareness
     const combinedBase = { ...deterministic, ...baseFromEntities };
-    if (baseFromEntities.product_name && deterministic.product_name && baseFromEntities.product_name !== deterministic.product_name) {
+
+    // ── INTEL SHIELD ──
+    // If this is a comparison, we strictly favor segmented results.
+    // For single search, we prepend deterministic residuals (e.g. "best") to the resolved product.
+    const isCompare = candidates?.[0]?.intentName === 'product_compare';
+    if (!isCompare && baseFromEntities.product_name && deterministic.product_name && baseFromEntities.product_name !== deterministic.product_name) {
         combinedBase.product_name = `${deterministic.product_name} ${baseFromEntities.product_name}`;
     }
+
+    // ... rest of logic
 
     // Identify supported attributes for scoping (used by clause stripping)
     const supportedAttributes = new Set();
@@ -419,6 +444,11 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     }
     if (deterministic.products) {
         combinedBase.products = Array.from(new Set([...(deterministic.products || [])]));
+    }
+
+    // Add product segments for comparisons
+    if (deterministic.product_segments) {
+        combinedBase.product_segments = deterministic.product_segments;
     }
 
     // NOTE: Multi-pass clause stripping has been removed for better performance and deterministic consistency.
@@ -469,32 +499,15 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         aiExtracted
     });
 
-    // ── SCOPING GUARD ──
-    // Cross-reference all extracted clauses/attributes against the category's supported list.
-    // Drops any attribute that doesn't belong to this category (Zero-AI consistency).
-    if (categoryId && storeContext.CATEGORIES) {
-        const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
-        if (catObj) {
-            const supported = new Set(catObj.attributes || []);
+    // ── SCOPING GUARD (DISABLED) ──
+    // We intentionally disable explicit attribute dropping here.
+    // The previous logic dropped any attribute (like "color" -> "white") 
+    // that wasn't statically declared in the category's supported list.
+    // This broke discovery-based filtering (e.g. "show me a white smartphone")
+    // since 'color' might not be in the immediate state tree.
+    // The backend search module gracefully ignores non-matching params anyway.
 
-            // 1. Validate top-level attribute params
-            const ATTRIBUTE_PARAMS = ['brand', 'color', 'material', 'storage', 'size', 'price_tier'];
-            for (const attrName of ATTRIBUTE_PARAMS) {
-                if (merged[attrName] && !supported.has(attrName)) {
-                    delete merged[attrName];
-                }
-            }
-
-            // 2. Validate clause_words
-            if (Array.isArray(merged.clause_words)) {
-                merged.clause_words = merged.clause_words.filter(cw => {
-                    const clause = CLAUSES[cw.clauseId];
-                    if (!clause || !clause.attribute) return true; // keep unknown or malformed for tool handling
-                    return supported.has(clause.attribute);
-                });
-            }
-        }
-    }
+    // (applyGuard logic removed)
 
     return merged;
 }

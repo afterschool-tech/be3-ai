@@ -27,7 +27,7 @@ module.exports = {
     toolName: 'vendor.getContactLink',
 
     paramMap: {
-        vendor: 'vendor_name'
+        vendor: 'vendor'
     },
 
     minProducts: 0,

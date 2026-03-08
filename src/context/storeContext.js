@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Comprehensive Store Context
- * Generated: 2026-02-13T06:25:38.438Z
+ * Generated: 2026-03-07T23:44:00.512Z
  * 
  * This context powers the AI with:
  * - Hierarchical categories (parent→child)
@@ -22,7 +22,9 @@ const CATEGORIES = {
         "image_url": "https://www.techjunkie.com/wp-content/uploads/2013/09/20130924_2013imac.jpg",
         "parent_id": "cca00d97-3125-4dc3-9141-e6d459764b76",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -36,6 +38,7 @@ const CATEGORIES = {
         "parent_id": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
         "children": [],
         "attributes": [
+            "vendor",
             "brand",
             "storage"
         ],
@@ -45,8 +48,8 @@ const CATEGORIES = {
             "microsoft_product",
             "small_storage"
         ],
-        "product_count": 4,
-        "total_count": 4
+        "product_count": 6,
+        "total_count": 6
     },
     "android_tablets": {
         "id": "63173747-a5b2-4cdb-942c-032a122631ad",
@@ -56,7 +59,9 @@ const CATEGORIES = {
         "image_url": "https://media.s-bol.com/3mg7WJvQKJMM/1w3nyvP/550x408.jpg",
         "parent_id": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 3,
         "total_count": 3
@@ -70,6 +75,7 @@ const CATEGORIES = {
         "parent_id": "dfa80cc4-f95a-4c87-949b-8b0438b28949",
         "children": [],
         "attributes": [
+            "vendor",
             "brand"
         ],
         "allowed_clauses": [
@@ -93,6 +99,7 @@ const CATEGORIES = {
             "ram_&_storage"
         ],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier"
         ],
@@ -114,7 +121,9 @@ const CATEGORIES = {
         "image_url": "https://www.bitro.de/wp-content/uploads/2025/06/real_controller_ps5_basic_new_TMR_hallsticks_scull_v3_paddle_grip_BLACK_swap_sticks.jpg",
         "parent_id": "49c8b316-57b1-44b2-a168-9cff68a03d4f",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -128,6 +137,7 @@ const CATEGORIES = {
         "parent_id": "d64b240e-3146-4386-a98a-418057f66614",
         "children": [],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier"
         ],
@@ -154,6 +164,7 @@ const CATEGORIES = {
             "workstations"
         ],
         "attributes": [
+            "vendor",
             "price_tier"
         ],
         "allowed_clauses": [
@@ -171,7 +182,9 @@ const CATEGORIES = {
         "image_url": "https://platform.theverge.com/wp-content/uploads/sites/2/chorus/uploads/chorus_asset/file/25821061/247464_Kindle_Paperwhite_ALiszewski_0002.jpg?quality=90&strip=all&crop=0,0,100,100",
         "parent_id": "d8aed750-6164-4065-881c-652ef888179f",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -187,6 +200,7 @@ const CATEGORIES = {
             "sound_gadget"
         ],
         "attributes": [
+            "vendor",
             "size"
         ],
         "allowed_clauses": [],
@@ -201,7 +215,9 @@ const CATEGORIES = {
         "image_url": "https://www.thrustmaster.com/wp-content/uploads/2021/09/UTH-t-flight-hotas-4-flight-sim-1-3.png",
         "parent_id": "49c8b316-57b1-44b2-a168-9cff68a03d4f",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -215,6 +231,7 @@ const CATEGORIES = {
         "parent_id": null,
         "children": [],
         "attributes": [
+            "vendor",
             "size",
             "color"
         ],
@@ -237,6 +254,7 @@ const CATEGORIES = {
             "kitchen_appliances"
         ],
         "attributes": [
+            "vendor",
             "material",
             "storage",
             "color"
@@ -261,7 +279,9 @@ const CATEGORIES = {
             "playstation",
             "xbox"
         ],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 1
@@ -280,6 +300,7 @@ const CATEGORIES = {
             "vr_&_ar_headset"
         ],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier",
             "color"
@@ -308,7 +329,9 @@ const CATEGORIES = {
             "flight_stick",
             "racing_wheels"
         ],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -321,7 +344,9 @@ const CATEGORIES = {
         "image_url": "https://d21d281c1yd2en.cloudfront.net/media/product_images/quality-gaming-relaxation-leather-chair_1.0.webp",
         "parent_id": "63efd70e-2daf-46f9-b801-d9da53209930",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -334,7 +359,9 @@ const CATEGORIES = {
         "image_url": "https://anphat.com.vn/media/lib/27-03-2024/danhmucpcgaming1.jpg",
         "parent_id": "cca00d97-3125-4dc3-9141-e6d459764b76",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -347,7 +374,9 @@ const CATEGORIES = {
         "image_url": "https://i.rtings.com/assets/pages/6dRuEBex/best-gaming-laptops-20242028-medium.jpg?format=auto",
         "parent_id": "dfa80cc4-f95a-4c87-949b-8b0438b28949",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -361,6 +390,7 @@ const CATEGORIES = {
         "parent_id": "d64b240e-3146-4386-a98a-418057f66614",
         "children": [],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier"
         ],
@@ -382,7 +412,9 @@ const CATEGORIES = {
         "image_url": "https://i0.wp.com/thedisconnekt.com/wp-content/uploads/2024/03/Apple-iPad-10.jpg?resize=1600%2C1067&ssl=1",
         "parent_id": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -396,6 +428,7 @@ const CATEGORIES = {
         "parent_id": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
         "children": [],
         "attributes": [
+            "vendor",
             "size",
             "material",
             "storage",
@@ -406,8 +439,8 @@ const CATEGORIES = {
             "color_for_ladies",
             "color_for_men"
         ],
-        "product_count": 4,
-        "total_count": 4
+        "product_count": 5,
+        "total_count": 5
     },
     "kitchen_appliances": {
         "id": "3e5781a6-5500-476f-8612-bdd1c2eeeb27",
@@ -418,6 +451,7 @@ const CATEGORIES = {
         "parent_id": "95bd9c7a-4c90-4d9e-950b-d27a12113c4b",
         "children": [],
         "attributes": [
+            "vendor",
             "size",
             "quality",
             "material",
@@ -448,6 +482,7 @@ const CATEGORIES = {
             "ultrabooks"
         ],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier"
         ],
@@ -469,7 +504,9 @@ const CATEGORIES = {
         "image_url": null,
         "parent_id": null,
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 7,
         "total_count": 7
@@ -482,7 +519,9 @@ const CATEGORIES = {
         "image_url": "https://cdn.mos.cms.futurecdn.net/XyAaqBEtYtb8YffjKZ68Gb.jpg",
         "parent_id": "2c86882a-c069-47c3-bdb6-9af4849672bb",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -495,7 +534,9 @@ const CATEGORIES = {
         "image_url": "https://i.ytimg.com/vi/xq7Z5fXpKL8/hq720.jpg?sqp=-oaymwEhCK4FEIIDSFryq4qpAxMIARUAAAAAGAElAADIQj0AgKJD&rs=AOn4CLBG994a2YhKIUsCAqBy9oGKQxCUPw",
         "parent_id": "d8aed750-6164-4065-881c-652ef888179f",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -508,7 +549,9 @@ const CATEGORIES = {
         "image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTspaS76A2qfsXK2Lf0WdEpZgfp-lEU_AHf7w&s",
         "parent_id": "2c86882a-c069-47c3-bdb6-9af4849672bb",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -521,7 +564,9 @@ const CATEGORIES = {
         "image_url": "https://gamebroslb.com/cdn/shop/products/222_a62969ad-c249-4d3d-bc11-2bd8153f515e.jpg?v=1660421244&width=1445",
         "parent_id": "49c8b316-57b1-44b2-a168-9cff68a03d4f",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -535,6 +580,7 @@ const CATEGORIES = {
         "parent_id": "d64b240e-3146-4386-a98a-418057f66614",
         "children": [],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier"
         ],
@@ -560,6 +606,7 @@ const CATEGORIES = {
             "iphones"
         ],
         "attributes": [
+            "vendor",
             "price_tier"
         ],
         "allowed_clauses": [
@@ -567,7 +614,7 @@ const CATEGORIES = {
             "expensive"
         ],
         "product_count": 0,
-        "total_count": 8
+        "total_count": 11
     },
     "smartphones_&_tablets": {
         "id": "d8aed750-6164-4065-881c-652ef888179f",
@@ -583,6 +630,7 @@ const CATEGORIES = {
             "tablets"
         ],
         "attributes": [
+            "vendor",
             "brand",
             "storage"
         ],
@@ -593,7 +641,7 @@ const CATEGORIES = {
             "small_storage"
         ],
         "product_count": 6,
-        "total_count": 17
+        "total_count": 20
     },
     "sound_gadget": {
         "id": "95bdfdb6-47ee-4faf-8f92-d3887ad4cf6b",
@@ -604,6 +652,7 @@ const CATEGORIES = {
         "parent_id": "2ff218a6-65e9-456e-878a-300f1217798f",
         "children": [],
         "attributes": [
+            "vendor",
             "size",
             "material",
             "storage",
@@ -630,6 +679,7 @@ const CATEGORIES = {
             "windows_tablets"
         ],
         "attributes": [
+            "vendor",
             "price_tier"
         ],
         "allowed_clauses": [
@@ -648,6 +698,7 @@ const CATEGORIES = {
         "parent_id": "dfa80cc4-f95a-4c87-949b-8b0438b28949",
         "children": [],
         "attributes": [
+            "vendor",
             "brand",
             "price_tier",
             "color"
@@ -672,7 +723,9 @@ const CATEGORIES = {
         "image_url": "https://production-static.mobilesyrup.com/uploads/2023/06/Vision-pro-header3-scaled.jpg",
         "parent_id": "63efd70e-2daf-46f9-b801-d9da53209930",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 1,
         "total_count": 1
@@ -685,7 +738,9 @@ const CATEGORIES = {
         "image_url": "https://sm.pcmag.com/pcmag_uk/photo/m/microsoft-/microsoft-surface-pro-2024_4tey.jpg",
         "parent_id": "8eb82d64-fb66-4657-9add-14bc2b31c00e",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -698,7 +753,9 @@ const CATEGORIES = {
         "image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiMiUifp6R_aGJgepxIE5BkyDhQUktcxd6BQ&s",
         "parent_id": "cca00d97-3125-4dc3-9141-e6d459764b76",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 0,
         "total_count": 0
@@ -711,7 +768,9 @@ const CATEGORIES = {
         "image_url": "https://xboxwire.thesourcemediaassets.com/sites/2/2024/06/Consoles-eb36182249206cefa827.jpg",
         "parent_id": "2c86882a-c069-47c3-bdb6-9af4849672bb",
         "children": [],
-        "attributes": [],
+        "attributes": [
+            "vendor"
+        ],
         "allowed_clauses": [],
         "product_count": 1,
         "total_count": 1
@@ -989,6 +1048,55 @@ const ATTRIBUTES = {
             "kitchen_appliances",
             "smartphones_&_tablets"
         ]
+    },
+    "vendor": {
+        "id": "daf35101-63ed-4937-8609-cc9c14e65fbe",
+        "code": "vendor",
+        "label": "vendor",
+        "type": "text",
+        "predefined_values": [],
+        "clauses": [],
+        "categories": [
+            "all_in_one_pcs",
+            "android_phones",
+            "android_tablets",
+            "business_laptops",
+            "components",
+            "controller_&_game_pads",
+            "cooling_system",
+            "desktops",
+            "e-readers",
+            "electronics",
+            "flight_stick",
+            "food",
+            "gadgets",
+            "game_consoles",
+            "gaming",
+            "gaming_accessories",
+            "gaming_chairs_&_furnitures",
+            "gaming_desktops",
+            "gaming_laptops",
+            "graphics_card",
+            "ipad",
+            "iphones",
+            "kitchen_appliances",
+            "laptops_&_computers",
+            "new_cat",
+            "nintendo_switch",
+            "phone_accessories",
+            "playstation",
+            "racing_wheels",
+            "ram_&_storage",
+            "smartphones",
+            "smartphones_&_tablets",
+            "sound_gadget",
+            "tablets",
+            "ultrabooks",
+            "vr_&_ar_headset",
+            "windows_tablets",
+            "workstations",
+            "xbox"
+        ]
     }
 };
 
@@ -1079,16 +1187,6 @@ const COLLECTIONS = {
 };
 
 const VENDORS = {
-    "taye's_home_decor": {
-        "id": "afe03e4b-2a3c-4d40-b25b-b2e299174116",
-        "business_name": "Taye's Home Decor",
-        "tag": "Taye's Home Decor",
-        "checkout_style": "whatsapp",
-        "whatsapp_phone": "2349078484751",
-        "delivery_scope": "Local & National",
-        "product_count": 1,
-        "categories": []
-    },
     "dareymi": {
         "id": "397b6118-2a98-4144-aa18-88ef225f69bb",
         "business_name": "Dareymi",
@@ -1096,7 +1194,7 @@ const VENDORS = {
         "checkout_style": "whatsapp",
         "whatsapp_phone": "2347031017216",
         "delivery_scope": "Local & National",
-        "product_count": 1,
+        "product_count": 3,
         "categories": []
     },
     "bola_foods": {
@@ -1108,6 +1206,16 @@ const VENDORS = {
         "delivery_scope": "Local & National",
         "product_count": 1,
         "categories": []
+    },
+    "taye's_home_decor": {
+        "id": "afe03e4b-2a3c-4d40-b25b-b2e299174116",
+        "business_name": "Taye's Home Decor",
+        "tag": "Taye's Home Decor",
+        "checkout_style": "whatsapp",
+        "whatsapp_phone": "2349078484751",
+        "delivery_scope": "Local & National",
+        "product_count": 2,
+        "categories": []
     }
 };
 
@@ -1115,7 +1223,7 @@ const BUSINESSES = { ...VENDORS };
 
 const CATEGORY_INVENTORY = {
     "all-in-one-pcs": 0,
-    "android-phones": 4,
+    "android-phones": 6,
     "android-tablets": 3,
     "business-laptops": 0,
     "components": 0,
@@ -1135,7 +1243,7 @@ const CATEGORY_INVENTORY = {
     "gaming-laptops": 0,
     "graphics-card": 0,
     "ipad": 0,
-    "iphones": 4,
+    "iphones": 5,
     "kitchen-appliances": 1,
     "laptops-computers": 6,
     "new-cat": 7,
@@ -1161,7 +1269,7 @@ const CATEGORY_INVENTORY = {
  */
 function getCategoryTree() {
     const roots = Object.keys(CATEGORIES).filter(k => !CATEGORIES[k].parent_id);
-
+    
     const getAncestors = (categoryKey) => {
         const ancestors = [];
         let current = CATEGORIES[categoryKey];
@@ -1174,7 +1282,7 @@ function getCategoryTree() {
         }
         return ancestors;
     };
-
+    
     const getDescendants = (categoryKey) => {
         const descendants = [];
         const queue = [...(CATEGORIES[categoryKey]?.children || [])];
@@ -1185,7 +1293,7 @@ function getCategoryTree() {
         }
         return descendants;
     };
-
+    
     const getSiblings = (categoryKey) => {
         const cat = CATEGORIES[categoryKey];
         if (!cat || !cat.parent_id) return [];
@@ -1193,12 +1301,12 @@ function getCategoryTree() {
         if (!parentKey) return [];
         return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
     };
-
+    
     const getPath = (categoryKey) => {
         const ancestors = getAncestors(categoryKey);
         return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
     };
-
+    
     const findBySlug = (slug) => {
         return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
     };
@@ -1218,7 +1326,7 @@ function getCategoryTree() {
  */
 function getContextSummary() {
     const tree = getCategoryTree();
-
+    
     return {
         categories: {
             total: Object.keys(CATEGORIES).length,
@@ -1239,7 +1347,7 @@ function getContextSummary() {
                 .filter(([k, c]) => c.total_count === 0)
                 .map(([k, c]) => tree.getPath(k))
         },
-
+        
         attributes: {
             total: Object.keys(ATTRIBUTES).length,
             list: Object.entries(ATTRIBUTES).map(([k, a]) => ({
@@ -1249,7 +1357,7 @@ function getContextSummary() {
                 example_categories: a.categories.slice(0, 3)
             }))
         },
-
+        
         collections: {
             total: Object.keys(COLLECTIONS).length,
             dynamic: Object.entries(COLLECTIONS).filter(([k, c]) => c.is_dynamic).length,
@@ -1259,7 +1367,7 @@ function getContextSummary() {
                 manual_count: c.manual_product_ids.length
             }))
         },
-
+        
         vendors: {
             total: Object.keys(VENDORS).length,
             list: Object.values(VENDORS).map(v => ({
@@ -1272,88 +1380,16 @@ function getContextSummary() {
     };
 }
 
-/**
- * Get LEAN context for System Prompts (Token Efficient)
- * Only exposes Roots, Vendors, and Collections.
- * Forces AI to use tools for deep dives.
- */
-function getLeanContext() {
-    const tree = getCategoryTree();
-
-    // 1. Root Categories (Structure)
-    const roots = tree.roots.map(k => CATEGORIES[k].label);
-
-    // 1b. Active Categories (Where products actually live)
-    // Flattened list of ANY category with products > 0
-    const activeCategories = Object.values(CATEGORIES)
-        .filter(c => c.total_count > 0)
-        .map(c => ({
-            name: c.label,
-            count: c.total_count
-        }));
-
-    // 2. Vendors (with details)
-    const vendors = Object.values(VENDORS).map(v => ({
-        name: v.business_name,
-        checkout: v.checkout_style,
-        phone: v.whatsapp_phone
-    }));
-
-    // 3. Collections (Names only)
-    const collections = Object.values(COLLECTIONS).map(c => c.label);
-
-    // 4. Attributes (Names only, no details)
-    const attributes = Object.values(ATTRIBUTES).map(a => a.label);
-
-    return {
-        store_scope: {
-            root_departments: roots,
-            active_departments: activeCategories,
-            partners: vendors,
-            featured_collections: collections,
-            filters: attributes
-        },
-        policy: "Use 'category.list' to see sub-departments. Use 'product.search' to find items."
-    };
-}
-
-function getUltraLeanContext() {
-    const vendors = Object.values(VENDORS).map(v => ({
-        name: v.business_name,
-        phone: v.whatsapp_phone,
-        checkout: v.checkout_style
-    }));
-
-    const categories = Object.values(CATEGORIES).map(c => ({
-        name: c.label,
-        slug: c.slug,
-        count: c.total_count
-    }));
-
-    const brandValues = (ATTRIBUTES?.brand?.predefined_values || [])
-        .map(b => (b?.value ?? b?.label))
-        .filter(Boolean);
-
-    return {
-        vendors,
-        categories,
-        brands: brandValues
-    };
-}
-
 
 const CATEGORY_TREE = getCategoryTree();
 
-module.exports = {
-    CATEGORIES,
+module.exports = { 
+    CATEGORIES, 
     ATTRIBUTES,
-    COLLECTIONS,
-    VENDORS,
-    BUSINESSES,
+    COLLECTIONS, 
+    VENDORS, 
+    BUSINESSES, 
     CATEGORY_INVENTORY,
     CATEGORY_TREE,
-    CATEGORY_TREE,
-    getContextSummary,
-    getLeanContext,
-    getUltraLeanContext
+    getContextSummary
 };
