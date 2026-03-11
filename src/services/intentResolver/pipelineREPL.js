@@ -84,7 +84,8 @@ ${C.dim}Stage: 4b (Schema Resolver)${C.reset}
             const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterContext, resolutions);
             const globalWords = afterContext.toLowerCase().split(/\s+/).filter(w => w.length > 0);
 
-            statements.forEach((statement, i) => {
+            for (let i = 0; i < statements.length; i++) {
+                const statement = statements[i];
                 if (statements.length > 1) {
                     console.log(`\n${C.bold}${C.white}Statement ${i + 1}: ${C.reset}"${statement.text}"`);
                 }
@@ -115,24 +116,60 @@ ${C.dim}Stage: 4b (Schema Resolver)${C.reset}
                 // 4b. Schema Resolution
                 const resolution = resolveIntent(extractionResult, cleanedText, idfMap, dummyStoreContext);
 
-                console.log(`\n${C.bold}${C.white}Top 5 Candidates via SchemaResolver:${C.reset}`);
+                // --- Transformer Integration ---
+                let finalCandidates = resolution.candidates.map(c => ({
+                    intentName: c.intentName,
+                    score: c.score,
+                    matchedKeywords: c.matchedKeywords,
+                    breakdown: { deterministic: c.score, semantic: 0 }
+                }));
 
-                if (resolution.candidates.length === 0) {
+                try {
+                    const axios = require('axios');
+                    const transformerResponse = await axios.post('http://localhost:3009/classify', {
+                        text: cleanedText
+                    }, { timeout: 1000 });
+
+                    if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
+                        for (const sem of transformerResponse.data.results) {
+                            const semanticPoints = (sem.score || 0) * 10.0;
+                            const existing = finalCandidates.find(c => c.intentName === sem.intentName);
+                            if (existing) {
+                                existing.score += semanticPoints;
+                                existing.breakdown.semantic = semanticPoints;
+                            } else {
+                                finalCandidates.push({
+                                    intentName: sem.intentName,
+                                    score: semanticPoints,
+                                    matchedKeywords: ['semantic'],
+                                    breakdown: { deterministic: 0, semantic: semanticPoints }
+                                });
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.log(`${C.yellow}  ⚠️ Transformer skip: ${err.message}${C.reset}`);
+                }
+
+                finalCandidates.sort((a, b) => b.score - a.score);
+
+                console.log(`\n${C.bold}${C.white}Top 5 Merged Candidates (Deterministic + Semantic):${C.reset}`);
+
+                if (finalCandidates.length === 0) {
                     console.log(`${C.red}  ✗ No matches scored above zero.${C.reset}`);
                 } else {
-                    resolution.candidates.slice(0, 5).forEach((c, idx) => {
-                        const isWinner = resolution.winner && c.intentName === resolution.winner.intentName;
-                        const prefix = isWinner ? `${C.green}  ★ ` : '    ';
+                    finalCandidates.slice(0, 5).forEach((c, idx) => {
                         const score = c.score.toFixed(2);
-                        const fallbackLabel = (idx === 0 && resolution.fallbackUsed) ? ` ${C.yellow}(Fallback)${C.reset}` : '';
+                        const det = c.breakdown.deterministic.toFixed(1);
+                        const sem = c.breakdown.semantic.toFixed(1);
 
-                        console.log(`${prefix}${C.bold}${idx + 1}. ${c.intentName}${C.reset} ${C.dim}Score: ${C.reset}${C.magenta}${score}${C.reset}${fallbackLabel}`);
+                        console.log(`  ${C.bold}${idx + 1}. ${c.intentName}${C.reset} ${C.dim}Score: ${C.reset}${C.magenta}${score}${C.reset} ${C.dim}(Det:${det} + Sem:${sem})${C.reset}`);
                         if (c.matchedKeywords && c.matchedKeywords.length > 0) {
                             console.log(`${C.dim}     Keywords: [${C.reset}${c.matchedKeywords.join(', ')}${C.dim}]${C.reset}`);
                         }
                     });
                 }
-            });
+            }
 
         } catch (err) {
             console.log(`${C.red}  ✗ Pipeline Error: ${err.message}${C.reset}`);

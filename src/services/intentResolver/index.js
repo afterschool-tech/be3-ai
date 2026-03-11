@@ -758,20 +758,72 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
         const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
-        logDebug(`PIPELINE:STAGE4B_SCHEMA [Statement ${i + 1}]`, {
-            _desc: 'Schema resolution — score intents by param fit, IDF keywords, action verbs',
-            _example: '"add drawer to cart" → add_to_cart 4.86, product_search 2.50',
-            winner: resolution.winner ? {
-                intent: resolution.winner.intentName,
-                score: resolution.winner.score,
-                matchedKeywords: resolution.winner.matchedKeywords,
-                matchedParams: resolution.winner.matchedParams
+
+        // ═══════════════════════════════════════════════
+        // Stage 4.5: Semantic Integration (The Transformer Layer)
+        // Fetches semantic candidates and merges their scores with deterministic ones.
+        // ═══════════════════════════════════════════════
+        let finalCandidates = resolution.candidates.map(c => ({
+            intentName: c.intentName,
+            score: c.score,
+            matchedKeywords: c.matchedKeywords,
+            matchedParams: c.matchedParams,
+            breakdown: { deterministic: c.score, semantic: 0 }
+        }));
+
+        try {
+            const axios = require('axios');
+            const transformerResponse = await axios.post('http://localhost:3009/classify', {
+                text: cleanedText
+            }, { timeout: 800 });
+
+            if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
+                const semanticResults = transformerResponse.data.results;
+
+                for (const sem of semanticResults) {
+                    // Mapping: Similarity (0-1) * 10 = Pipeline Points
+                    const semanticPoints = (sem.score || 0) * 10.0;
+
+                    const existing = finalCandidates.find(c => c.intentName === sem.intentName);
+                    if (existing) {
+                        existing.score += semanticPoints;
+                        existing.breakdown.semantic = semanticPoints;
+                    } else {
+                        // Transformer introduced a candidate not found by schemaResolver
+                        finalCandidates.push({
+                            intentName: sem.intentName,
+                            score: semanticPoints,
+                            matchedKeywords: ['semantic'],
+                            matchedParams: {},
+                            breakdown: { deterministic: 0, semantic: semanticPoints }
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            logDebug('PIPELINE:TRANSFORMER_ERROR', {
+                _desc: 'Semantic transformer unreachable or timed out. Proceeding with deterministic scores only.',
+                error: err.message
+            });
+        }
+
+        // Re-sort finalists
+        finalCandidates.sort((a, b) => b.score - a.score);
+
+        const winner = finalCandidates.length > 0 ? finalCandidates[0] : null;
+
+        logDebug(`PIPELINE:STAGE4B_SCHEMA_SEMANTIC [Statement ${i + 1}]`, {
+            _desc: 'Unified resolution — merged deterministic schema fit with transformer semantic similarity',
+            winner: winner ? {
+                intent: winner.intentName,
+                score: winner.score.toFixed(2),
+                deterministic: winner.breakdown.deterministic.toFixed(2),
+                semantic: winner.breakdown.semantic.toFixed(2)
             } : null,
-            topCandidates: resolution.candidates.slice(0, 3).map(c => ({
+            candidates: finalCandidates.slice(0, 3).map(c => ({
                 intent: c.intentName,
                 score: c.score.toFixed(2)
-            })),
-            fallbackUsed: resolution.fallbackUsed
+            }))
         });
 
         // Always update coreference trackers — previous statement entities
@@ -779,21 +831,21 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         prevStatementEntities = extractionResult.entities;
         prevStatementResiduals = extractionResult.residualWords;
 
-        if (!resolution.winner) {
-            logDebug(`PIPELINE:STAGE4B_NO_MATCH [Statement ${i + 1}]`, {
-                _desc: 'No intent matched — schema scorer found no positive candidates',
-                _example: '"do the vibes" → no intent, skip statement',
+        if (!winner) {
+            logDebug(`PIPELINE:STAGE4_NO_MATCH [Statement ${i + 1}]`, {
+                _desc: 'No intent matched — neither schema nor transformer found valid candidates',
                 text: cleanedText,
-                action: 'Skipping — no intent resolved'
+                action: 'Skipping'
             });
             continue;
         }
 
-        // Build lightweight candidates array for parameterExtractor compatibility
-        const candidates = resolution.candidates.map(c => ({
+        // Build lightweight candidates array for parameterExtractor compatibility (remapping finalists)
+        const candidates = finalCandidates.map(c => ({
             intentName: c.intentName,
             matchedKeywords: c.matchedKeywords,
-            keywordScore: c.score
+            keywordScore: c.score,
+            breakdown: c.breakdown
         }));
 
         // Stage 5: Parameter extraction (AI + Deterministic)
@@ -812,10 +864,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Merge schema-matched params with extractor params
         // Schema params take precedence for entities we already identified
-        const mergedParams = { ...resolution.winner.matchedParams, ...extractedParams };
+        const mergedParams = { ...(winner.matchedParams || {}), ...extractedParams };
 
         // Handle negation: invert intent if applicable
-        let resolvedIntentName = resolution.winner.intentName;
+        let resolvedIntentName = winner.intentName;
         let invertedFrom = null;
         if (statement.negated) {
             const intent = intentRegistry.get(resolvedIntentName);
@@ -835,9 +887,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 4c: Context Reconciliation (Delicate mapping)
         const reconciledStmt = contextReconciler.reconcile({
             intentName: resolvedIntentName,
-            score: resolution.winner.score,
+            score: winner.score,
             parameters: mergedParams,
-            matchedKeywords: resolution.winner.matchedKeywords,
+            matchedKeywords: winner.matchedKeywords,
             invertedFrom
         }, state, storeContext);
 
@@ -846,7 +898,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             extractedParams,
             statementText: statement.text,
             stage2Resolutions: resolutions,
-            candidates: resolution.candidates
+            candidates: finalCandidates
         });
 
         // [TEST] Residual chunk analysis — background, log-only, product_search with residuals

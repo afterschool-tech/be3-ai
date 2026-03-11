@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Comprehensive Store Context
- * Generated: 2026-03-07T23:44:00.512Z
+ * Generated: 2026-03-10T06:53:16.950Z
  * 
  * This context powers the AI with:
  * - Hierarchical categories (parent→child)
@@ -12,6 +12,8 @@
  * PHILOSOPHY: Context is ADVISORY, not restrictive.
  * The AI should use this to guide decisions, not hard-filter queries.
  */
+
+const initContextHelpers = require('./contextHelpers');
 
 const CATEGORIES = {
     "all_in_one_pcs": {
@@ -1263,125 +1265,7 @@ const CATEGORY_INVENTORY = {
     "xbox": 1
 };
 
-
-/**
- * Tree Navigation & Context Helpers
- */
-function getCategoryTree() {
-    const roots = Object.keys(CATEGORIES).filter(k => !CATEGORIES[k].parent_id);
-    
-    const getAncestors = (categoryKey) => {
-        const ancestors = [];
-        let current = CATEGORIES[categoryKey];
-        while (current && current.parent_id) {
-            const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === current.parent_id);
-            if (parentKey) {
-                ancestors.unshift(parentKey);
-                current = CATEGORIES[parentKey];
-            } else break;
-        }
-        return ancestors;
-    };
-    
-    const getDescendants = (categoryKey) => {
-        const descendants = [];
-        const queue = [...(CATEGORIES[categoryKey]?.children || [])];
-        while (queue.length > 0) {
-            const child = queue.shift();
-            descendants.push(child);
-            queue.push(...(CATEGORIES[child]?.children || []));
-        }
-        return descendants;
-    };
-    
-    const getSiblings = (categoryKey) => {
-        const cat = CATEGORIES[categoryKey];
-        if (!cat || !cat.parent_id) return [];
-        const parentKey = Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === cat.parent_id);
-        if (!parentKey) return [];
-        return CATEGORIES[parentKey].children.filter(c => c !== categoryKey);
-    };
-    
-    const getPath = (categoryKey) => {
-        const ancestors = getAncestors(categoryKey);
-        return [...ancestors, categoryKey].map(k => CATEGORIES[k]?.label).filter(Boolean).join(' > ');
-    };
-    
-    const findBySlug = (slug) => {
-        return Object.keys(CATEGORIES).find(k => CATEGORIES[k].slug === slug);
-    };
-
-    return {
-        roots,
-        getAncestors,
-        getDescendants,
-        getSiblings,
-        getPath,
-        findBySlug
-    };
-}
-
-/**
- * Get comprehensive context summary for AI prompts
- */
-function getContextSummary() {
-    const tree = getCategoryTree();
-    
-    return {
-        categories: {
-            total: Object.keys(CATEGORIES).length,
-            roots: tree.roots.map(k => ({
-                key: k,
-                label: CATEGORIES[k].label,
-                total_products: CATEGORIES[k].total_count,
-                children: CATEGORIES[k].children.length
-            })),
-            available: Object.entries(CATEGORIES)
-                .filter(([k, c]) => c.total_count > 0)
-                .map(([k, c]) => ({
-                    path: tree.getPath(k),
-                    products: c.total_count,
-                    attributes: c.attributes
-                })),
-            unavailable: Object.entries(CATEGORIES)
-                .filter(([k, c]) => c.total_count === 0)
-                .map(([k, c]) => tree.getPath(k))
-        },
-        
-        attributes: {
-            total: Object.keys(ATTRIBUTES).length,
-            list: Object.entries(ATTRIBUTES).map(([k, a]) => ({
-                label: a.label,
-                has_predefined_values: a.has_predefined_values,
-                supported_by: a.categories.length,
-                example_categories: a.categories.slice(0, 3)
-            }))
-        },
-        
-        collections: {
-            total: Object.keys(COLLECTIONS).length,
-            dynamic: Object.entries(COLLECTIONS).filter(([k, c]) => c.is_dynamic).length,
-            list: Object.entries(COLLECTIONS).map(([k, c]) => ({
-                label: c.label,
-                rules_count: c.rules.length,
-                manual_count: c.manual_product_ids.length
-            }))
-        },
-        
-        vendors: {
-            total: Object.keys(VENDORS).length,
-            list: Object.values(VENDORS).map(v => ({
-                name: v.business_name,
-                products: v.product_count,
-                checkout_style: v.checkout_style,
-                whatsapp: v.whatsapp_phone
-            }))
-        }
-    };
-}
-
-
-const CATEGORY_TREE = getCategoryTree();
+const helpers = initContextHelpers(CATEGORIES, ATTRIBUTES, COLLECTIONS, VENDORS);
 
 module.exports = { 
     CATEGORIES, 
@@ -1390,6 +1274,5 @@ module.exports = {
     VENDORS, 
     BUSINESSES, 
     CATEGORY_INVENTORY,
-    CATEGORY_TREE,
-    getContextSummary
+    ...helpers
 };

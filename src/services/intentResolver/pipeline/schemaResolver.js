@@ -494,32 +494,8 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     // Filter to only positive-scoring candidates
     const validCandidates = scored.filter(c => c.score > 0);
 
-    // ── Phase 5: Fallback to semantic discovery if nothing scored positive ──
+    // ── Phase 5: Fallback to semantic discovery (LEGACY - Removed, now handled in index.js) ──
     let fallbackUsed = false;
-    if (validCandidates.length === 0) {
-        try {
-            const semanticScorer = require('./semanticScorer');
-            if (semanticScorer && semanticScorer.discoverCandidates) {
-                const semanticCandidates = semanticScorer.discoverCandidates(text);
-                for (const sc of semanticCandidates) {
-                    validCandidates.push({
-                        intentName: sc.intentName,
-                        score: sc.keywordScore || sc.score || 1.0,
-                        matchedKeywords: ['semantic'],
-                        matchedParams: {},
-                        requiredFilled: 0,
-                        requiredTotal: 0,
-                        optionalFilled: 0,
-                        keywordScore: sc.keywordScore || sc.score || 1.0,
-                        invertedFrom: null
-                    });
-                }
-                fallbackUsed = true;
-            }
-        } catch (e) {
-            // Semantic scorer not available — that's fine
-        }
-    }
 
     // ── Phase 6: Product search fallback for residual product words ──
     // If we have residual words (likely product names) but no strong winner,
