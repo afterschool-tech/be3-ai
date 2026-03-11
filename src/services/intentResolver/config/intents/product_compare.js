@@ -7,7 +7,7 @@ module.exports = {
     name: 'product_compare',
 
     keywords: [
-        'compare', 'comparison', 'versus', 'vs', 'side by side'
+        'compare', 'comparison', 'versus', 'vs', 'side by side', 'contrast', 'differentiate', 'benchmark', 'differences'
     ],
 
     synonyms: [
@@ -16,7 +16,9 @@ module.exports = {
         'compare with', 'compare to', 'compare against',
         'which is better', 'which one is better',
         'difference between', 'better between',
-        'vs', 'v/s'
+        'vs', 'v/s',
+        'is x better than y', 'compare these', 'show differences', 'compare prices',
+        'contrast features', 'compare models', 'stack them up', 'which one should i get'
     ],
 
     parameters: {

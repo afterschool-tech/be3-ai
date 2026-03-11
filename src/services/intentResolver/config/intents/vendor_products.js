@@ -7,7 +7,7 @@ module.exports = {
     name: 'vendor_products',
 
     keywords: [
-        'vendor', 'seller', 'store', 'shop', 'sell', 'sells', 'from'
+        'vendor', 'seller', 'store', 'shop', 'sell', 'sells', 'from', 'merchant', 'supplier', 'dealer', 'maker', 'brand'
     ],
 
     synonyms: [
@@ -15,7 +15,9 @@ module.exports = {
         'what does this vendor sell', 'products by', 'items from',
         'browse vendor', 'shop products', 'store items',
         "vendor's products", "seller's items", 'from this seller',
-        'from', 'by'
+        'from', 'by',
+        'list from', 'see items from', 'catalogue for', 'products by vendor',
+        'what items does', 'everything from', 'only items by'
     ],
 
     parameters: {

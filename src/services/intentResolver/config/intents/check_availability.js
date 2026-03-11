@@ -7,7 +7,7 @@ module.exports = {
     name: 'check_availability',
 
     keywords: [
-        'available', 'in stock', 'stock', 'availability'
+        'available', 'in stock', 'stock', 'availability', 'exists', 'presence', 'inventory'
     ],
 
     synonyms: [
@@ -15,7 +15,9 @@ module.exports = {
         'is there', 'have you got',
         'any left', 'still available', 'still in stock',
         'out of stock', 'sold out', 'back in stock',
-        'check stock', 'check availability'
+        'check stock', 'check availability',
+        'can i buy this now', 'is it ready', 'do you have it', 'is it still there',
+        'stock level', 'quantity available', 'is this item in'
     ],
 
     parameters: {

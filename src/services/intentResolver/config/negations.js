@@ -17,7 +17,16 @@ const prefixes = [
     'should not',
     "can't",
     'cannot',
-    'not'
+    'not',
+    'neither',
+    'none',
+    'nothing',
+    'nothing of the sort',
+    'not at all',
+    'not really',
+    'not now',
+    'nope',
+    'nah'
 ];
 
 const patterns = [

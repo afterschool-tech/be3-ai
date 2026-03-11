@@ -7,7 +7,7 @@ module.exports = {
     name: 'start_checkout',
 
     keywords: [
-        'checkout', 'pay', 'purchase', 'buy now', 'place order'
+        'checkout', 'pay', 'purchase', 'buy now', 'place order', 'billing', 'transaction', 'settle'
     ],
 
     synonyms: [
@@ -15,7 +15,9 @@ module.exports = {
         'finalize order', 'complete purchase', 'submit order',
         'go to checkout', 'check out', 'pay for my cart',
         'i want to checkout', 'take my money', 'process my order',
-        'ready to buy', 'how do i pay', 'payment'
+        'ready to buy', 'how do i pay', 'payment',
+        'pay now', 'complete my order', 'finish shopping', 'order now',
+        'pay via whatsapp', 'make payment', 'buy my cart', 'confirm purchase'
     ],
 
     parameters: {

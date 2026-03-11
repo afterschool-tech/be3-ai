@@ -15,5 +15,10 @@ module.exports = [
     'be', 'been', 'being', 'am',
     'if', 'or', 'but', 'so', 'yet', 'nor',
     'up', 'out', 'off', 'over', 'under',
-    'very', 'too', 'really', 'quite'
+    'very', 'too', 'really', 'quite',
+    'looking', 'search', 'searching', 'find', 'list', 'show', 'give', 'me',
+    'available', 'stock', 'store', 'shop', 'order', 'buy', 'purchase',
+    'need', 'want', 'tell', 'info', 'details', 'check', 'price',
+    'something', 'someone', 'some', 'any', 'good', 'best', 'popular',
+    'item', 'items', 'product', 'products', 'thing', 'things'
 ];

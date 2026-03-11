@@ -7,7 +7,7 @@ module.exports = {
     name: 'vendor_info',
 
     keywords: [
-        'vendor', 'seller', 'store', 'about', 'details', 'info'
+        'vendor', 'seller', 'store', 'about', 'details', 'info', 'merchant', 'business', 'profile', 'location'
     ],
 
     synonyms: [
@@ -15,7 +15,9 @@ module.exports = {
         'tell me about this vendor', 'vendor information', 'seller info',
         'who is this seller', 'about this store', 'vendor details',
         'learn about vendor', 'store information', 'seller details',
-        'who runs this shop', 'about the seller'
+        'who runs this shop', 'about the seller',
+        'vendor location', 'where is this store', 'is this vendor trusted',
+        'vendor ratings', 'more on this seller', 'who is behind', 'owner info'
     ],
 
     parameters: {

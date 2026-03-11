@@ -7,7 +7,7 @@ module.exports = {
     name: 'order_status',
 
     keywords: [
-        'track', 'status', 'tracking'
+        'track', 'status', 'tracking', 'delivery', 'shipping', 'location', 'arrival'
     ],
 
     synonyms: [
@@ -16,7 +16,9 @@ module.exports = {
         'order status', 'order tracking', 'shipment',
         'shipped', 'arrived', 'when will', 'eta',
         'delivery status', 'check order', 'check my order',
-        'track package', 'package status', 'where is my package'
+        'track package', 'package status', 'where is my package',
+        'order progress', 'shipping updates', 'is my order coming',
+        'when does it arrive', 'trace my order', 'where is it', 'parcel status'
     ],
 
     parameters: {

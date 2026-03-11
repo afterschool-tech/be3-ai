@@ -9,7 +9,7 @@ module.exports = {
     name: 'add_to_cart',
 
     keywords: [
-        'add', 'cart'
+        'add', 'cart', 'basket', 'bag', 'select'
     ],
 
     synonyms: [
@@ -20,7 +20,10 @@ module.exports = {
         'add it to cart', 'add this to cart', 'add that to cart',
         'add it to my cart', 'add this to my cart', 'add that to my cart',
         'buy it', 'purchase it', 'order it',
-        'let me get', 'let me buy', 'grab', 'cop'
+        'let me get', 'let me buy', 'grab', 'cop',
+        'pick this', 'want this', 'need this', 'add to my selection',
+        'put this in', 'get this', 'buy this', 'secure this',
+        'save this to cart', 'move to cart', 'include this'
     ],
 
     parameters: {

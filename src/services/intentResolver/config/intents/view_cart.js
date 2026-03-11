@@ -7,7 +7,7 @@ module.exports = {
     name: 'view_cart',
 
     keywords: [
-        'cart', 'basket', 'bag'
+        'cart', 'basket', 'bag', 'summary', 'contents'
     ],
 
     synonyms: [
@@ -16,7 +16,9 @@ module.exports = {
         'shopping bag', 'shopping basket', 'shopping cart',
         'what did i add', 'what have i added', 'tell me what i got',
         'see my cart', 'open cart', 'check cart', 'can i see my cart',
-        'cart summary', 'items in cart', 'items in my cart', 'view my basket'
+        'cart summary', 'items in cart', 'items in my cart', 'view my basket',
+        'review my order', 'my selection', 'checkout list', 'cart details',
+        'show my bag', 'what am i buying', 'my shopping list', 'items i picked'
     ],
 
     parameters: {},
