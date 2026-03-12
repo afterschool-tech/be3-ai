@@ -19,11 +19,15 @@ module.exports = {
         'show commands', 'what is possible', 'bot guide'
     ],
 
-    parameters: {},
+    parameters: {
+        product_name: { type: 'string', required: false, description: 'Optional product name to provide help for' }
+    },
 
     toolName: 'conversation.help',
 
-    paramMap: {},
+    paramMap: {
+        product_name: 'product_name'
+    },
 
     minProducts: 0,
     maxProducts: 0,

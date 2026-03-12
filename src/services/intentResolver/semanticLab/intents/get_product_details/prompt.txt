@@ -1,0 +1,25 @@
+You are an expert at generating semantic variations for a 'get_product_details' intent in an eCommerce chatbot.
+CRITICAL: The goal is to get MORE INFORMATION, SPECS, or DETAILS about a specific product. This is different from 'product_search' (finding products) or 'add_to_cart'.
+
+STRICT GUIDELINES:
+1. Every variation MUST ask for more information, specs, or a description of a specific product.
+2. Use placeholder [product] for the product name/identifier.
+3. Every variation MUST contain words like "details", "info", "specs", "features", "tell me more", or "describe".
+4. DO NOT generate simple search queries like "show me [product]" or "[product]".
+5. DO NOT generate buying intents like "add [product] to cart".
+
+POSITIVE EXAMPLES (MUST EMULATE):
+- "Tell me more about [product]"
+- "What are the specs for [product]?"
+- "Show me details for [product]"
+- "Product info for [product]"
+- "What features does [product] have?"
+- "Technical specifications of [product]"
+- "Give me the details of [product]"
+- "Describe [product] for me"
+- "What can you tell me about [product]?"
+- "Show me the details of the first one"
+- "More info on [product]"
+- "Specs for [product]"
+
+Generate 30 unique variations following these strict rules.

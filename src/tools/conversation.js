@@ -8,8 +8,31 @@ const { CATEGORIES, VENDORS } = require('../context/storeContext');
 const conversationTools = {
     'conversation.help': {
         description: 'Provide help and usage instructions to the user. Use this when the user asks for help or what you can do.',
-        params: {},
+        params: {
+            product_name: { type: 'string', required: false, description: 'Optional product name to provide help for' }
+        },
         handler: async (params, context) => {
+            const { product_name } = params;
+            if (product_name) {
+                try {
+                    const productTools = require('./product');
+                    const details = await productTools['product.getDetails'].handler({ product_id: product_name }, context);
+                    
+                    if (details.product) {
+                        return {
+                            message: `I found details for **${details.product.name}**. I can help you with specific information or adding it to your cart.`,
+                            product: details.product,
+                            whatsapp: details.whatsapp
+                        };
+                    }
+                } catch (e) {
+                    console.error('[Conversation] Failed to fetch product details for help:', e.message);
+                }
+
+                return {
+                    message: `I can help you find more information about **${product_name}** or help you add it to your cart.\n\nYou can try saying:\n- 'Tell me more about ${product_name}'\n- 'Add ${product_name} to my cart'\n- 'Compare ${product_name} with other items'`
+                };
+            }
             return {
                 message: "I can help you with finding products, checking prices, tracking orders, and managing your cart.\n\nTry asking things like:\n- 'Show me gaming laptops'\n- 'Track my order #12345'\n- 'What's in my cart?'\n- 'Find cheap headphones'"
             };

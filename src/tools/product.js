@@ -980,12 +980,23 @@ const productTools = {
         handler: async (params, context) => {
             const { product_id } = params;
             const resolvedId = await resolveProduct(product_id, context);
-            if (!resolvedId) return { error: "Could not identify product" };
+
+            if (!resolvedId) {
+                return { 
+                    message: `I couldn't find a product matching "${product_id}". Would you like me to search for it instead?`,
+                    whatsapp: {
+                        type: 'button',
+                        buttons: [
+                            { id: product_id, title: `Search for "${product_id.substring(0, 15)}..."` }
+                        ]
+                    }
+                };
+            }
 
             const result = await callBackendAPI(`/products/storefront/products/${resolvedId}`);
 
             if (!result.success || !result.data.product) {
-                return { error: `Product not found: ${resolvedId}` };
+                return { error: `I couldn't find the details for this product right now. Please try again or search for something else.` };
             }
 
             const rawProduct = result.data.product;
@@ -1073,7 +1084,8 @@ const productTools = {
 
             const buttons = [
                 { id: `__cart:add:${resolvedId}__`, title: 'Add to cart' },
-                { id: `__product:compare:${resolvedId}__`, title: 'Compare' }
+                { id: `__product:compare:${resolvedId}__`, title: 'Compare' },
+                { id: `show similar to ${leanProduct.name || resolvedId}`, title: 'Show similar' }
             ];
 
             // Vendor rule: only show Vendor info when a tag exists; if no tag, product has no vendor.
@@ -1388,10 +1400,13 @@ const productTools = {
             query: { type: 'string', description: 'Product name/query to scope the facet search' },
             category: { type: 'string', description: 'Category to scope the facet search (ID or slug)' },
             vendor: { type: 'string', description: 'Vendor to scope the facet search' },
-            attributes: { type: 'object', description: 'Dynamic attribute filters (e.g., { "b:i": "infinix" })' }
+            attributes: { type: 'object', description: 'Dynamic attribute filters (e.g., { "b:i": "infinix" })' },
+            product_id: { type: 'string', description: 'Specific product ID to scope the facet search' },
+            _resolved_product_id: { type: 'string', description: 'Internal resolved product ID' }
         },
         handler: async (params, context) => {
-            const { facet_target, query, category, vendor, attributes = {} } = params;
+            const { facet_target, query, category, vendor, attributes = {}, product_id, _resolved_product_id } = params;
+            const targetId = _resolved_product_id || product_id;
 
             // ── 1. Resolve facet_target (plural → canonical) ──
             let canonicalCode = facet_target ? facet_target.toLowerCase().trim() : null;
@@ -1419,6 +1434,68 @@ const productTools = {
             const attrCode = attrDef ? attrDef.code : canonicalCode;
             const resolvedLabel = attrDef ? attrDef.label : (canonicalCode || 'attribute');
 
+            // ── 1.2. Short-circuit: Check State Cache first (Bug 2 Fix) ──
+            if (targetId && context?.sessionId) {
+                try {
+                    const state = await stateManager.getState(context.sessionId);
+                    
+                    // Strategy A: Check search_context.product_attributes_map (explicitly populated during search)
+                    const sc = state?.search_context;
+                    if (sc?.product_attributes_map && sc.product_attributes_map[targetId]) {
+                        const pAttrs = sc.product_attributes_map[targetId];
+                        const val = pAttrs[attrCode] || pAttrs[canonicalCode] || pAttrs[resolvedLabel.toLowerCase()];
+                        if (val) {
+                            const isVendor = attrCode === 'vendor' || canonicalCode === 'vendor' || resolvedLabel.toLowerCase() === 'vendor';
+                            const btnId = isVendor ? `__vendor:products:${encodeBase64Url(val)}__` : '__nav:results__';
+                            const btnTitle = isVendor ? `See ${val}'s products` : 'See products';
+
+                            return {
+                                message: `The **${resolvedLabel}** for this product is **${val}**.`,
+                                facet_target: resolvedLabel,
+                                options: [{ value: val, count: 1 }],
+                                scope: 'product',
+                                scope_label: targetId,
+                                source: 'state_cache',
+                                whatsapp: {
+                                    type: 'button',
+                                    buttons: [{ id: btnId, title: btnTitle }]
+                                }
+                            };
+                        }
+                    }
+
+                    // Strategy B: Check last_search results
+                    const lastResults = state?.product_context?.last_search?.results;
+                    if (Array.isArray(lastResults)) {
+                        const product = lastResults.find(p => (p.id === targetId || p.handle === targetId || p.product_id === targetId));
+                        if (product) {
+                            const pAttrs = product.attributes || product.metadata?.attributes || {};
+                            const val = pAttrs[attrCode] || pAttrs[canonicalCode] || pAttrs[resolvedLabel.toLowerCase()];
+                            if (val) {
+                                const isVendor = attrCode === 'vendor' || canonicalCode === 'vendor' || resolvedLabel.toLowerCase() === 'vendor';
+                                const btnId = isVendor ? `__vendor:products:${encodeBase64Url(val)}__` : '__nav:results__';
+                                const btnTitle = isVendor ? `See ${val}'s products` : 'See products';
+
+                                return {
+                                    message: `The **${resolvedLabel}** for **${product.name || product.title}** is **${val}**.`,
+                                    facet_target: resolvedLabel,
+                                    options: [{ value: val, count: 1 }],
+                                    scope: 'product',
+                                    scope_label: product.name || targetId,
+                                    source: 'state_cache',
+                                    whatsapp: {
+                                        type: 'button',
+                                        buttons: [{ id: btnId, title: btnTitle }]
+                                    }
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('[product.facets] Cache check failed:', e.message);
+                }
+            }
+
             // ── 2. Build search params — category is already resolved by pipeline ──
             const CATS = context.CATEGORIES || CATEGORIES || {};
             const catKey = category ? Object.keys(CATS).find(k => CATS[k].id === category || CATS[k].slug === category) : null;
@@ -1432,6 +1509,8 @@ const productTools = {
             searchParams.append('type', 'product');
             if (queryStr) searchParams.append('q', queryStr);
             if (category) searchParams.append('category_id', cat?.slug || category);
+            if (targetId) searchParams.append('product_id', targetId); // Bug 1 Fix: Scope to product ID if present
+            
             if (vendor) {
                 const resolvedVendor = normalizeVendor(vendor);
                 if (resolvedVendor) searchParams.append('tag', resolvedVendor);
@@ -1530,8 +1609,13 @@ const productTools = {
             // entirely and map directly to product.search in the pipeline's Stage 0.
             const topOptions = options.slice(0, 3);
             const resolvedAttrCode = targetFacet.code || canonicalCode || attrCode;
+            const isVendorFacet = resolvedAttrCode === 'vendor' || canonicalCode === 'vendor' || attrCode === 'vendor';
             const whatsappButtons = topOptions.map(o => {
                 const encodedValue = encodeURIComponent(String(o.value));
+                if (isVendorFacet) {
+                    const vendorKey = encodeBase64Url(o.value);
+                    return { id: `__vendor:products:${vendorKey}__`, title: `See ${o.value}'s products` };
+                }
                 // Include category only when one is available so the search stays scoped.
                 const tokenId = category
                     ? `__facet:select:${resolvedAttrCode}:${encodedValue}:${category}__`

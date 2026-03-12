@@ -13,6 +13,8 @@ const stack = require('../src/services/intentResolver/pipeline/stack');
 const storeContext = require('../src/context/storeContext');
 const { CLAUSES } = require('../src/context/clauses');
 const axios = require('axios');
+const { generateResponseFromTools } = require('../src/core/personalityLayer');
+const { extractImages } = require('../src/utils/imageInjector');
 
 // ═══════════════════════════════════════════════════
 //  Constants & Config
@@ -21,6 +23,8 @@ const TEST_SESSION_ID = 'repl_test_session';
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
 const TENANT_ID = process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713';
 let verbose = false;
+let chatMode = false;
+let conversationHistory = [];
 
 async function clearBackendCart(sessionId) {
     const headers = {
@@ -389,6 +393,7 @@ async function initializeSession() {
     console.log(`${C.dim}Initializing REPL session...${C.reset}`);
     await stateManager.clearState(TEST_SESSION_ID);
     accumulatedExecutionResults = [];
+    conversationHistory = [];
 }
 
 // ═══════════════════════════════════════════════════
@@ -428,6 +433,11 @@ ${C.bold}${C.cyan}╔═══════════════════�
         if (input.startsWith(':verbose')) {
             verbose = !verbose;
             console.log(`${C.green}  ✓ Verbose: ${verbose ? 'on' : 'off'}${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === ':chat') {
+            chatMode = !chatMode;
+            console.log(`${C.green}  ✓ Chat mode: ${chatMode ? 'on' : 'off'}${C.reset}\n`);
             rl.prompt(); return;
         }
         if (input === ':filelog') {
@@ -500,6 +510,9 @@ ${C.bold}${C.cyan}╔═══════════════════�
                 });
             }
 
+            // Track conversation history for LLM
+            conversationHistory.push({ role: 'user', text: input });
+
             // Zero AI: deterministic + structural extraction only, no AI fallback
             // We use resolveDeterministic (like server.js) so we get the DETERMINISTIC_RESOLVER log traces
             const resolverOutput = await resolveDeterministic(input, state);
@@ -557,8 +570,29 @@ ${C.bold}${C.cyan}╔═══════════════════�
                 printResult(result, consolidated);
                 const reply = buildSimpleReply(input, result, consolidated);
                 if (reply) {
-                    console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+                    if (chatMode) {
+                        console.log(`${C.dim}  (Deterministic reply available: "${reply}")${C.reset}`);
+                    } else {
+                        console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+                    }
                 }
+                
+                if (chatMode) {
+                    console.log(`${C.dim}  Generating AI personality response...${C.reset}`);
+                    const aiReply = await generateResponseFromTools(input, consolidated, conversationHistory);
+                    const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
+                    const sanitized = aiReply.replace(idPattern, '').replace(/\*\*(.*?)\*\*/g, '*$1*').trim();
+                    console.log(`${C.white}  🤖 AI Bot: ${sanitized}${C.reset}\n`);
+                    conversationHistory.push({ role: 'ai', text: sanitized });
+                } else if (reply) {
+                    conversationHistory.push({ role: 'ai', text: reply });
+                }
+
+                const images = extractImages(consolidated);
+                if (images.length > 0) {
+                    console.log(`${C.dim}  Images: [${images.join(', ')}]${C.reset}`);
+                }
+
                 console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);
                 rl.prompt();
                 return;
@@ -692,9 +726,31 @@ ${C.bold}${C.cyan}╔═══════════════════�
             const consolidated = [...accumulatedExecutionResults];
             printResult(result, consolidated);
             const reply = buildSimpleReply(input, result, consolidated);
+            
             if (reply) {
-                console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+                if (chatMode) {
+                    console.log(`${C.dim}  (Deterministic reply available: "${reply}")${C.reset}`);
+                } else {
+                    console.log(`${C.white}  Bot: ${reply}${C.reset}\n`);
+                }
             }
+
+            if (chatMode) {
+                console.log(`${C.dim}  Generating AI personality response...${C.reset}`);
+                const aiReply = await generateResponseFromTools(input, consolidated, conversationHistory);
+                const idPattern = /([\*_]*\s*\(ID[:\s]\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(Item:\s*[a-z0-9-]*\)\s*[\*_]*|[\*_]*\s*\(#[a-z0-9-]+\)\s*[\*_]*|[\*_]*\s*\([a-z0-9-]{8,}\)\s*[\*_]*|[\*_]*\s*#[a-z0-9-]{8,}\s*[\*_]*)/gi;
+                const sanitized = aiReply.replace(idPattern, '').replace(/\*\*(.*?)\*\*/g, '*$1*').trim();
+                console.log(`${C.white}  🤖 AI Bot: ${sanitized}${C.reset}\n`);
+                conversationHistory.push({ role: 'ai', text: sanitized });
+            } else if (reply) {
+                conversationHistory.push({ role: 'ai', text: reply });
+            }
+
+            const images = extractImages(consolidated);
+            if (images.length > 0) {
+                console.log(`${C.dim}  Images: [${images.join(', ')}]${C.reset}`);
+            }
+
             console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);
 
             // If stack is cleared and no microstate remains, reset accumulator for next interaction.

@@ -1,0 +1,52 @@
+{
+  "get_product_details": {
+    "variations": [
+      "tell me more about [product]",
+      "what are the specs for [product]",
+      "show me details for [product]",
+      "product info for [product]",
+      "what features does [product] have",
+      "technical specifications of [product]",
+      "give me the details of [product]",
+      "tell me about [product]",
+      "more info on [product]",
+      "i want to know more about [product]",
+      "show features of [product]",
+      "describe [product]",
+      "specs for [product]",
+      "what can you tell me about [product]",
+      "is there more information on [product]",
+      "show me the details of the first one",
+      "tell me more",
+      "what are the specs?",
+      "tell me more about this product",
+      "detailed info for [product]",
+      "what are the key features of [product]",
+      "can you describe [product] in detail?",
+      "I need the technical specs for [product]",
+      "show me the full record for [product]",
+      "parameters of [product]",
+      "what is the description for [product]",
+      "give me the lowdown on [product]",
+      "specs on the [product]",
+      "help me understand the features of [product]",
+      "tell me about the properties of [product]",
+      "what are the main details for [product]?",
+      "I want to see the product details for [product]",
+      "can you provide more info on [product]?",
+      "what's the deal with [product]? show me specs",
+      "full specifications for [product]",
+      "I want to know the specs of [product]",
+      "tell me everything about [product]",
+      "give me a detailed overview of [product]",
+      "details and information for [product]",
+      "what are the specifications of this [product]?",
+      "show me what [product] has to offer",
+      "I'm looking for details about [product]"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-03-12T06:47:00.000Z"
+    }
+  }
+}

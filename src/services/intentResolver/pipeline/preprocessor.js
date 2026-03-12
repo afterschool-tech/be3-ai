@@ -111,6 +111,22 @@ function splitStatements(text) {
     return statements;
 }
 
+const acknowledgments = require('../config/acknowledgments');
+const ACKS = new Set(acknowledgments);
+
+/**
+ * Check if a statement contains ONLY social noise/acknowledgments.
+ * "yes" → true
+ * "yes please" → true
+ * "i need phones" → false
+ */
+function isSocialNoise(stmt) {
+    const cleaned = stmt.toLowerCase().replace(/[^\w\s]/g, '').trim();
+    if (!cleaned) return false;
+    const words = cleaned.split(/\s+/);
+    return words.every(w => ACKS.has(w));
+}
+
 /**
  * Main preprocessing pipeline.
  * Takes normalized, fuzzy-corrected, context-resolved text.
@@ -120,7 +136,18 @@ function preprocess(text) {
     const normalized = normalize(text);
     const rawStatements = splitStatements(normalized);
 
-    const statements = rawStatements.map(stmt => {
+    // Filter out statements that are pure social noise if there are other statements.
+    // This prevents "yes, i want phones" from being marked as multi-intent.
+    let filteredStatements = rawStatements;
+    if (rawStatements.length > 1) {
+        filteredStatements = rawStatements.filter(stmt => !isSocialNoise(stmt));
+        // If everything was noise, keep the first one so we don't return an empty array.
+        if (filteredStatements.length === 0) {
+            filteredStatements = [rawStatements[0]];
+        }
+    }
+
+    const statements = filteredStatements.map(stmt => {
         const { negated, cleanText } = detectNegation(stmt);
         return { text: cleanText, negated };
     });
