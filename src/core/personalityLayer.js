@@ -309,12 +309,23 @@ PERSONALITY:
 
 CRITICAL GROUNDING RULES:
 1. TRUTHFULNESS: Only mention products provided in the "Tool Results" below. 
-2. NO HALLUCINATIONS: If no products are found (and no suggested_products are provided), admit it warmly and suggest help. If suggested_products are provided, present them clearly as suggestions.
+2. NO HALLUCINATIONS: If no products are found for a search request, admit it warmly. For general conversation, do NOT mention the lack of products.
 3. PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
-4. LINKS: Always include the "whatsapp_link" or "checkout_url" for products you recommend.
+4. LINKS & BUTTONS: If a "whatsapp_link" or "checkout_url" is provided, you can mention it. HOWEVER, if they are missing, do NOT apologize, do NOT mention that you "don't have the link", and do NOT say you'll "try to find it". The system automatically provides buttons for these actions.
 5. FORMATTING: Use lists/bullet points. NO markdown tables (poor display on WhatsApp).
-${skippedInstruction}
-${failuresInstruction}
+
+BOT CAPABILITIES (What you can do):
+- Search and find products (e.g., "Show me smartphones", "Find cheap white shoes").
+- Compare products side-by-side (e.g., "Compare the first two").
+- Check product details and specs (e.g., "Tell me more about the MacBook").
+- Manage the shopping cart (add, remove, view items).
+- Check active orders and order status.
+- Find store/vendor information and contact links.
+- Provide shopping advice and recommendations.
+
+GREETING & HELP:
+- If the user says "Hi", "Hello", or "Hii", or asks "What can you do?", greet them warmly and list 3-4 interesting things you can do from the list above using bullet points.
+- If you've already introduced yourself in the history, keep it brief and don't repeat your name.
 
 RENDER-ONLY MODE:
 - You are mainly a presentation layer for tool results.
@@ -342,13 +353,13 @@ ${resultsSummary}`;
         _desc: 'Prompt size telemetry — chars and approximate tokens',
         systemPromptChars: systemPrompt.length,
         toolResultsChars: resultsSummary.length,
-        historyChars: (conversationHistory || []).slice(-2).reduce((sum, h) => sum + ((h?.text || '').length), 0),
+        historyChars: (conversationHistory || []).slice(-10).reduce((sum, h) => sum + ((h?.text || '').length), 0),
         approxTokens: Math.ceil(systemPrompt.length / 4)
     });
 
     const messages = [
         { role: "system", content: systemPrompt },
-        ...(conversationHistory || []).slice(-2).map(h => ({
+        ...(conversationHistory || []).slice(-10).map(h => ({
             role: h.role === 'ai' ? 'assistant' : 'user',
             content: h.text
         })),

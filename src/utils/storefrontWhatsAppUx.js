@@ -31,7 +31,8 @@ function buildProductCards(products) {
             text: buildCardText(p),
             buttons: [
                 { id: `__cart:add:${p.id}__`, title: 'Add to cart' },
-                { id: `__product:details:${p.id}__`, title: 'More info' }
+                { id: `__product:details:${p.id}__`, title: 'More info' },
+                { id: `__product:similar:${p.id}__`, title: 'Show similar' }
             ]
         };
     });

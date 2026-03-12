@@ -332,6 +332,26 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
+    // Stage 0d½: Engineered product similarity buttons
+    // Product card "Show similar" uses: __product:similar:<productId>__
+    if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'similar' && userId) {
+        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (productId) {
+            return {
+                intents: [],
+                tools: [{
+                    tool: 'product.search',
+                    params: { similar_to: productId },
+                    reason: 'Engineered product similarity search'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: [],
+                engineered_product_similar: true
+            };
+        }
+    }
+
 
     // Stage 0e: Engineered product compare buttons (no microstate required)
     // Product details screen "Compare" uses: __product:compare:<productId>__

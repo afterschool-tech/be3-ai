@@ -86,9 +86,20 @@ function normalizeParameters(resolvedIntents, storeContext) {
                     // Example: price_tier affordable -> attribute.p:p=budget,midrange
                     try {
                         const attrKey = targetAttrKey;
-                        const attrMeta = attributesContext ? attributesContext[attrKey] : null;
-                        const attrCode = attrMeta?.code;
+                        // Robust lookup: try key as is, then with underscores, then by label match
+                        let attrMeta = attributesContext ? attributesContext[attrKey] : null;
+                        if (!attrMeta && attributesContext) {
+                            const snakeKey = attrKey.replace(/\s+/g, '_');
+                            attrMeta = attributesContext[snakeKey];
+                            if (!attrMeta) {
+                                // Last resort: search by label
+                                attrMeta = Object.values(attributesContext).find(a => 
+                                    a.label.toLowerCase() === attrKey.toLowerCase()
+                                );
+                            }
+                        }
 
+                        const attrCode = attrMeta?.code;
                         const clauseLabelLower = String(clause.label || clauseId).toLowerCase().trim();
                         const attrClauseDefs = Array.isArray(attrMeta?.clauses) ? attrMeta.clauses : [];
                         const matchingAttrClause = attrClauseDefs.find(def =>
@@ -105,17 +116,21 @@ function normalizeParameters(resolvedIntents, storeContext) {
                                 mapped = true;
                             }
                         }
+
+                        // Fallback within deterministic meta: map to attribute raw code, 
+                        // but prefer clause.label over raw word for semantic matches.
+                        if (!mapped && attrMeta) {
+                            const finalValue = canonicalizeValue(clauseWord, attrMeta, clause);
+                            const targetKey = attrMeta.code || attrMeta.id || attrKey;
+                            params.attributes[targetKey] = finalValue;
+                            mapped = true;
+                        }
                     } catch (_) { }
 
-                    // Fallback: map to attribute raw key, but canonicalize against predefined values when possible.
+                    // Global Fallback: use raw key from clause
                     if (!mapped) {
-                        const attrKey = targetAttrKey;
-                        const attrMeta = attributesContext ? attributesContext[attrKey] : null;
-                        const finalValue = canonicalizeValue(clauseWord, attrMeta, clause);
-
-                        // Use attribute code if available, fallback to key
-                        const targetKey = attrMeta?.code || attrKey;
-                        params.attributes[targetKey] = finalValue;
+                        const finalValue = clause.attribute === 'brand' ? clauseWord : (clause.label || clauseWord);
+                        params.attributes[targetAttrKey] = finalValue;
                     }
                     console.log(`[ParameterNormalizer] 🔄 Mapped clause to attribute:`, {
                         clauseId: clauseId,
