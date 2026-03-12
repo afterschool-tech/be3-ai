@@ -390,8 +390,13 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
                 baseFromEntities.clause_words.push({ word: ent.value, clauseId: ent.clauseId });
             }
 
+            if (ent.type === 'facet_target') {
+                baseFromEntities.facet_target = ent.value; // e.g., "storage"
+                baseFromEntities.target_facet = ent.attribute; // e.g., "storage" attribute code
+            }
+
             // Shield these pre-detected semantic words from becoming part of the product name fallback
-            if (['clause', 'brand', 'category'].includes(ent.type) && ent.value) {
+            if (['clause', 'brand', 'category', 'facet_target'].includes(ent.type) && ent.value) {
                 const entWords = String(ent.value).toLowerCase().split(/\s+/);
                 // Note: we can't easily add to excludeSet here because extractDeterministic
                 // defines its own internal excludeSet. But we can add them to a global exclusion array

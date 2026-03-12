@@ -23,6 +23,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
     const initiator = options?.initiator || 'unknown';
     const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
     const returnMeta = !!options?.returnMeta;
+    const semanticContext = options?.semanticContext || null;
 
     const result = (id, meta) => {
         if (!id) return null;
@@ -89,9 +90,9 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         .map(t => t.trim())
         .filter(Boolean);
 
-    // ── Alias Inventory Override ──
-    // If any token/variant is explicitly aliased to a category, short-circuit.
-    // This supersedes Layer 2 scoring ("human truth" mapping).
+    // ── Alias Inventory Override (CONDITIONAL FALLBACK) ──
+    // If the transformer is available, aliasing is SKIPPED (transformer provides semantic coverage).
+    // If the transformer is unreachable, aliasing activates as the default behavior.
     const resolveAliasTargetId = (keyOrId) => {
         if (!keyOrId) return null;
         const k = String(keyOrId).trim();
@@ -130,49 +131,77 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         tokenVariants.add(pluralize(singularize(t)));
     }
 
-    if (CATEGORY_ALIASES && typeof CATEGORY_ALIASES === 'object') {
-        for (const [targetKeyOrId, aliases] of Object.entries(CATEGORY_ALIASES)) {
-            if (!Array.isArray(aliases) || aliases.length === 0) continue;
-            const targetId = resolveAliasTargetId(targetKeyOrId);
-            if (!targetId) continue;
-            for (const a of aliases) {
-                const alias = normalizeLoose(a);
-                if (!alias) continue;
-                if (tokenVariants.has(alias) || (inputLoose && inputLoose === alias)) {
-                    if (debug) {
-                        const resolved = Object.values(cats).find(c => c && c.id === targetId);
-                        logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
-                            _type: 'CATEGORY_RESOLUTION_SIMPLE',
-                            _icon: '🎭',
-                            _color: '#10b981',
-                            _desc: 'normalizeCategory — alias inventory override',
-                            initiator,
-                            input: cat,
+    const transformerAvailable = !!semanticContext?.available;
+
+    if (!transformerAvailable) {
+        // Transformer DOWN → Alias takes precedence (default behavior)
+        if (debug) {
+            logDebug('NORMALIZE_CATEGORY:ALIAS_STATUS', {
+                _icon: '🔄',
+                _desc: 'Alias matching ACTIVATED — transformer unavailable, aliasing is primary fallback',
+                initiator,
+                input: cat,
+                reason: 'TRANSFORMER_DOWN'
+            });
+        }
+
+        if (CATEGORY_ALIASES && typeof CATEGORY_ALIASES === 'object') {
+            for (const [targetKeyOrId, aliases] of Object.entries(CATEGORY_ALIASES)) {
+                if (!Array.isArray(aliases) || aliases.length === 0) continue;
+                const targetId = resolveAliasTargetId(targetKeyOrId);
+                if (!targetId) continue;
+                for (const a of aliases) {
+                    const alias = normalizeLoose(a);
+                    if (!alias) continue;
+                    if (tokenVariants.has(alias) || (inputLoose && inputLoose === alias)) {
+                        if (debug) {
+                            const resolved = Object.values(cats).find(c => c && c.id === targetId);
+                            logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
+                                _type: 'CATEGORY_RESOLUTION_SIMPLE',
+                                _icon: '🎭',
+                                _color: '#10b981',
+                                _desc: 'normalizeCategory — alias inventory override (transformer down)',
+                                initiator,
+                                input: cat,
+                                matchedAlias: a,
+                                aliasStatus: 'ACTIVATED_TRANSFORMER_DOWN',
+                                target: {
+                                    id: targetId,
+                                    label: resolved?.label,
+                                    slug: resolved?.slug
+                                },
+                                context: {
+                                    inputLoose,
+                                    variants: Array.from(tokenVariants).slice(0, 5)
+                                }
+                            });
+                        }
+                        return result(targetId, {
+                            layer: 'alias',
                             matchedAlias: a,
-                            target: {
-                                id: targetId,
-                                label: resolved?.label,
-                                slug: resolved?.slug
-                            },
-                            context: {
-                                inputLoose,
-                                variants: Array.from(tokenVariants).slice(0, 5)
-                            }
+                            matchedAliasLoose: alias,
+                            inputLoose,
+                            aliasStatus: 'ACTIVATED_TRANSFORMER_DOWN',
+                            usedWords: inputTokens.filter(t => {
+                                const tSing = singularize(t);
+                                const variants = [t.toLowerCase(), tSing, pluralize(tSing)];
+                                return variants.some(v => alias.includes(v));
+                            })
                         });
                     }
-                    return result(targetId, {
-                        layer: 'alias',
-                        matchedAlias: a,
-                        matchedAliasLoose: alias,
-                        inputLoose,
-                        usedWords: inputTokens.filter(t => {
-                            const tSing = singularize(t);
-                            const variants = [t.toLowerCase(), tSing, pluralize(tSing)];
-                            return variants.some(v => alias.includes(v));
-                        })
-                    });
                 }
             }
+        }
+    } else {
+        // Transformer UP → Alias SKIPPED
+        if (debug) {
+            logDebug('NORMALIZE_CATEGORY:ALIAS_STATUS', {
+                _icon: '⏭️',
+                _desc: 'Alias matching SKIPPED — transformer available, semantic coverage active',
+                initiator,
+                input: cat,
+                reason: 'SKIPPED_TRANSFORMER_AVAILABLE'
+            });
         }
     }
 
@@ -343,7 +372,15 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 
     const inferWordsRaw = tokenize(catLower);
     const inferWords = inferWordsRaw.filter(w => w.length >= MIN_LAYER2_TOKEN_LEN && !LAYER2_STOPWORDS.has(w));
-    if (inferWords.length === 0) return null;
+
+    // Refactored early exit: Allow loop if we have semantic or hint context
+    const hasSemanticContext = !!(semanticContext?.available && semanticContext.entities?.category?.length > 0);
+    const hasHints = !!(options?.categoryHints && options.categoryHints.length > 0);
+
+    if (inferWords.length === 0 && !hasSemanticContext && !hasHints) {
+        return null;
+    }
+
     const scored = [];
     for (const c of Object.values(cats)) {
         if (!c || (!c.label && !c.slug)) continue;
@@ -417,7 +454,42 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             }
         }
 
-        if (wordMatches.length === 0) continue;
+        // 4. HINT Membership Boost: Adder for contextually identified categories
+        let hintBoost = 0;
+        if (options.categoryHints && Array.isArray(options.categoryHints)) {
+            if (options.categoryHints.includes(c.id) || options.categoryHints.includes(c.slug)) {
+                hintBoost = 20;
+            }
+        }
+
+        // 5. SEMANTIC Transformer Boost & Tier Promotion
+        let semanticBoost = 0;
+        let semanticTier = 0;
+        if (semanticContext?.available && semanticContext.entities?.category) {
+            // Match against category slug, ID, or label
+            const matchedKey = semanticContext.entities.category.find(
+                k => k === c.id || k === c.slug || k === c.label?.toLowerCase()
+            );
+
+            if (matchedKey) {
+                // Look up confidence score in the map (keys are category:key)
+                const confKey = `category:${matchedKey}`;
+                const score = semanticContext.confidence?.[confKey] || 0.85;
+
+                // Scale semantic score into pipeline points (multiplier = 50)
+                semanticBoost = score * 50;
+
+                // --- Semantic Tier Promotion ---
+                if (score >= 0.90) semanticTier = 4;
+                else if (score >= 0.75) semanticTier = 3;
+                else if (score >= 0.60) semanticTier = 2;
+                else if (score >= 0.50) semanticTier = 1;
+            }
+        }
+
+        // Skip if there's ZERO proof this category matches (no lexical, no hint, no semantic)
+        if (wordMatches.length === 0 && hintBoost === 0 && semanticBoost === 0) continue;
+
         wordMatches.sort((a, b) => b.score - a.score);
 
         // --- FINAL SCORING: Intent Amplifier ---
@@ -433,26 +505,44 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 
         const lexScore = amplifiedScore + kicker;
         const lexTier = wordMatches[0]?.tier || 0;
+        const finalTier = Math.max(lexTier, semanticTier);
+
+        // Explicit Logging for Semantic Promotion
+        if (semanticTier > lexTier && debug) {
+            logDebug('NORMALIZE_CATEGORY:SEMANTIC_PROMOTION', {
+                category: c.label,
+                slug: c.slug,
+                fromTier: lexTier,
+                toTier: finalTier,
+                confidence: semanticBoost / 50
+            });
+        }
 
         const depth = getDepth(c);
         const depthBonus = Math.min(4, depth) * 6;
 
-        // 4. HINT Membership Boost: Adder for contextually identified categories
-        let hintBoost = 0;
-        if (options.categoryHints && Array.isArray(options.categoryHints)) {
-            if (options.categoryHints.includes(c.id) || options.categoryHints.includes(c.slug)) {
-                hintBoost = 20;
-            }
-        }
+        const finalScore = lexScore + depthBonus + hintBoost + semanticBoost;
 
-        const finalScore = lexScore + depthBonus + hintBoost;
+        if (finalScore > 0) {
+            logDebug('NORMALIZE_CATEGORY:SCORE_BREAKDOWN', {
+                category: c.label,
+                slug: c.slug,
+                lexScore: lexScore.toFixed(2),
+                lexTier,
+                depthBonus: depthBonus.toFixed(2),
+                hintBoost,
+                semanticBoost: semanticBoost.toFixed(2),
+                finalScore: finalScore.toFixed(2),
+                wordMatches: wordMatches.map(m => m.word)
+            });
+        }
 
         scored.push({
             id: c.id,
             label: c.label,
             slug: c.slug,
             score: finalScore,
-            lexTier,
+            lexTier: finalTier, // Competitive tier after promotion
             lexScore,
             depth,
             total_count: c.total_count,
@@ -465,19 +555,22 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 variant: m.details?.variant
             })),
             labelWordCount: totalWordsInLabel,
-            bonuses: { depth: depthBonus, kicker, hint: hintBoost },
+            bonuses: { depth: depthBonus, kicker, hint: hintBoost, semantic: semanticBoost },
             multipliers: { coverage: matchedWordCount, purity: puritySum }
         });
     }
 
     scored.sort((a, b) => {
+        // 1. Highest lexTier wins (Exact query > Token match > Substring)
         if (b.lexTier !== a.lexTier) return b.lexTier - a.lexTier;
-        if (b.lexScore !== a.lexScore) return b.lexScore - a.lexScore;
-        if (b.depth !== a.depth) return b.depth - a.depth;
+
+        // 2. Highest total score wins (Lexical Density + Semantic Boost + Hint Boost)
         if (b.score !== a.score) return b.score - a.score;
-        const bl = String(b.label || '').length;
-        const al = String(a.label || '').length;
-        if (bl !== al) return bl - al;
+
+        // 3. Depth bonus tie-breaker (More specific categories preferred)
+        if (b.depth !== a.depth) return b.depth - a.depth;
+
+        // 4. Stable tie-breaker
         return String(a.id || '').localeCompare(String(b.id || ''));
     });
 
@@ -511,10 +604,11 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                     amplification: `x${winner.multipliers.coverage} matches`,
                     kicker: `+${winner.bonuses.kicker.toFixed(2)} (Tie-breaker)`,
                     hints: winner.bonuses.hint > 0 ? `+${winner.bonuses.hint} (HINT BOOST)` : 'None',
+                    semantic: winner.bonuses.semantic > 0 ? `+${winner.bonuses.semantic.toFixed(2)} (TRANSFORMER BOOST)` : 'None',
                     depth: `+${winner.bonuses.depth} (Level ${winner.depth})`,
                     wordMatches: winner.wordMatches
                 },
-                matchType: winner.match.type
+                matchType: winner.match?.type || 'semantic'
             } : null,
             competition: scored.slice(0, topK).map(x => ({
                 id: x.id,
@@ -530,10 +624,11 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                     amplification: `x${x.multipliers.coverage} matches`,
                     kicker: `+${x.bonuses.kicker.toFixed(2)} (Tie-breaker)`,
                     hints: x.bonuses.hint > 0 ? `+${x.bonuses.hint} (HINT BOOST)` : 'None',
+                    semantic: x.bonuses.semantic > 0 ? `+${x.bonuses.semantic.toFixed(2)} (TRANSFORMER BOOST)` : 'None',
                     depth: `+${x.bonuses.depth} (Level ${x.depth})`,
                     wordMatches: x.wordMatches
                 },
-                matchType: x.match.type
+                matchType: x.match?.type || 'semantic'
             }))
         });
     }

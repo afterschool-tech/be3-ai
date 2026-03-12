@@ -108,9 +108,10 @@ const FILLERS = new Set([
  * @param {Array} resolutions - Context-resolved product tokens
  * @param {Array} preDetectedEntities - Entities from the Global Pre-pass (Stage 3)
  * @param {Array} categoryHints - Category hints from the Global Pre-pass
+ * @param {Object|null} semanticContext - Transformer context from Stage 0.5 (null if transformer unavailable)
  * @returns {Object} { entities: Array, residualWords: Array, categoryHints: Array, shape: string }
  */
-function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = [], preDetectedEntities = [], categoryHints = []) {
+function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = [], preDetectedEntities = [], categoryHints = [], semanticContext = null) {
     const entities = [];
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const consumed = new Set(); // Track consumed word indices
@@ -170,7 +171,10 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
     // BEFORE the Category N-gram scanner runs, guaranteeing shielding.
     if (preDetectedEntities && preDetectedEntities.length > 0) {
         for (const preEnt of preDetectedEntities) {
-            const localIdx = preEnt.localWordIndex;
+            // Support both globalWordIndex (from Stage 3 pre-pass) and localWordIndex (from Stage 3d reconciliation)
+            let localIdx = preEnt.localWordIndex;
+            if (localIdx === undefined) localIdx = preEnt.globalWordIndex;
+
             const wordCount = preEnt.wordCount || 1; // Default to 1 if not provided
             if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
 
@@ -201,7 +205,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 type: e.type,
                 value: e.value,
                 clauseId: e.clauseId,
-                localIdx: e.localWordIndex
+                localIdx: e.localWordIndex !== undefined ? e.localWordIndex : e.globalWordIndex
             }))
         });
     }
@@ -249,6 +253,39 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             }
             if (entities.some(e => e.type === 'vendor')) break;
         }
+
+        // --- 1b. Semantic Vendor Integration (Transformer Discovery) ---
+        if (!entities.some(e => e.type === 'vendor') && semanticContext?.available && semanticContext.entities?.vendor) {
+            const semVendors = semanticContext.entities.vendor;
+            for (const semVendorKey of semVendors) {
+                // Find vendor by ID or slug/key matching business_name
+                const vendorObj = Object.values(storeContext.VENDORS).find(v =>
+                    v.id === semVendorKey || v.business_name.toLowerCase() === semVendorKey?.toLowerCase()
+                );
+
+                if (vendorObj) {
+                    const confKey = `vendor:${semVendorKey}`;
+                    const conf = semanticContext.confidence?.[confKey] || 0.85;
+
+                    entities.push({
+                        type: 'vendor',
+                        value: vendorObj.business_name,
+                        id: vendorObj.id,
+                        source: 'TRANSFORMER_SEMANTIC',
+                        confidence: conf,
+                        wordIndices: [-1] // Global/semantic only
+                    });
+
+                    logDebug('ENTITY:SEMANTIC_VENDOR_INJECT', {
+                        _desc: 'Transformer discovered vendor not found by deterministic N-gram — injected',
+                        vendor: vendorObj.business_name,
+                        id: vendorObj.id,
+                        confidence: conf.toFixed(3)
+                    });
+                    break;
+                }
+            }
+        }
     }
 
     // ── 2. Action Verb Detection (with IDF weights) ──
@@ -279,7 +316,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         const isNearDiscovery = actionCat.includes('discovery') || prevCat.includes('discovery');
 
         if (isNearDiscovery || ['colors', 'brands', 'storage', 'materials', 'sizes', 'qualities'].includes(word)) {
-            const resolvedAttr = resolveFacetAttribute(word);
+            const resolvedAttr = resolveFacetAttribute(word, semanticContext);
             if (resolvedAttr) {
                 entities.push({
                     type: 'facet_target',
@@ -323,7 +360,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 const phrase = phraseWords.join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5, returnMeta: true, initiator: 'entityExtractor' });
+                const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5, returnMeta: true, initiator: 'entityExtractor', semanticContext, categoryHints });
                 const catId = catRes && typeof catRes === 'object' ? catRes.id : catRes;
                 const catMeta = catRes && typeof catRes === 'object' ? (catRes.meta || null) : null;
                 if (catId) {

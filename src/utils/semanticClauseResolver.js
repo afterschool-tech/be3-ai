@@ -88,10 +88,11 @@ const FILLERS = new Set([
  *
  * @param {string} text - The full cleaned user message (post-fuzzy, post-context resolution)
  * @param {Array} resolutions - Resolved product tokens from contextResolver (to skip masked words)
+ * @param {Object|null} semanticContext - Transformer context from Stage 0.5 (null if transformer unavailable)
  * @returns {Object} { globalEntities: [...], categoryHints: string[] }
- *   Each entity: { type, value, clauseId, clauseLabel, attribute, source, globalWordIndex }
+ *   Each entity: { type, value, clauseId, clauseLabel, attribute, source, globalWordIndex, semanticScore }
  */
-function resolveClausesGlobal(text, resolutions = []) {
+function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const globalEntities = [];
     const consumed = new Set();
@@ -244,21 +245,105 @@ function resolveClausesGlobal(text, resolutions = []) {
         }
     }
 
+    // ── Step 2.5: Semantic Transformer Boost (from Stage 0.5) ──
+    // If the transformer detected clauses/brands, integrate them:
+    //  - If already found by deterministic: tag with semanticScore for debug
+    //  - If NOT found by deterministic: inject as new entity (transformer-only discovery)
+    if (semanticContext?.available && semanticContext.entities) {
+        const semEntities = semanticContext.entities;
+        const alreadyDetectedIds = new Set(globalEntities.map(e => e.clauseId));
+
+        // --- Semantic Clause Integration ---
+        const semClauses = semEntities.clause || [];
+        for (const semClause of semClauses) {
+            const key = semClause.key || semClause.id;
+            const score = semClause.score || 0;
+            if (!key) continue;
+
+            // Check if deterministic already found this clause
+            const existing = globalEntities.find(e => e.clauseId === key);
+            if (existing) {
+                // Tag existing entity with semantic confidence
+                existing.semanticScore = score;
+                logDebug('PREPASS:SEMANTIC_CLAUSE_BOOST', {
+                    _desc: 'Transformer confirmed deterministic clause detection — semanticScore tagged',
+                    clauseId: key,
+                    deterministicSource: existing.source,
+                    semanticScore: score.toFixed(3)
+                });
+            } else if (!alreadyDetectedIds.has(key)) {
+                // Transformer-only discovery: inject as new entity
+                const clauseDef = CLAUSES[key];
+                if (clauseDef) {
+                    const entityType = clauseDef.attribute === 'brand' ? 'brand' : 'clause';
+                    globalEntities.push({
+                        type: entityType,
+                        value: clauseDef.label,
+                        clauseId: key,
+                        clauseLabel: clauseDef.label,
+                        attribute: clauseDef.attribute,
+                        source: 'TRANSFORMER_INJECT',
+                        semanticScore: score,
+                        categories: clauseDef.categories || [],
+                        globalWordIndex: -1 // No word-level anchor (semantic-only)
+                    });
+                    alreadyDetectedIds.add(key);
+
+                    logDebug('PREPASS:SEMANTIC_CLAUSE_INJECT', {
+                        _desc: 'Transformer discovered clause/brand not found by deterministic layer — injected',
+                        clauseId: key,
+                        clauseLabel: clauseDef.label,
+                        attribute: clauseDef.attribute,
+                        entityType,
+                        semanticScore: score.toFixed(3)
+                    });
+                }
+            }
+        }
+
+        // --- Semantic Brand (from attributes) Integration ---
+        const semBrands = semEntities.attribute?.brand || [];
+        for (const semBrand of semBrands) {
+            const brandValue = (semBrand.value || '').toLowerCase();
+            const score = semBrand.score || 0;
+            if (!brandValue) continue;
+
+            // Check if deterministic already found this brand
+            const existing = globalEntities.find(e =>
+                e.type === 'brand' && e.value.toLowerCase() === brandValue
+            );
+            if (existing) {
+                existing.semanticScore = score;
+            }
+            // Brand injection from transformer is not needed here since
+            // brands are also handled by the entity extractor (Stage 4a)
+        }
+    }
+
     // ── Step 3: Aggregate Category Hints ──
+    // Also include semantic category entities as hints
     const categoryHints = new Set();
     for (const ent of globalEntities) {
         if (ent.categories) {
             ent.categories.forEach(cat => categoryHints.add(cat));
         }
     }
+    // Add transformer-detected categories as hints too
+    if (semanticContext?.available && semanticContext.entities?.category) {
+        for (const semCat of semanticContext.entities.category) {
+            const catKey = semCat.key || semCat.id;
+            if (catKey) categoryHints.add(catKey);
+        }
+    }
 
     if (categoryHints.size > 0) {
         logDebug('PREPASS:CATEGORY_HINTS', {
-            _desc: 'Category hints from pre-pass — aggregated from detected clause/brand entities',
+            _desc: 'Category hints from pre-pass — aggregated from clauses, brands, and transformer entities',
             _example: '"cheap" clause → hints: [smartphones, tablets, laptops_&_computers]',
             hintCount: categoryHints.size,
             hints: Array.from(categoryHints),
-            sourceClauses: globalEntities.map(e => e.clauseId)
+            sourceClauses: globalEntities.map(e => e.clauseId),
+            transformerCategoryCount: (semanticContext?.entities?.category || []).length
         });
     }
 
@@ -266,12 +351,14 @@ function resolveClausesGlobal(text, resolutions = []) {
         _desc: 'Global Pre-pass summary — all clauses/brands detected before statement splitting',
         _example: '2 entities detected, 3 category hints generated',
         entityCount: globalEntities.length,
+        transformerAvailable: !!semanticContext?.available,
         entities: globalEntities.map(e => ({
             type: e.type,
             value: e.value,
             clauseId: e.clauseId,
             source: e.source,
-            globalWordIndex: e.globalWordIndex
+            globalWordIndex: e.globalWordIndex,
+            semanticScore: e.semanticScore !== undefined ? e.semanticScore.toFixed(3) : 'n/a'
         })),
         categoryHintCount: categoryHints.size
     });

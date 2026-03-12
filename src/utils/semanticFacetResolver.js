@@ -26,20 +26,39 @@ function getMatcher() {
 /**
  * Resolves a mention of an attribute in text to its internal code.
  * @param {string} text - The words/phrase referring to an attribute
+ * @param {Object|null} semanticContext - Transformer context from Stage 0.5
  * @returns {string|null} - The attribute code (e.g., "storage", "color") or null
  */
-function resolveFacetAttribute(text) {
+function resolveFacetAttribute(text, semanticContext = null) {
     if (!text) return null;
     const lower = text.toLowerCase().trim();
 
-    // 1. Exact Match against internal labels/codes
+    // 1. Semantic Transformer Match (High Priority)
+    if (semanticContext?.available && semanticContext.entities?.attribute) {
+        for (const [attrCode, matches] of Object.entries(semanticContext.entities.attribute)) {
+            const hasMatch = matches.some(m =>
+                (m.value || '').toLowerCase() === lower ||
+                (m.key || '').toLowerCase() === lower
+            );
+            if (hasMatch) {
+                logDebug('FACET_RESOLVER:TRANSFORMER_HIT', {
+                    input: lower,
+                    matchedCode: attrCode,
+                    source: 'semanticContext'
+                });
+                return attrCode;
+            }
+        }
+    }
+
+    // 2. Exact Match against internal labels/codes
     for (const [code, attr] of Object.entries(ATTRIBUTES)) {
         if (code === lower || attr.label.toLowerCase() === lower) {
             return code;
         }
     }
 
-    // 2. Semantic Match
+    // 3. Semantic Match (TF-IDF Fallback)
     const matcher = getMatcher();
     if (matcher.isLoaded) {
         const matches = matcher.findMatches(lower);

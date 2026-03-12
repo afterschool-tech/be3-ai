@@ -596,11 +596,88 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     });
 
     // ═══════════════════════════════════════════════
+    // Stage 0.5: Unified Transformer Context Acquisition
+    // Fires ONCE per query, right after preprocessing.
+    // Calls /analyze on the transformer service to get BOTH
+    // intent classification AND entity extraction in a single roundtrip.
+    // The result is stored in `semanticContext` and passed to every downstream stage.
+    // If the transformer is unreachable, semanticContext = null (graceful degradation).
+    // ═══════════════════════════════════════════════
+    let semanticContext = null;
+
+    // Support for comparison testing: bypass transformer if flagged in state
+    if (state && state.skipTransformer) {
+        logDebug('PIPELINE:STAGE0.5_SKIP', {
+            _desc: 'Transformer context acquisition skipped [FLAG: skipTransformer]',
+            reason: 'Manual bypass for comparison/testing'
+        });
+    } else {
+        const transformerText = cleanText(afterContext);
+        try {
+            const axios = require('axios');
+            const transformerStart = Date.now();
+            const transformerResponse = await axios.post('http://localhost:3009/analyze', {
+                text: transformerText
+            }, { timeout: 1200 });
+            const transformerDuration = Date.now() - transformerStart;
+
+            if (transformerResponse.data) {
+                semanticContext = {
+                    classification: transformerResponse.data.classification || [],
+                    entities: transformerResponse.data.entities || {},
+                    confidence: transformerResponse.data.confidence || {},
+                    duration: transformerDuration,
+                    available: true
+                };
+            }
+
+            logDebug('PIPELINE:STAGE0.5_TRANSFORMER', {
+                _desc: 'Unified transformer call — classification + entity extraction in single roundtrip',
+                _example: '"cheap samsung phones" → classification: [product_search:0.91], entities: {category:[smartphones], clause:[affordable], attribute:{brand:[Samsung]}}',
+                url: 'http://localhost:3009/analyze',
+                text: transformerText,
+                duration: `${transformerDuration}ms`,
+                status: 'OK',
+                classification: {
+                    top3: (semanticContext?.classification || []).slice(0, 3).map(c => ({
+                        intent: c.intentName,
+                        score: (c.score || 0).toFixed(3),
+                        matchedVariation: c.matchedVariation || ''
+                    })),
+                    totalCandidates: (semanticContext?.classification || []).length
+                },
+                entities: {
+                    categories: (semanticContext?.entities?.category || []).length,
+                    vendors: (semanticContext?.entities?.vendor || []).length,
+                    clauses: (semanticContext?.entities?.clause || []).length,
+                    attributes: Object.keys(semanticContext?.entities?.attribute || {}).length,
+                    detail: {
+                        category: (semanticContext?.entities?.category || []).map(c => c),
+                        vendor: (semanticContext?.entities?.vendor || []).map(v => v),
+                        clause: (semanticContext?.entities?.clause || []).map(c => c),
+                        attribute: semanticContext?.entities?.attribute || {}
+                    }
+                },
+                confidence: semanticContext?.confidence || {}
+            });
+        } catch (err) {
+            logDebug('PIPELINE:STAGE0.5_TRANSFORMER', {
+                _desc: 'Unified transformer call — UNREACHABLE or timed out. All stages fall back to deterministic-only.',
+                url: 'http://localhost:3009/analyze',
+                text: transformerText,
+                status: 'UNREACHABLE',
+                error: err.message
+            });
+            // semanticContext stays null — all downstream stages use deterministic-only
+        }
+    }
+
+    // ═══════════════════════════════════════════════
     // Stage 3a: Global Semantic Pre-pass
     // Runs ONCE per query to find all clauses/brands across the entire message.
     // These are "shielded" from the Category Scanner in each statement.
     // ═══════════════════════════════════════════════
-    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterContext, resolutions);
+    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterContext, resolutions, semanticContext);
     logDebug('PIPELINE:STAGE3A_PREPASS', {
         _desc: 'Global Semantic Pre-pass — clauses/brands detected across entire query before statement loop',
         _example: '"show me cheap infinix phones" → cheap(clause), infinix(brand) detected globally',
@@ -735,7 +812,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints);
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, semanticContext);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
@@ -761,7 +838,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // ═══════════════════════════════════════════════
         // Stage 4.5: Semantic Integration (The Transformer Layer)
-        // Fetches semantic candidates and merges their scores with deterministic ones.
+        // Reads from semanticContext (fetched at Stage 0.5) instead of a separate HTTP call.
+        // Merges transformer classification scores with deterministic schema scores.
         // ═══════════════════════════════════════════════
         let finalCandidates = resolution.candidates.map(c => ({
             intentName: c.intentName,
@@ -771,40 +849,28 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             breakdown: { deterministic: c.score, semantic: 0 }
         }));
 
-        try {
-            const axios = require('axios');
-            const transformerResponse = await axios.post('http://localhost:3009/classify', {
-                text: cleanedText
-            }, { timeout: 800 });
+        if (semanticContext?.available && Array.isArray(semanticContext.classification)) {
+            const semanticResults = semanticContext.classification;
 
-            if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
-                const semanticResults = transformerResponse.data.results;
+            for (const sem of semanticResults) {
+                // Mapping: Similarity (0-1) * 10 = Pipeline Points
+                const semanticPoints = (sem.score || 0) * 10.0;
 
-                for (const sem of semanticResults) {
-                    // Mapping: Similarity (0-1) * 10 = Pipeline Points
-                    const semanticPoints = (sem.score || 0) * 10.0;
-
-                    const existing = finalCandidates.find(c => c.intentName === sem.intentName);
-                    if (existing) {
-                        existing.score += semanticPoints;
-                        existing.breakdown.semantic = semanticPoints;
-                    } else {
-                        // Transformer introduced a candidate not found by schemaResolver
-                        finalCandidates.push({
-                            intentName: sem.intentName,
-                            score: semanticPoints,
-                            matchedKeywords: ['semantic'],
-                            matchedParams: {},
-                            breakdown: { deterministic: 0, semantic: semanticPoints }
-                        });
-                    }
+                const existing = finalCandidates.find(c => c.intentName === sem.intentName);
+                if (existing) {
+                    existing.score += semanticPoints;
+                    existing.breakdown.semantic = semanticPoints;
+                } else {
+                    // Transformer introduced a candidate not found by schemaResolver
+                    finalCandidates.push({
+                        intentName: sem.intentName,
+                        score: semanticPoints,
+                        matchedKeywords: ['semantic'],
+                        matchedParams: {},
+                        breakdown: { deterministic: 0, semantic: semanticPoints }
+                    });
                 }
             }
-        } catch (err) {
-            logDebug('PIPELINE:TRANSFORMER_ERROR', {
-                _desc: 'Semantic transformer unreachable or timed out. Proceeding with deterministic scores only.',
-                error: err.message
-            });
         }
 
         // Re-sort finalists

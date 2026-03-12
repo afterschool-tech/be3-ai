@@ -75,13 +75,17 @@ function normalizeParameters(resolvedIntents, storeContext) {
                 const clauseWord = typeof c === 'object' ? (c.word || clauseId) : clauseId;
                 const clause = CLAUSES[clauseId];
 
-                if (clause && clause.attribute) {
+                if (clause && (clause.attribute || params.target_facet)) {
                     let mapped = false;
+
+                    // IF we have a facet_target (e.g. "storage") and the clause is generic (e.g. "high"),
+                    // REBIND the clause to the specific facet target's attribute code.
+                    const targetAttrKey = params.target_facet || clause.attribute;
 
                     // Prefer backend clause-filter encoding when we have ATTRIBUTES metadata.
                     // Example: price_tier affordable -> attribute.p:p=budget,midrange
                     try {
-                        const attrKey = clause.attribute;
+                        const attrKey = targetAttrKey;
                         const attrMeta = attributesContext ? attributesContext[attrKey] : null;
                         const attrCode = attrMeta?.code;
 
@@ -105,7 +109,7 @@ function normalizeParameters(resolvedIntents, storeContext) {
 
                     // Fallback: map to attribute raw key, but canonicalize against predefined values when possible.
                     if (!mapped) {
-                        const attrKey = clause.attribute;
+                        const attrKey = targetAttrKey;
                         const attrMeta = attributesContext ? attributesContext[attrKey] : null;
                         const finalValue = canonicalizeValue(clauseWord, attrMeta, clause);
 
@@ -116,7 +120,8 @@ function normalizeParameters(resolvedIntents, storeContext) {
                     console.log(`[ParameterNormalizer] 🔄 Mapped clause to attribute:`, {
                         clauseId: clauseId,
                         clauseWord: clauseWord,
-                        attribute: clause.attribute,
+                        attribute: targetAttrKey,
+                        facet_target_active: !!params.target_facet,
                         resulting_attributes: params.attributes
                     });
                 } else {

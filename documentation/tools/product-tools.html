@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product Tools</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M10 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M14 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5V5.5A2.5 2.5 0 0 1 6.5 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.5 4.5a3.5 3.5 0 0 0-3 5.3A3.5 3.5 0 0 0 7 16.5V18a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 4.5a3.5 3.5 0 0 1 3 5.3A3.5 3.5 0 0 1 17 16.5V18a3 3 0 0 1-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 4.5V12m5-7.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2l10 6-10 6L2 8l10-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M2 12l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M2 16l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a7.9 7.9 0 0 0 .1-1l2-1.2-2-3.6-2.3.6a8.7 8.7 0 0 0-1.7-1l-.3-2.4H9.8L9.5 7.8a8.7 8.7 0 0 0-1.7 1l-2.3-.6-2 3.6L5.5 14a7.9 7.9 0 0 0 .1 1L3.5 16.2l2 3.6 2.3-.6a8.7 8.7 0 0 0 1.7 1l.3 2.4h5.4l.3-2.4a8.7 8.7 0 0 0 1.7-1l2.3.6 2-3.6L19.4 15Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-broom" viewBox="0 0 24 24"><path d="M4 20l6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 14l2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 12l8-8a2.5 2.5 0 0 1 3.5 3.5l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21c4-1 8-5 9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <a class="brand-mark icon-btn" href="./index.html" title="Back to tools overview" style="text-decoration:none;color:inherit">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        </a>
+        <span class="brand-title">Product Tools</span>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="docs-shell">
+        <div class="sidebar-overlay" data-sidebar-overlay aria-hidden="true"></div>
+
+        <aside class="sidebar" aria-label="Documentation navigation">
+          <div class="sidebar__header">
+            <div class="sidebar__title">Tools</div>
+            <div class="search" role="search">
+              <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input id="search" type="search" placeholder="Filter pages…" autocomplete="off" />
+            </div>
+          </div>
+          <nav class="nav" id="nav">
+            <a data-nav-link href="./index.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Overview</span></a>
+            <a data-nav-link href="./product-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Product tools</span></a>
+            <a data-nav-link href="./merchant-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Vendor & collection</span></a>
+            <a data-nav-link href="./cart-order-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Cart & orders</span></a>
+            <a data-nav-link href="./discovery-microstate.html"><svg class="icon" aria-hidden="true"><use href="#i-brain"></use></svg><span>Discovery & microstates</span></a>
+            <a data-nav-link href="./conversation-attributes.html"><svg class="icon" aria-hidden="true"><use href="#i-broom"></use></svg><span>Conversation & attributes</span></a>
+          </nav>
+        </aside>
+
+        <section class="content" aria-label="Product tools content">
+          <div class="content__header">
+            <div>
+              <div class="toolbar">
+                <button class="btn mobile-nav-toggle icon-btn" type="button" data-sidebar-toggle>
+                  <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+                  <span>Menu</span>
+                </button>
+              </div>
+              <h1 class="content__title">Product tools (<code>product.*</code>)</h1>
+              <p class="content__subtitle">Search, details, comparison and facet helpers that power almost every shopping journey.</p>
+            </div>
+          </div>
+
+          <div class="content__body">
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg></div>
+                <div class="section__title"><code>product.search</code></div>
+                <div class="section__meta">Primary product search</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Runs the main product search against the backend (structured + optional semantic/vector search).</li>
+                  <li>Respects category, price range, vendor tag and dynamic attribute filters from the intent resolver.</li>
+                  <li>Persists <strong>search snapshots</strong> and <strong>search_context</strong> so later turns (add to cart, compare, filters) can reuse the same result set.</li>
+                  <li>Builds a <strong>product_attributes_map</strong> for up to 10 products so clause-based filters like “the white ones” can map to real attributes.</li>
+                </ul>
+
+                <p><strong>Key params (from <code>toolMapper</code>)</strong></p>
+                <ul>
+                  <li><code>query</code> — user search phrase or normalized product_name.</li>
+                  <li><code>category</code> — category id/slug, usually resolved from the pipeline.</li>
+                  <li><code>price_min</code>, <code>price_max</code> — numeric price filters.</li>
+                  <li><code>tag</code> — vendor tag when scoped by vendor.</li>
+                  <li><code>attributes</code> — dynamic filters (e.g. <code>{ color: "white", b: "Apple" }</code>).</li>
+                  <li><code>limit</code>, <code>page</code>, <code>sort</code> — paging and ordering options.</li>
+                </ul>
+
+                <p><strong>State & engineered tokens</strong></p>
+                <ul>
+                  <li>Writes <code>search_context</code> with <code>product_ids</code>, <code>product_attributes_map</code>, category, vendor and clauses.</li>
+                  <li>Updates <code>reference_map</code> and <code>user_query_map</code> for pronoun/ordinal resolution (e.g. “add the first one”).</li>
+                  <li>Emits:
+                    <ul>
+                      <li><code>__nav:more:&lt;snapshotId&gt;__</code> — next page.</li>
+                      <li><code>__filter:clause:&lt;snapshotId&gt;:&lt;attrCode&gt;:&lt;clauseName&gt;__</code> — apply a semantic clause.</li>
+                      <li><code>__filter:value:&lt;snapshotId&gt;:&lt;attrCode&gt;:&lt;value&gt;__</code> — apply an exact facet value.</li>
+                    </ul>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="false">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg></div>
+                <div class="section__title"><code>product.getDetails</code></div>
+                <div class="section__meta">Single product details</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Fetches the full product payload from the backend for a single <code>product_id</code>.</li>
+                  <li>Normalizes it into a lean, storefront-friendly shape via <code>processProductData</code>.</li>
+                  <li>Backfills missing attributes/specs from recent search snapshots or a secondary search if needed.</li>
+                  <li>Marks the product as <code>currently_viewing</code> in user state for follow-up coreference.</li>
+                </ul>
+
+                <p><strong>Integration</strong></p>
+                <ul>
+                  <li>Used directly by the <code>product.getDetails</code> tool call, and internally by <code>product.compare</code>.</li>
+                  <li>Downstream intents like “compare these two” and “add it to cart” rely on the IDs this tool surfaces.</li>
+                </ul>
+
+                <p><strong>Engineered buttons</strong></p>
+                <ul>
+                  <li><code>__cart:add:&lt;productId&gt;__</code> — add this product to cart.</li>
+                  <li><code>__product:compare:&lt;productId&gt;__</code> — open a compare microstate with this as the first product.</li>
+                  <li><code>__vendor:info:&lt;vendorKey&gt;__</code> — jump to <code>vendor.getInfo</code> for the vendor behind this product.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="false">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg></div>
+                <div class="section__title"><code>product.compare</code></div>
+                <div class="section__meta">Side‑by‑side comparison</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Resolves 2–4 products (by ids or structured <code>product_segments</code>) and returns a normalized comparison array.</li>
+                  <li>Expands attributes (codes + human labels) so the LLM can reliably talk about shared fields.</li>
+                  <li>Updates <code>reference_map</code> and <code>last_search</code> so subsequent pronouns (“the samsung one”) resolve inside the comparison set.</li>
+                </ul>
+
+                <p><strong>When to use</strong></p>
+                <ul>
+                  <li>Intents like <code>product_compare</code> when the user explicitly asks to compare items.</li>
+                  <li>Microstate compare flows kicked off by <code>__product:compare:&lt;id&gt;__</code> buttons from <code>product.getDetails</code>.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="false">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg></div>
+                <div class="section__title">Other helpers: <code>product.getAdvice</code>, <code>product.findCheapest</code>, <code>product.checkAvailability</code>, <code>product.similarItems</code>, <code>product.getImage</code>, <code>product.facets</code></div>
+                <div class="section__meta">When and why to call them</div>
+              </button>
+              <div class="section__panel">
+                <ul>
+                  <li><strong><code>product.getAdvice</code></strong> — deterministic advice helper for a category/need; typically wrapped by higher‑level AI personalities.</li>
+                  <li><strong><code>product.findCheapest</code></strong> — thin wrapper over <code>product.search</code> with <code>sort = price_asc</code>; used for “cheapest X” flows.</li>
+                  <li><strong><code>product.checkAvailability</code></strong> — resolves a product then returns a simple availability snapshot.</li>
+                  <li><strong><code>product.similarItems</code></strong> — finds similar products within the same category as a target item.</li>
+                  <li><strong><code>product.getImage</code></strong> — runs a search but strips results down to id/name/price so the client can render an image gallery.</li>
+                  <li><strong><code>product.facets</code></strong> — discovers facet values for a specific attribute (e.g. storage, color) and emits <code>__facet:select:…__</code> buttons that map back into <code>product.search</code> without re‑entering NLU.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <footer class="pager" aria-label="Page navigation">
+            <div class="pager__group">
+              <a class="btn icon-btn" href="./index.html">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                <span>Back</span>
+              </a>
+            </div>
+            <div class="pager__group">
+              <a class="btn btn--primary icon-btn" href="./merchant-tools.html">
+                <span>Next</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </a>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="../assets/app.js"></script>
+  <script>
+    DocsUI.setActiveNavByHref('./product-tools.html');
+    DocsUI.wireMobileSidebar();
+
+    DocsUI.$all('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sec = btn.closest('.section');
+        sec.dataset.open = sec.dataset.open === 'true' ? 'false' : 'true';
+      });
+    });
+
+    const input = document.getElementById('search');
+    if (input) {
+      input.addEventListener('input', DocsUI.debounce(() => {
+        const q = input.value.trim().toLowerCase();
+        DocsUI.$all('[data-nav-link]').forEach(a => {
+          const label = a.textContent.toLowerCase();
+          a.style.display = !q || label.includes(q) ? '' : 'none';
+        });
+      }, 60));
+    }
+  </script>
+</body>
+</html>
+

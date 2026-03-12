@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Discovery &amp; Microstate Tools</title>
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M10 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M14 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 12H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5V5.5A2.5 2.5 0 0 1 6.5 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.5 4.5a3.5 3.5 0 0 0-3 5.3A3.5 3.5 0 0 0 7 16.5V18a3 3 0 0 0 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 4.5a3.5 3.5 0 0 1 3 5.3A3.5 3.5 0 0 1 17 16.5V18a3 3 0 0 1-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 4.5V12m5-7.5V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2l10 6-10 6L2 8l10-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M2 12l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M2 16l10 6 10-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a7.9 7.9 0 0 0 .1-1l2-1.2-2-3.6-2.3.6a8.7 8.7 0 0 0-1.7-1l-.3-2.4H9.8L9.5 7.8a8.7 8.7 0 0 0-1.7 1l-2.3-.6-2 3.6L5.5 14a7.9 7.9 0 0 0 .1 1L3.5 16.2l2 3.6 2.3-.6a8.7 8.7 0 0 0 1.7 1l.3 2.4h5.4l.3-2.4a8.7 8.7 0 0 0 1.7-1l2.3.6 2-3.6L19.4 15Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-broom" viewBox="0 0 24 24"><path d="M4 20l6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 14l2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 12l8-8a2.5 2.5 0 0 1 3.5 3.5l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21c4-1 8-5 9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <a class="brand-mark icon-btn" href="./index.html" title="Back to tools overview" style="text-decoration:none;color:inherit">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        </a>
+        <span class="brand-title">Discovery &amp; Microstates</span>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="docs-shell">
+        <div class="sidebar-overlay" data-sidebar-overlay aria-hidden="true"></div>
+
+        <aside class="sidebar" aria-label="Documentation navigation">
+          <div class="sidebar__header">
+            <div class="sidebar__title">Tools</div>
+            <div class="search" role="search">
+              <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input id="search" type="search" placeholder="Filter pages…" autocomplete="off" />
+            </div>
+          </div>
+          <nav class="nav" id="nav">
+            <a data-nav-link href="./index.html"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Overview</span></a>
+            <a data-nav-link href="./product-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Product tools</span></a>
+            <a data-nav-link href="./merchant-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg><span>Vendor &amp; collection</span></a>
+            <a data-nav-link href="./cart-order-tools.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>Cart &amp; orders</span></a>
+            <a data-nav-link href="./discovery-microstate.html"><svg class="icon" aria-hidden="true"><use href="#i-brain"></use></svg><span>Discovery &amp; microstates</span></a>
+            <a data-nav-link href="./conversation-attributes.html"><svg class="icon" aria-hidden="true"><use href="#i-broom"></use></svg><span>Conversation &amp; attributes</span></a>
+          </nav>
+        </aside>
+
+        <section class="content" aria-label="Discovery and microstate tools content">
+          <div class="content__header">
+            <div>
+              <div class="toolbar">
+                <button class="btn mobile-nav-toggle icon-btn" type="button" data-sidebar-toggle>
+                  <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+                  <span>Menu</span>
+                </button>
+              </div>
+              <h1 class="content__title">Discovery &amp; microstate tools</h1>
+              <p class="content__subtitle">Search verification and recovery; onboarding and collection summaries; microstate-driven disambiguation, confirmation, and collection.</p>
+            </div>
+          </div>
+
+          <div class="content__body">
+            <div class="section" data-open="true">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-brain"></use></svg></div>
+                <div class="section__title"><code>discovery.ensureSuggestions</code></div>
+                <div class="section__meta">Sentinel: verify search, infer fallback</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Shadows <code>product.search</code> results from <code>accumulatedResults</code>; verifies that results match the user’s <code>search_intent</code>.</li>
+                  <li>If no results or AI says “NO” (irrelevant), enters <strong>recovery</strong>: infers a related category from store inventory, fetches a small product set from that category, updates <code>search_context</code> and <code>reference_map</code>, returns a “couldn’t find exactly X, but here are options from [category]” message.</li>
+                  <li>Stores <code>last_suggestion</code> for follow-up; builds <code>product_attributes_map</code> for clause resolution.</li>
+                </ul>
+                <p><strong>When to use</strong></p>
+                <ul>
+                  <li>Typically invoked in the same turn as <code>product.search</code> (orchestrator/pipe); not called in isolation by the user.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="false">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-brain"></use></svg></div>
+                <div class="section__title"><code>discovery.sentinel</code></div>
+                <div class="section__meta">Concierge: onboarding and collection summaries</div>
+              </button>
+              <div class="section__panel">
+                <p><strong>What it does</strong></p>
+                <ul>
+                  <li>Triggered when search is vague or broad. Resolves category from <code>query</code> or <code>category</code> (fuzzy match).</li>
+                  <li>If no category: returns <strong>onboarding</strong> — welcome message and top categories as buttons (and optional list). Can reflect <code>price_min</code>/<code>price_max</code> in copy.</li>
+                  <li>If category resolved: fetches a sample of products, builds stats (brands, min price, etc.), returns a rich collection summary and sub-category pivots with WhatsApp buttons/lists.</li>
+                </ul>
+                <p><strong>Params</strong></p>
+                <ul>
+                  <li><code>query</code>, <code>category</code> (slug or ID).</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="section" data-open="false">
+              <button class="section__head" type="button" data-toggle>
+                <div class="section__icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg></div>
+                <div class="section__title">Microstate tools: <code>microstate.disambiguate</code>, <code>microstate.confirm</code>, <code>microstate.collect</code>, <code>microstate.buttons</code></div>
+                <div class="section__meta">Direct-response flows (no AI reply)</div>
+              </button>
+              <div class="section__panel">
+                <p>All microstate tools return <code>directResponse: true</code> so the response layer sends their message directly to the user without AI generation — preserving deterministic prompts and avoiding personality drift.</p>
+
+                <p><strong><code>microstate.disambiguate</code></strong></p>
+                <ul>
+                  <li>Presents options (e.g. categories, products) with an optional numbered list and up to 3 WhatsApp buttons; supports <code>baseIndex</code> for pagination, <code>controls: { more, cancel, skip, recommendedIndex }</code>.</li>
+                  <li>Params: <code>reason</code>, <code>message</code>, <code>options</code> (array of <code>{ label, value }</code> or strings), <code>baseIndex</code>, <code>controls</code>, <code>parentIntent</code>, <code>missingParam</code>.</li>
+                  <li>Emits buttons like <code>__nav:more__</code>, <code>__flow:cancel__</code>, <code>__flow:skip__</code> when controls are set.</li>
+                </ul>
+
+                <p><strong><code>microstate.confirm</code></strong></p>
+                <ul>
+                  <li>Asks a yes/no question; optional <code>context</code> object is rendered above the question. Returns <code>expects: 'yes_no'</code>; WhatsApp can show Yes/No buttons (<code>ms_yes</code>, <code>ms_no</code>).</li>
+                </ul>
+
+                <p><strong><code>microstate.collect</code></strong></p>
+                <ul>
+                  <li>Asks for a specific parameter value (e.g. order number, quantity); <code>paramName</code>, <code>message</code>, optional <code>hint</code>, <code>parentIntent</code>.</li>
+                </ul>
+
+                <p><strong><code>microstate.buttons</code></strong></p>
+                <ul>
+                  <li>Sends a message with up to 3 custom buttons (<code>[{ id, title }]</code>). Used for generic microstate prompts (e.g. “View cart” / “Continue shopping”).</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <footer class="pager" aria-label="Page navigation">
+            <div class="pager__group">
+              <a class="btn icon-btn" href="./cart-order-tools.html">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                <span>Back</span>
+              </a>
+            </div>
+            <div class="pager__group">
+              <a class="btn btn--primary icon-btn" href="./conversation-attributes.html">
+                <span>Next</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </a>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="../assets/app.js"></script>
+  <script>
+    DocsUI.setActiveNavByHref('./discovery-microstate.html');
+    DocsUI.wireMobileSidebar();
+    DocsUI.$all('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sec = btn.closest('.section');
+        sec.dataset.open = sec.dataset.open === 'true' ? 'false' : 'true';
+      });
+    });
+    const input = document.getElementById('search');
+    if (input) {
+      input.addEventListener('input', DocsUI.debounce(() => {
+        const q = input.value.trim().toLowerCase();
+        DocsUI.$all('[data-nav-link]').forEach(a => {
+          const label = a.textContent.toLowerCase();
+          a.style.display = !q || label.includes(q) ? '' : 'none';
+        });
+      }, 60));
+    }
+  </script>
+</body>
+</html>
