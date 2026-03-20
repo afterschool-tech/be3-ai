@@ -165,18 +165,28 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
             const currentPage = Number.isFinite(baseFilters.page) ? Number(baseFilters.page) : 1;
             const delta = (engineeredEarly.command === 'prev') ? -1 : 1;
-            const nextPage = (engineeredEarly.command === 'results') ? 1 : Math.max(1, currentPage + delta);
+            const nextPage = (engineeredEarly.command === 'results') ? currentPage : Math.max(1, currentPage + delta);
 
             const reason = (engineeredEarly.command === 'results')
                 ? 'Engineered see suggested products'
                 : 'Engineered pagination';
+
+            // If user explicitly asks to "See products" (from a suggestion block),
+            // drop the failing query and clauses so the relaxed filters execute
+            // successfully in Stage 1 and generate actual product cards.
+            const resolvedFilters = { ...baseFilters };
+            if (engineeredEarly.command === 'results') {
+                delete resolvedFilters.query;
+                delete resolvedFilters.q;
+                delete resolvedFilters.clause_words;
+            }
 
             return {
                 intents: [],
                 tools: [{
                     tool: 'product.search',
                     params: {
-                        ...baseFilters,
+                        ...resolvedFilters,
                         page: nextPage
                     },
                     reason

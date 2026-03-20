@@ -225,12 +225,21 @@ const productTools = {
             const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
             if (attempt1 && attempt1.products.length > 0) {
                 const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId);
+                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
                 return {
                     ...final,
                     products: [],
-                    suggested_products: final.products,
+                    suggested_products: final.products.map(p => ({...p, suppress_images: true})),
                     suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
+                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                    whatsapp_product_cards: undefined,
+                    whatsapp: {
+                        type: 'button',
+                        buttons: [
+                            { id: '__nav:results__', title: 'See product details' },
+                            seeMoreBtn
+                        ]
+                    }
                 };
             }
 
@@ -238,12 +247,21 @@ const productTools = {
             const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
             if (attempt2 && attempt2.products.length > 0) {
                 const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId);
+                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
                 return {
                     ...final,
                     products: [],
-                    suggested_products: final.products,
+                    suggested_products: final.products.map(p => ({...p, suppress_images: true})),
                     suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
+                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                    whatsapp_product_cards: undefined,
+                    whatsapp: {
+                        type: 'button',
+                        buttons: [
+                            { id: '__nav:results__', title: 'See product details' },
+                            seeMoreBtn
+                        ]
+                    }
                 };
             }
 
