@@ -30,13 +30,14 @@ module.exports = {
         sort: { type: 'string', required: false, description: 'Sort order' },
         limit: { type: 'int', required: false, default: 5, description: 'Number of results' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
-        attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' }
+        attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' },
+        similar_to: { type: 'string', required: false, description: 'The Product ID or Handle to find products similar to' }
     },
-
+    
     slotTags: ['[clause]', '[product]', '[category]', '[price]'],
-
+    
     toolName: 'product.search',
-
+    
     paramMap: {
         products: { target: 'query', expand: false },
         product_name: 'query',
@@ -45,7 +46,9 @@ module.exports = {
         price_max: 'price_max',
         sort: 'sort',
         limit: 'limit',
-        attributes: 'attributes'
+        attributes: 'attributes',
+        similar_to: 'similar_to',
+        clause_words: 'clause_words'
     },
 
     minProducts: 1,

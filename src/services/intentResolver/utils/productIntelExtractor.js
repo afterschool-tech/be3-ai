@@ -1,12 +1,6 @@
 /**
  * Product Intel Extractor (PIE)
  * A decentralized utility for synthesizing product names from multi-layer pipeline signals.
- * 
- * Logic Phases:
- * 1. MAPPING: Assign "Signal Strength" levels to every word.
- * 2. ANCHORING: Find the "Pivots" (Resolved IDs, Brands, specific nouns).
- * 3. SEGMENTATION: Split comparisons using intel-aware boundaries.
- * 4. RECONSTRUCTION: Expand anchors to recapture category and attribute context.
  */
 
 const { logDebug } = require('../../../utils/debugLogger');
@@ -29,13 +23,12 @@ function extractProductIntel(options) {
         entities = [],
         resolutions = [],
         intentName = 'product_search',
-        excludeSet = new Set()
+        excludeSet = new Set(),
+        categoryId = null
     } = options;
 
     if (!text) return [];
 
-    // Normalize commas into standalone tokens so they can act as segment splitters.
-    // "iphone 12, iphone 15" → "iphone 12 , iphone 15" → words: [..., "12", ",", "iphone", ...]
     const normalizedText = text.toLowerCase().replace(/,/g, ' , ');
     const words = normalizedText.split(/\s+/).filter(w => w.length > 0);
     const wordMap = words.map((word, index) => ({
@@ -46,10 +39,6 @@ function extractProductIntel(options) {
         isConsumed: false
     }));
 
-    // ── Index Remapping ──
-    // Entity wordIndices come from the clean text (no commas). PIE's wordMap has
-    // extra "," tokens injected. Build a mapping: cleanIndex → rawIndex.
-    // Non-comma words in order map 0→0, 1→1, 2→3 (if index 2 is ","), etc.
     const cleanToRawIndex = {};
     let cleanIdx = 0;
     for (let rawIdx = 0; rawIdx < words.length; rawIdx++) {
@@ -59,14 +48,11 @@ function extractProductIntel(options) {
         }
     }
 
-    // ── Phase 1: Mapping Intel ──
-
-    // Fillers & Noise
+    // Phase 1: Mapping
     wordMap.forEach(item => {
         if (excludeSet.has(item.word)) item.level = LEVELS.NOISE;
     });
 
-    // Entity Overlay (with index remapping for comma-injected tokens)
     entities.forEach(ent => {
         const rawFullIndices = (ent.wordIndices || []).map(i => cleanToRawIndex[i]).filter(i => i !== undefined);
         const rawConsumedSet = new Set(
@@ -85,15 +71,9 @@ function extractProductIntel(options) {
                     else if (ent.type === 'category') newLevel = LEVELS.CONTEXT;
                     else if (ent.type === 'clause') newLevel = LEVELS.TRAIT;
                     else if (ent.type === 'action') newLevel = LEVELS.NOISE;
-                } else {
-                    // Associated with an entity but not consumed as the core keyword.
-                    newLevel = LEVELS.TRAIT;
                 }
 
                 if (ent.type === 'action') newLevel = LEVELS.NOISE;
-
-                // PROTECTION: Entity-associated words should NEVER be NOISE, 
-                // UNLESS they are explicitly action verbs.
                 if (newLevel > wordMap[idx].level || newLevel === LEVELS.NOISE) {
                     wordMap[idx].level = newLevel;
                 }
@@ -101,33 +81,41 @@ function extractProductIntel(options) {
         });
     });
 
-    // Glue Detection (Heuristic for model numbers/specs)
     wordMap.forEach(item => {
-        // Comma tokens are segment splitters, never product words
         if (item.word === ',') {
             item.level = LEVELS.NOISE;
             return;
         }
         if (item.level === LEVELS.TRAIT) {
-            // Numbers, mixed alphanumeric (e.g. s24, 16, 5g) or very short words (pro, max)
             if (/\d/.test(item.word) || item.word.length <= 3) {
                 item.level = LEVELS.GLUE;
             }
         }
     });
 
-    // ── Phase 2: Segmentation ──
+    // Phase 2: Segmentation
+    // Hard Splitters ALWAYS divide products.
+    // Soft Splitters (prepositions) divide products ONLY if there are anchors on both sides.
+    const hardSplitters = ['vs', 'versus', 'and', 'but', ',', 'between'];
+    const softSplitters = ['with', 'for', 'to', 'than', 'like', 'about', 'from', 'at', 'in', 'on', 'of', 'by'];
+    const allSplitters = [...hardSplitters, ...softSplitters];
+
     const splits = [0];
-    if (intentName === 'product_compare') {
-        const splitters = ['vs', 'versus', 'and', 'with', 'between', ','];
-        for (let i = 0; i < wordMap.length; i++) {
-            const item = wordMap[i];
-            // Split if it's a splitter AND not part of a pivot entity (like "Soap AND Glory")
-            if (splitters.includes(item.word)) {
-                const isInsidePivot = item.entities.some(e => e.type === 'brand' || e.type === 'resolved_product');
-                if (!isInsidePivot) {
+    for (let i = 0; i < wordMap.length; i++) {
+        const item = wordMap[i];
+        if (allSplitters.includes(item.word)) {
+            const isInsidePivot = item.entities.some(e => e.type === 'brand' || e.type === 'resolved_product');
+            if (!isInsidePivot) {
+                // If it's a soft splitter, we only split if we're in comparison mode 
+                // OR if we suspect multiple products (e.g. brand clash)
+                let shouldSplit = hardSplitters.includes(item.word);
+                
+                if (intentName === 'product_compare') shouldSplit = true;
+                if (item.word === 'like') shouldSplit = true; // "phone LIKE iphone"
+                
+                if (shouldSplit) {
                     splits.push(i + 1);
-                    item.isConsumed = true; // Mark splitter as consumed
+                    item.isConsumed = true;
                 }
             }
         }
@@ -142,30 +130,18 @@ function extractProductIntel(options) {
         if (slice.length > 0) segments.push(slice);
     }
 
-    // ── Phase 3: Reconstruction ──
+    // Phase 3: Reconstruction
     const products = segments.map(segment => {
-        // find pivots or highest level
         const maxLevel = Math.max(...segment.map(s => s.level));
-        if (maxLevel === LEVELS.NOISE && segment.length > 0) {
-            return null; // All noise
-        }
+        if (maxLevel === LEVELS.NOISE && segment.length > 0) return null;
 
-        // Reconstruction Logic: Start from highest signal and expand.
-        // We capture PIVOT (4), GLUE (3), and CONTEXT (2).
-        // TRAIT (1) words (clauses/attributes) are STRIPPED from the name 
-        // to avoid redundant noise in the backend, UNLESS they are part of a PIVOT entity.
         let productIndices = segment
             .filter(s => {
                 if (s.level >= LEVELS.CONTEXT) return true;
                 if (s.level === LEVELS.TRAIT) {
-                    // Keep if explicitly part of a PIVOT entity
                     const isPivot = s.entities.some(e => e.type === 'brand' || e.type === 'resolved_product');
                     if (isPivot) return true;
-
-                    // Drop explicit clauses (e.g. "cheap", "best") unless part of a pivot (handled above)
                     if (s.entities.some(e => e.type === 'clause')) return false;
-
-                    // Otherwise, KEEP IT for now (unknown words, category-associated traits like "drey", "pro")
                     return true;
                 }
                 return false;
@@ -174,14 +150,6 @@ function extractProductIntel(options) {
 
         if (productIndices.length === 0) return null;
 
-        // --- PHASE 5: PROXIMITY CLUSTERING & BOUNDARIES ---
-        // 1. Identify "Boundary Words" in the full segment
-        const boundaries = new Set(['for', 'from', 'my', 'in', 'on', 'at', 'with', 'about']);
-        const segmentBoundaryIndices = new Set(
-            segment.filter(s => boundaries.has(s.word) && s.level === LEVELS.NOISE).map(s => s.index)
-        );
-
-        // 2. Find the "Core Clump" (Highest signal words: PIVOT, GLUE, CONTEXT)
         const coreIndices = segment
             .filter(s => productIndices.includes(s.index) && s.level >= LEVELS.CONTEXT)
             .map(s => s.index);
@@ -192,45 +160,41 @@ function extractProductIntel(options) {
 
             productIndices = productIndices.filter(idx => {
                 const s = segment.find(seg => seg.index === idx);
-                if (s.level >= LEVELS.CONTEXT) return true; // Always keep core signals
+                if (s.level >= LEVELS.CONTEXT) return true; 
 
-                // It's a TRAIT (Level 1). Check proximity and boundaries.
-                // Distance to nearest core part
                 const distToCore = idx < minCore ? (minCore - idx) : (idx - maxCore);
-
-                // Rule A: If it's more than 2 words away, drop it. (Too far)
-                if (distToCore > 2) return false;
-
-                // Rule B: Check for boundary words between this trait and the core clump
-                const searchStart = Math.min(idx, minCore);
-                const searchEnd = Math.max(idx, maxCore);
-                for (let i = searchStart; i <= searchEnd; i++) {
-                    if (segmentBoundaryIndices.has(i)) {
-                        return false; // Separated by a boundary word (e.g. "buy phone FOR brother")
-                    }
-                }
-
+                // Traits allowed up to 3 words away now to handle fillers
+                if (distToCore > 3) return false;
                 return true;
             });
         }
 
         if (productIndices.length === 0) return null;
 
-        // --- SATURATION GUARD ---
-        // If the reconstructed name consists ONLY of Context/Category words (Level 2)
-        // AND has zero Pivot (4) or Glue (3) signals, we suppress the name.
-        // This prevents redundant "iphone" search inside the "iphones" category.
         const hasStrongSignal = segment.some(s => productIndices.includes(s.index) && (s.level >= LEVELS.GLUE));
+        const finalWordSequence = productIndices
+            .map(idx => wordMap[idx].word)
+            .filter(word => {
+                if (word.endsWith("'s") || word.endsWith("s'")) return false;
+                return true;
+            });
+
+        if (finalWordSequence.length === 0) return null;
+        const reconstructedName = finalWordSequence.join(' ');
+
+        // --- SATURATION GUARD ---
         if (!hasStrongSignal) {
             const onlyContext = segment.every(s => !productIndices.includes(s.index) || s.level === LEVELS.CONTEXT);
             if (onlyContext) {
-                return null;
+                // REDUNDANCY CHECK: If we have an external category ID AND it matches the reconstructed name
+                const resolvedCategory = segment.find(s => s.entities.some(e => e.type === 'category'))?.entities.find(e => e.type === 'category');
+                if (resolvedCategory && categoryId && String(resolvedCategory.id) === String(categoryId)) {
+                    // It's perfectly redundant (e.g. search "iphones" inside "iphones" category)
+                    return null;
+                }
             }
         }
 
-        const reconstructedName = productIndices.map(idx => wordMap[idx].word).join(' ');
-
-        // Extract associated intel
         const segmentEntities = segment.flatMap(s => s.entities);
         const intel = {
             brand: segmentEntities.find(e => e.type === 'brand') || null,

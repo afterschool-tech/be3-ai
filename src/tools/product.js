@@ -11,7 +11,13 @@ const { performVectorSearch, performSimilarSearch } = require('../utils/vectorSe
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
-const { buildProductCards } = require('../utils/storefrontWhatsAppUx');
+const { 
+    buildProductCards, 
+    buildFacetRefinerButtons, 
+    deriveClauseNameFromAttributes, 
+    buildDefaultSeeMoreTitle, 
+    pickVendorSeeMoreTitle 
+} = require('../utils/storefrontWhatsAppUx');
 const crypto = require('crypto');
 
 function encodeBase64Url(str) {
@@ -36,10 +42,11 @@ const productTools = {
             tag: { type: 'string', description: 'The exact vendor tag (e.g. "Taye\'s Home Decor"). Use this when searching for products from a specific vendor.' },
             attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' },
             search_mode: { type: 'string', description: 'The search mode to use. Set to "VECTOR" for pure semantic search.' },
-            similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' }
+            similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' },
+            clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' }
         },
         handler: async (params, context) => {
-            const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to } = params;
+            const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, clause_words } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -66,17 +73,78 @@ const productTools = {
             // --- STAGE 0.2: Pure Vector / Similarity Mode ---
             if (search_mode === 'VECTOR' || similar_to) {
                 const { logDebug } = require('../utils/debugLogger');
-                logDebug('TOOL:VECTOR_MODE_TRIGGERED [product.search]', { search_mode, similar_to, query, limit });
-
                 let vectorResult = null;
+                let resolvedSimilarityId = null; // hoisted so annotation block can access it
+                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+
                 if (similar_to) {
-                    vectorResult = await performSimilarSearch(similar_to, limit);
+                    logDebug('TOOL:SIMILAR_SEARCH_MODE [product.search]', { similar_to, limit, hasFilters: true });
+                    
+                    // NEW: Optimization — if similar_to is already a UUID (e.g. from an engineered token), use it directly.
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(similar_to);
+                    resolvedSimilarityId = isUuid ? similar_to : await resolveProduct(similar_to, context, { category: catId });
+                    
+                    if (!resolvedSimilarityId) {
+                        logDebug('TOOL:SIMILAR_SEARCH_FAILED [product.search]', { similar_to, reason: 'unresolved' });
+                    } else {
+                        vectorResult = await performSimilarSearch(resolvedSimilarityId, limit, extraParams);
+                        
+                        // Fallback to unfiltered similarity if filtered returns nothing
+                        if (!vectorResult || vectorResult.products.length === 0) {
+                            logDebug('TOOL:SIMILAR_FALLBACK_UNFILTERED [product.search]', { similar_to: resolvedSimilarityId });
+                            vectorResult = await performSimilarSearch(resolvedSimilarityId, limit);
+                        }
+                    }
                 } else if (query) {
-                    vectorResult = await performVectorSearch(query, limit, catId);
+                    logDebug('TOOL:VECTOR_SEARCH_MODE [product.search]', { query, limit, hasFilters: true });
+                    vectorResult = await performVectorSearch(query, limit, catId, extraParams);
+
+                    // Fallback to unfiltered vector if filtered returns nothing
+                    if (!vectorResult || vectorResult.products.length === 0) {
+                        logDebug('TOOL:VECTOR_FALLBACK_UNFILTERED [product.search]', { query });
+                        vectorResult = await performVectorSearch(query, limit, catId);
+                    }
                 }
 
                 if (vectorResult && vectorResult.products && vectorResult.products.length > 0) {
-                    return await handleSearchResults(vectorResult, params, context, snapshotId, cat, catId);
+                    const finalResult = await handleSearchResults(vectorResult, params, context, snapshotId, cat, catId);
+
+                    // SIMILARITY CONTEXT: Annotate the result so the personality layer knows
+                    // these are "similar to X" results, not general search results.
+                    // The LLM uses this to say "here are products similar to Iphone 12 Pro" 
+                    // instead of acting confused or dismissive.
+                    if (similar_to) {
+                        finalResult.mode = 'similar';
+                        finalResult.similar_to = resolvedSimilarityId;
+                        // Derive a human-readable reference name:
+                        // If similar_to was a product name (not UUID), use it directly.
+                        // Otherwise, try to find the name from the resolved UUID in the reference map or state.
+                        const isInputUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(similar_to);
+                        if (!isInputUuid) {
+                            finalResult.similar_to_name = similar_to; // it was a name already
+                        } else {
+                            // Try to resolve from state context
+                            try {
+                                const state = await stateManager.getState(context.sessionId);
+                                const lastResults = state?.product_context?.last_search?.results;
+                                const refMap = state?.reference_map || {};
+                                let resolvedName = null;
+                                if (Array.isArray(lastResults)) {
+                                    const found = lastResults.find(p => p.id === similar_to || p.handle === similar_to);
+                                    if (found) resolvedName = found.name || found.title;
+                                }
+                                if (!resolvedName) {
+                                    // Check reference_map in reverse
+                                    for (const [alias, id] of Object.entries(refMap)) {
+                                        if (id === similar_to) { resolvedName = alias; break; }
+                                    }
+                                }
+                                if (resolvedName) finalResult.similar_to_name = resolvedName;
+                            } catch (_) {}
+                        }
+                    }
+
+                    return finalResult;
                 }
             }
 
@@ -114,7 +182,15 @@ const productTools = {
 
             // Fallback 1: Vector Search (Primary Fallback)
             if (query && !search_mode && !similar_to) {
-                const vectorFallback = await performVectorSearch(query, limit, catId);
+                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                // Try with filters first
+                let vectorFallback = await performVectorSearch(query, limit, catId, extraParams);
+                
+                // If filtered fails, try unfiltered
+                if (!vectorFallback || vectorFallback.products?.length === 0) {
+                    vectorFallback = await performVectorSearch(query, limit, catId);
+                }
+
                 if (vectorFallback && vectorFallback.products?.length > 0) {
                     logDebug('TOOL:VECTOR_FALLBACK [product.search]', { _desc: 'Precision failed. Result found via Vector Search fallback.', query });
                     return await handleSearchResults(vectorFallback, params, context, snapshotId, cat, catId);
@@ -920,24 +996,89 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
     const totalPages = Number(searchResult.pagination?.totalPages || (limit > 0 ? Math.ceil(totalCount / limit) : 1));
     const hasNextPage = currentPage < totalPages;
 
-    const facetButtons = [];
+    const snapshotIdForFilters = Date.now().toString(36);
+    let facetButtons = [];
     try {
-        const facetsAttrs = Array.isArray(facets.attributes) ? facets.attributes : [];
-        facetsAttrs.slice(0, 2).forEach(attr => {
-            (attr.clauses || []).slice(0, 1).forEach(c => {
-                if (c.count > 0) facetButtons.push({ id: `__filter:clause:${snapshotId}:${attr.code}:${encodeURIComponent(c.name)}__`, title: c.label || c.name, priority: 10 });
+        if (typeof buildFacetRefinerButtons === 'function') {
+            const attributes = params.attributes || {};
+            const refiners = buildFacetRefinerButtons({ facets, attributes, snapshotId: snapshotIdForFilters });
+            facetButtons = [...(refiners.clauseButtons || []), ...(refiners.valueButtons || [])];
+        } else {
+            const facetsAttrs = Array.isArray(facets.attributes) ? facets.attributes : [];
+            facetsAttrs.slice(0, 2).forEach(attr => {
+                (attr.clauses || []).slice(0, 1).forEach(c => {
+                    if (c.count > 0) facetButtons.push({ id: `__filter:clause:${snapshotId}:${attr.code}:${encodeURIComponent(c.name)}__`, title: c.label || c.name, priority: 10 });
+                });
+                (attr.options || []).slice(0, 1).forEach(o => {
+                    if (o.count > 0) facetButtons.push({ id: `__filter:value:${snapshotId}:${attr.code}:${encodeURIComponent(String(o.value))}__`, title: String(o.value), priority: 10 });
+                });
             });
-            (attr.options || []).slice(0, 1).forEach(o => {
-                if (o.count > 0) facetButtons.push({ id: `__filter:value:${snapshotId}:${attr.code}:${encodeURIComponent(String(o.value))}__`, title: String(o.value), priority: 10 });
-            });
-        });
+        }
     } catch (_) {}
 
     const globalButtons = [];
     if (hasNextPage) {
-        globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: `See more products`, priority: 100 });
+        let seeMoreTitle = 'See more products';
+
+        // Prefer vendor-specific title if searching by tag
+        const tagFilter = params.tag || params.attributes?.vendor || null;
+        if (tagFilter && typeof pickVendorSeeMoreTitle === 'function') {
+            seeMoreTitle = pickVendorSeeMoreTitle(tagFilter);
+        } else {
+            // General query/category search title
+            const qStrRaw = typeof query === 'object' ? (query?.query || null) : query;
+            const qStr = Array.isArray(qStrRaw) ? qStrRaw.join(' ').trim() : (typeof qStrRaw === 'string' ? qStrRaw.trim() : null);
+            
+            if (typeof buildDefaultSeeMoreTitle === 'function') {
+                // 1. Extract System Clause and User Clause
+                let systemClause = null;
+                let userClause = qStr;
+
+                const clauseWords = params.clause_words || [];
+                if (Array.isArray(clauseWords) && clauseWords.length > 0) {
+                    systemClause = clauseWords[0].clauseId;
+                    if (!userClause) userClause = clauseWords[0].word;
+                } else {
+                    const attributes = params.attributes || {};
+                    systemClause = typeof deriveClauseNameFromAttributes === 'function' ? deriveClauseNameFromAttributes(attributes) : null;
+                    if (systemClause && systemClause.length <= 1) systemClause = null; // Prevent weird '(p)' extractions
+                }
+
+                const catName = cat?.label || '';
+
+                // --- TIERED LABEL ESCALATION (Category Persistent) ---
+                // Tier 1: User Phrasing + Category
+                if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName}`;
+                else if (userClause) seeMoreTitle = `See more ${userClause}`;
+                else if (catName) seeMoreTitle = `See more ${catName}`;
+                else seeMoreTitle = 'See more products';
+
+                // Escalate if Tier 1 exceeds 45 characters
+                if (seeMoreTitle.length > 45) {
+                    // Tier 2: System Clause + Category
+                    const tier2 = `See more ${systemClause} ${catName}`;
+                    if (systemClause && catName && tier2.length <= 45 && systemClause !== userClause) {
+                        seeMoreTitle = tier2;
+                    } 
+                    // Tier 3: Category only
+                    else if (catName && `See more ${catName}`.length <= 45) {
+                        seeMoreTitle = `See more ${catName}`;
+                    } 
+                    // Tier 4: Generic Fallback
+                    else {
+                        seeMoreTitle = 'See more products';
+                    }
+                }
+            } else if (qStr) {
+                seeMoreTitle = qStr.length > 11 ? 'See more results' : `See more ${qStr}`;
+            } else if (cat?.label) {
+                seeMoreTitle = cat.label.length > 11 ? 'See more products' : `See more ${cat.label}`;
+            }
+        }
+        
+        globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: seeMoreTitle, priority: 100 });
     }
-    globalButtons.push(...facetButtons.slice(0, 2));
+    globalButtons.push(...facetButtons);
 
     return {
         ...searchResult,

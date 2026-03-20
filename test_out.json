@@ -1,0 +1,27 @@
+{
+  "stateBeforeSuggestion": true,
+  "resultIntents": [
+    {
+      "intentName": "add_to_cart",
+      "score": 1,
+      "parameters": {
+        "product_id": "987654321",
+        "quantity": 1
+      },
+      "matchedKeywords": [
+        "suggestion_accepted"
+      ]
+    }
+  ],
+  "resultTools": [
+    {
+      "tool": "cart.add",
+      "params": {
+        "product_id": "987654321",
+        "quantity": 1
+      },
+      "reason": "LLM suggestion accepted by user affirmative"
+    }
+  ],
+  "stateAfterSuggestion": false
+}

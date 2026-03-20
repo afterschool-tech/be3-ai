@@ -201,6 +201,14 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         let hasUnfilledRequired = false;
         const matchedParams = {};
         const matchedKeywords = [];
+        const breakdown = []; // Detailed scoring audit
+
+        // Helper to add to score and track breakdown
+        const applyModifier = (value, reason) => {
+            if (value === 0) return;
+            score += value;
+            breakdown.push({ value, reason });
+        };
 
         // 3a. Schema Fit: Check each parameter against extracted entities
         for (const [paramName, paramDef] of Object.entries(params)) {
@@ -244,10 +252,14 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
         // 3b. Schema Score
         // Required slots filled: +2.0 each
-        score += requiredFilled * 2.0;
+        if (requiredFilled > 0) {
+            applyModifier(requiredFilled * 2.0, `Required slot match (${requiredFilled})`);
+        }
 
         // Optional slots filled: +0.5 each
-        score += optionalFilled * 0.5;
+        if (optionalFilled > 0) {
+            applyModifier(optionalFilled * 0.5, `Optional slot match (${optionalFilled})`);
+        }
 
         // 3c. Action Verb Boost: If action verbs suggest this intent
         if (actionSuggestedIntents.has(intentName)) {
@@ -255,7 +267,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             for (const action of actionEntities) {
                 const suggested = ACTION_TO_INTENTS[action.category] || [];
                 if (suggested.includes(intentName)) {
-                    score += action.idf;
+                    applyModifier(action.idf, `Action verb: "${action.verb}" (+${action.idf.toFixed(2)} IDF)`);
                     matchedKeywords.push(action.verb);
                 }
             }
@@ -268,8 +280,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                 const kwIdf = idfMap[kwLower] || 0.5;
                 if (intentName === 'vendor_contact') console.log(`[SchemaResolver] Match for vendor_contact: "${kwLower}" in words: [${textWords.join(', ')}] with IDF ${kwIdf}`);
                 // Boost for exact keyword matches (especially for test/debug intents)
-                const exactMatchBoost = kwLower === textWords.join(' ').trim() ? 3.0 : 0;
-                score += kwIdf + exactMatchBoost;
+                const exactMatch = kwLower === textWords.join(' ').trim();
+                const exactMatchBoost = exactMatch ? 3.0 : 0;
+                applyModifier(kwIdf + exactMatchBoost, `Keyword match: "${kwLower}"${exactMatch ? ' (Exact match +3.0)' : ''}`);
                 matchedKeywords.push(kwLower);
             }
         }
@@ -277,7 +290,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // 3e. Multi-word synonym match (bonus for phrase-level matches)
         for (const syn of (intent.synonyms || [])) {
             if (syn.includes(' ') && text.toLowerCase().includes(syn.toLowerCase())) {
-                score += 1.5; // Multi-word synonym is a strong signal
+                applyModifier(1.5, `Synonym phrase: "${syn}"`);
                 matchedKeywords.push(syn);
             }
         }
@@ -287,8 +300,8 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // [Cart Remove Dominance Rule]: if the user explicitly says remove, prioritize remove_from_cart.
         // This prevents false positives where incidental tokens cause product_search to win.
         if (hasCartRemoveAction) {
-            if (intentName === 'remove_from_cart') score += 6.0;
-            if (intentName === 'product_search' || intentName === 'discovery_sentinel' || intentName === 'browse_collection') score -= 4.0;
+            if (intentName === 'remove_from_cart') applyModifier(6.0, 'Cart Remove dominance rule');
+            if (intentName === 'product_search' || intentName === 'discovery_sentinel' || intentName === 'browse_collection') applyModifier(-4.0, 'Cart Remove suppression rule');
         }
 
         // [Compare-by-signal Rule]: If the user asks for advice "based on comparison" or "which one should I get",
@@ -302,17 +315,17 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // intents steal the win just because a brand token or clause is present in the text.
         if (hasCompareAction) {
             if (intentName === 'product_compare') {
-                score += 6.0;
+                applyModifier(6.0, 'Compare dominance rule');
             }
             if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
-                score -= 4.0;
+                applyModifier(-4.0, 'Compare suppression rule');
             }
         }
 
         // [Discovery Sentinel Suppression]: discovery_sentinel is a port-only intent.
         // It should never win competition directly.
         if (intentName === 'discovery_sentinel') {
-            score -= 15.0;
+            applyModifier(-15.0, 'Sentinel suppression rule');
         }
 
         // [Search-Discovery Rule]: If we have a category AND a clause (e.g. "cheap smartphones"),
@@ -321,7 +334,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             const hasCategory = extractionResult.entities.some(e => e.type === 'category');
             const hasClause = extractionResult.entities.some(e => e.type === 'clause');
             if (hasCategory && hasClause) {
-                score += 2.0;
+                applyModifier(2.0, 'Category + Clause boost');
             }
         }
 
@@ -331,7 +344,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         // downstream by parameterExtractor or AI — don't penalize the verb's signal.
         const actionDirectlySupports = actionSuggestedIntents.has(intentName);
         if (hasUnfilledRequired && requiredFilled === 0 && entities.length > 0 && !actionDirectlySupports) {
-            score -= 5.0; // Hard penalty for zero required match with no action backup
+            applyModifier(-5.0, 'No required slots match (unfilled)');
         }
 
 
@@ -351,18 +364,17 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
         // 3h. Zero-param intents with no action match get a baseline penalty
         if (Object.keys(params).length === 0 && matchedKeywords.length === 0 && !actionSuggestedIntents.has(intentName)) {
-            score -= 2.0;
+            applyModifier(-2.0, 'Baseline penalty (zero-param intent)');
         }
 
         // 3i. Discovery vs Identity Bias Correction
-        // If a brand is detected without an action verb, user is likely searching, not identifying vendors.
         if (entityParams['brand'] || entityParams['category']) {
             const categoryQuality = getCategoryQuality() || 1.0;
             if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
-                score += 1.5 * categoryQuality; // Discovery boost for specific entities
+                applyModifier(1.5 * categoryQuality, `Discovery boost (Category/Brand)`);
             }
             if (intentName === 'vendor_identity' && !actionSuggestedIntents.has('info')) {
-                score -= 2.0; // Identity penalty for brand-only mentions
+                applyModifier(-2.0, 'Identity penalty (Brand-only mention)');
             }
         }
 
@@ -372,7 +384,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             const hasProductTerms = entityParams['product_name'] || entityParams['brand'];
             if (!hasProductTerms && !hasPurchaseAction) {
                 if (intentName === 'discovery_sentinel') {
-                    score += 2.0;
+                    applyModifier(2.0, 'Hierarchy boost (Root category)');
                     logDebug('SCORING:HIERARCHY_BOOST', {
                         _desc: 'Schema hierarchy boost — root category alone boosts discovery_sentinel',
                         _example: '"Gadgets" without product → discovery_sentinel +2',
@@ -390,7 +402,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             const hasDiscovery = actionEntities.some(e => e.category === 'discovery');
 
             if (hasDiscoveryMeta) {
-                score += 10.0; // Massive boost if attribute target IS asked about ("what colors...")
+                applyModifier(10.0, 'Facet dominance (Discovery Meta)');
                 logDebug('SCORING:FACET_DOMINANCE', {
                     _desc: 'Facet dominance rule — explicit attribute target + discovery verb boosts facet_list',
                     _example: '"what colors..." → facet_list +10',
@@ -399,7 +411,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     boost: 10.0
                 });
             } else if (hasDiscovery) {
-                score += 8.0; // Strong boost for searching a facet list ("browse colors", "show materials")
+                applyModifier(8.0, 'Facet dominance (Discovery)');
                 logDebug('SCORING:FACET_DOMINANCE_SEARCH', {
                     _desc: 'Facet dominance rule — explicit attribute target + search verb boosts facet_list',
                     _example: '"browse colors..." → facet_list +8',
@@ -408,7 +420,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     boost: 8.0
                 });
             } else {
-                score += 2.0; // Mild boost for just mentioning an attribute ("small storage phones")
+                applyModifier(2.0, 'Facet boost (Attribute mention)');
             }
         }
 
@@ -419,7 +431,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
             // If the query explicitly asks for a list of vendors/stores
             if (hasVendorStorePhrasing) {
-                score += 8.0;
+                applyModifier(8.0, 'Vendor Facet phrasing boost');
                 logDebug('SCORING:VENDOR_FACET_BOOST', {
                     _desc: 'Vendor Facet rule — phrases asking for sellers/stores boost vendor_facet',
                     _example: '"who sells iphone 12" → vendor_facet +8',
@@ -432,18 +444,20 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             const hasVendorStorePhrasing = /who sells\b|which store\b|what store\b|which vendor\b|what vendor\b|what seller\b|which seller\b/i.test(text);
             // Downweight identity if they are asking for a *list* of who sells it (which is a facet search)
             if (hasVendorStorePhrasing) {
-                score -= 5.0;
+                applyModifier(-5.0, 'Vendor Facet phrases penalty');
             }
         }
 
         // 3l. Search Interrogative Penalty
         if (intentName === 'product_search' && actionEntities.some(e => e.category === 'discovery_meta')) {
-            score -= 5.0; // Penalize search if query is purely interrogative
+            applyModifier(-5.0, 'Search Interrogative penalty');
         }
 
         // [New] Orphan Noun Rule: product_search should win over vendor_identity for simple product mentions.
         // BUT: Don't apply this boost if another intent has a direct keyword match (e.g., "dami" → test_microstate)
+        // Guardrail: Skip boost if a product was already resolved from context/state.
         if (entityParams['product_name'] && entityParams['product_name'].source === 'residual') {
+            const hasResolvedProduct = extractionResult.entities.some(e => e.type === 'resolved_product');
             const productNameLower = entityParams['product_name'].value.toLowerCase();
             const residualTokens = new Set(tokenize(productNameLower));
 
@@ -467,12 +481,21 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             }
 
             if (intentName === 'product_search') {
-                // Only boost if this is NOT a keyword for another intent
-                if (!isKeywordForOtherIntent && !residualSupportsOtherIntent) {
-                    score += 2.0; // Boost search
+                // Only boost if this is NOT a keyword for another intent AND no product is resolved from context
+                if (!isKeywordForOtherIntent && !residualSupportsOtherIntent && !hasResolvedProduct) {
+                    applyModifier(2.0, 'Orphan Product boost');
                 }
             }
-            if (intentName === 'vendor_identity') score -= 1.0; // Penalize "guess" identity
+            if (intentName === 'vendor_identity') applyModifier(-1.0, 'Orphan Product identity penalty');
+        }
+
+        // [New] Similarity Dominance Rule: If user asks for "similar" or "like" products, 
+        // boost product_search significantly.
+        if (intentName === 'product_search') {
+            const hasSimilaritySignal = /\b(similar|like|resemble|equivalent|alternative|resembles|close to|kind of like|comparable)\b/i.test(textLower);
+            if (hasSimilaritySignal) {
+                applyModifier(4.0, 'Similarity signal boost');
+            }
         }
 
         scored.push({
@@ -484,6 +507,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             requiredTotal,
             optionalFilled,
             keywordScore: score, // For compatibility with downstream stages
+            deterministicBreakdown: breakdown, // Detailed audit
             invertedFrom: null
         });
     }

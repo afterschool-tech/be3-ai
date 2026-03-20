@@ -136,6 +136,26 @@ function summarizeToolResultsForLLM(results) {
             };
         }
 
+        // List of tools that return a product array we want to summarize for the LLM
+        const toolsWithProducts = [
+            'product.search', 'product_search',
+            'product.recommend', 'product_recommendations',
+            'vendor.getProducts', 'vendor_products',
+            'cart.view', 'cart.get', 'cart'
+        ];
+        
+        if (toolsWithProducts.includes(tool)) {
+            const tempProducts = Array.isArray(rr.products) ? rr.products : (Array.isArray(rr.results) ? rr.results : null);
+            if (tempProducts && rr.method !== 'vector') {
+                base.facets = rr.facets?.attributes 
+                    ? Object.keys(rr.facets.attributes).slice(0, 5).reduce((acc, k) => {
+                        acc[k] = rr.facets.attributes[k].clauses || rr.facets.attributes[k].options;
+                        return acc;
+                    }, {})
+                    : null;
+            }
+        }
+
         const hasProducts = Array.isArray(rr.products) || Array.isArray(rr.results);
         const productArray = Array.isArray(rr.products) ? rr.products : (Array.isArray(rr.results) ? rr.results : null);
 
@@ -153,6 +173,16 @@ function summarizeToolResultsForLLM(results) {
             }));
             base.products_truncated = !isCartView && productArray.length > MAX_PRODUCTS_FOR_LLM;
             base.total_products = productArray.length;
+
+            // ── SIMILARITY CONTEXT ──
+            // If the search was run in "similar" mode, tell the LLM so it can frame
+            // the results correctly ("here are products similar to X") instead of
+            // treating them like a generic keyword search (and saying "I found nothing similar").
+            if (rr.mode === 'similar' || rr.search_mode === 'similar') {
+                base.search_mode = 'similar';
+                if (rr.similar_to_name) base.similar_to_name = rr.similar_to_name;
+                if (rr.similar_to) base.similar_to = rr.similar_to;
+            }
         }
 
         // Preserve critical vendor breakdown / checkout links if present, but keep it lean
@@ -287,6 +317,13 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
     const summarizedResultsForLLM = summarizeToolResultsForLLM(optimizedResults);
     const resultsSummary = JSON.stringify(summarizedResultsForLLM);
 
+    const hasSimilarityData = Array.isArray(summarizedResultsForLLM) && summarizedResultsForLLM.some(x =>
+        x && x.search_mode === 'similar' && Array.isArray(x.products) && x.products.length > 0
+    );
+    const similarityRef = hasSimilarityData
+        ? (summarizedResultsForLLM.find(x => x.search_mode === 'similar')?.similar_to_name || null)
+        : null;
+
     const hasComparisonData = Array.isArray(summarizedResultsForLLM) && summarizedResultsForLLM.some(x =>
         x && Array.isArray(x.comparison) && x.comparison.length >= 2
     );
@@ -343,6 +380,13 @@ ${hasComparisonData ? `PRODUCT COMPARISON RULES (IMPORTANT):
 - Use "attributes" to justify the differences (storage, color, size, material, brand, price_tier, etc.).
 - If attributes exist, you MUST mention at least 3 non-price attribute differences overall (unless fewer are available).
 - If attributes are missing/empty, say so and ask ONE short question: "Which spec matters most to you (storage, color, size, etc.)?"` : ''}
+
+    ${hasSimilarityData ? `SIMILARITY SEARCH RESULTS (IMPORTANT):
+- The user asked for products *similar to* ${similarityRef ? `"${similarityRef}"` : 'a specific product'}.
+- The "products" list in Tool Results ARE the similar products — these were found via vector similarity search.
+- You MUST present them as "products similar to ${similarityRef || 'that product'}", NOT as a general search result.
+- Do NOT say "I couldn't find anything similar" — the results ARE the similar products.
+- Lead with something like: "Here are some options similar to ${similarityRef || 'that product'}! 🔍"` : ''}
 
 ${shouldIncludeRescueContext ? `RESCUE CONTEXT (ONLY FOR HELP WHEN TOOLS FAIL):\n${rescueContext}\n` : ''}
 

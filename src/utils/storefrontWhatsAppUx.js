@@ -181,7 +181,7 @@ function pickVendorSeeMoreTitle(vendorName) {
     const name = String(vendorName || '').trim();
     if (!name) return 'See more';
 
-    const truncate = (title, maxLen = 20) => {
+    const truncate = (title, maxLen = 45) => {
         const t = String(title || '');
         if (t.length <= maxLen) return t;
         return t.slice(0, Math.max(0, maxLen - 1)) + '…';
@@ -189,25 +189,17 @@ function pickVendorSeeMoreTitle(vendorName) {
 
     const len = name.length;
 
-    // Prefer shorter, more "chatty" titles when vendor name is short.
-    if (len <= 12) {
-        // Example: "More from Dareymi"
+    // Tier 1: "More from [Name]" (Short names)
+    if (len <= 10) {
         return truncate(`More from ${name}`);
     }
 
-    // Medium names: "See more <vendor>" may fit better than "More from <vendor>".
+    // Tier 2: "See more [Name] products" (Medium names)
     if (len <= 16) {
-        // Example: "See more Dareymi"
-        return truncate(`See more ${name}`);
+        return truncate(`See more ${name} products`);
     }
 
-    // Long names: avoid appending "products"; keep it concise.
-    if (len <= 24) {
-        // Example: "More from Taye's…"
-        return truncate(`More from ${name}`);
-    }
-
-    // Very long: fallback.
+    // Tier 3: "See more" (Long names)
     return 'See more';
 }
 

@@ -1,0 +1,57 @@
+{
+  "user_id": "test_session_123",
+  "session_id": "sess_1773355101011_bxoop2jys",
+  "tenant_id": "cbe1df05-45ed-455a-9ce6-156b0bd45713",
+  "current_intent": null,
+  "active_flow": null,
+  "expecting_input": null,
+  "conversation_history": [],
+  "conversation_summary": null,
+  "product_context": {
+    "currently_viewing": null,
+    "last_search": null,
+    "comparison_set": [],
+    "recently_viewed": []
+  },
+  "reference_map": {},
+  "ordinal_list": [],
+  "user_query_map": {},
+  "search_context": null,
+  "cart": {
+    "id": null,
+    "item_count": 0,
+    "total": 0,
+    "last_modified": null
+  },
+  "checkout": {
+    "stage": null,
+    "address": null,
+    "delivery_option": null,
+    "payment_method": null
+  },
+  "preferences": {
+    "price_range": {
+      "min": null,
+      "max": null
+    },
+    "favorite_brands": [],
+    "favorite_categories": [],
+    "abandoned_items": [],
+    "language": "en"
+  },
+  "session": {
+    "started_at": "2026-03-12T22:38:21.011Z",
+    "last_activity": "2026-03-12T22:38:21.015Z",
+    "message_count": 0,
+    "search_refinement_count": 0,
+    "is_active": true,
+    "platform": "whatsapp"
+  },
+  "microstate": null,
+  "last_bot_suggestion": null,
+  "last_tools": [],
+  "paused_context": null,
+  "created_at": "2026-03-12T22:38:21.011Z",
+  "updated_at": "2026-03-12T22:38:21.015Z",
+  "version": 1
+}

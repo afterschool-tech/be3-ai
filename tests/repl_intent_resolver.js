@@ -1,4 +1,19 @@
 console.log('💎 REPL ID: ALPHA-10-SEC');
+/**
+ * REPL Commands:
+ * :chat      - Toggle AI response generation (personality layer)
+ * :buttons   - Toggle visualization of all generated buttons (IDs, labels, sources)
+ * :cards     - Toggle console simulation of WhatsApp product cards
+ * :images    - Toggle simulation of bare images
+ * :state     - Print current user state, context, and microstate details
+ * :reset     - Reset session state and conversation history
+ * :verbose   - Toggle detailed pipeline trace logging
+ * :filelog   - Toggle per-message debug logging to files
+ * :quit      - Exit the REPL
+ * 
+ * .clearcart - Clear backend cart via API
+ * .clearall  - Clear both state and backend cart
+ */
 const path = require('path');
 const fs = require('fs');
 const LOG_FILE = path.join(__dirname, '../debug_trace.log');
@@ -25,6 +40,9 @@ const TENANT_ID = process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713
 let verbose = false;
 let chatMode = false;
 let conversationHistory = [];
+let showButtons = false;
+let showCards = false;
+let showImages = false;
 
 async function clearBackendCart(sessionId) {
     const headers = {
@@ -404,6 +422,16 @@ async function main() {
 ${C.bold}${C.cyan}╔═══════════════════════════════════════════════╗
 ║     Hybrid Intent Resolver — Phase 18 REPL     ║
 ╚═══════════════════════════════════════════════╝${C.reset}
+${C.dim} Commands:
+   :chat      - Toggle AI (personality)
+   :buttons   - Toggle Button Visualization
+   :cards     - Toggle Product Card Simulation
+   :images    - Toggle Bare Image Simulation
+   :state     - Print State / Microstate
+   :reset     - Reset session
+   :verbose   - Toggle Pipeline Trace
+   :filelog   - Toggle debug_trace logs
+   :quit      - Exit REPL${C.reset}
 `);
 
     await initializeSession();
@@ -438,6 +466,21 @@ ${C.bold}${C.cyan}╔═══════════════════�
         if (input === ':chat') {
             chatMode = !chatMode;
             console.log(`${C.green}  ✓ Chat mode: ${chatMode ? 'on' : 'off'}${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === ':buttons') {
+            showButtons = !showButtons;
+            console.log(`${C.green}  ✓ Show buttons: ${showButtons ? 'on' : 'off'}${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === ':cards') {
+            showCards = !showCards;
+            console.log(`${C.green}  ✓ Show cards: ${showCards ? 'on' : 'off'}${C.reset}\n`);
+            rl.prompt(); return;
+        }
+        if (input === ':images') {
+            showImages = !showImages;
+            console.log(`${C.green}  ✓ Show images: ${showImages ? 'on' : 'off'}${C.reset}\n`);
             rl.prompt(); return;
         }
         if (input === ':filelog') {
@@ -747,8 +790,76 @@ ${C.bold}${C.cyan}╔═══════════════════�
             }
 
             const images = extractImages(consolidated);
-            if (images.length > 0) {
+            if (images.length > 0 && !showImages && !showCards) {
                 console.log(`${C.dim}  Images: [${images.join(', ')}]${C.reset}`);
+            }
+
+            // ═══════════════════════════════════════════════
+            //  Visualization Overlays (:buttons, :cards, :images)
+            // ═══════════════════════════════════════════════
+            
+            // 1. :buttons - format all buttons from all tools
+            if (showButtons) {
+                const allButtons = [];
+                consolidated.forEach(er => {
+                    const btns = er.result?.whatsapp?.buttons || [];
+                    btns.forEach(b => allButtons.push({ ...b, source: er.tool }));
+                    
+                    const cardPayload = er.result?.whatsapp_product_cards;
+                    if (cardPayload?.cards) {
+                        cardPayload.cards.forEach(card => {
+                            if (card.buttons) {
+                                card.buttons.forEach(b => allButtons.push({ ...b, source: `${er.tool} (card)` }));
+                            }
+                        });
+                    }
+                });
+
+                if (allButtons.length > 0) {
+                    console.log(`${C.cyan}${C.bold}  🔳 Buttons Detected:${C.reset}`);
+                    allButtons.forEach((b, idx) => {
+                        console.log(`    [button ${idx + 1}]: label: "${C.bold}${b.title}${C.reset}", id: ${C.dim}${b.id}${C.reset} -- source: ${b.source}, priority: ${b.priority || 'N/A'}`);
+                    });
+                }
+            }
+
+            // 2. :cards - format product cards
+            if (showCards) {
+                const allCards = [];
+                consolidated.forEach(er => {
+                    const cardPayload = er.result?.whatsapp_product_cards;
+                    if (cardPayload?.cards) {
+                        cardPayload.cards.forEach(card => allCards.push({ ...card, source: er.tool }));
+                    }
+                });
+
+                if (allCards.length > 0) {
+                    console.log(`${C.cyan}${C.bold}  🎴 Product Cards Simulation:${C.reset}`);
+                    allCards.forEach((card, idx) => {
+                        console.log(`${C.dim}    ┌───────────────────────────────────┐${C.reset}`);
+                        console.log(`    ${C.magenta}[product image]${C.reset}`);
+                        console.log(`    ${C.bold}${card.header || 'Product'}${C.reset}`);
+                        console.log(`    ${C.white}${card.body || ''}${C.reset}`);
+                        if (card.footer) console.log(`    ${C.dim}${card.footer}${C.reset}`);
+                        if (card.buttons) {
+                            card.buttons.forEach(b => {
+                                console.log(`    ${C.cyan}[button]: ${b.title}${C.reset} (${b.id})`);
+                            });
+                        }
+                        console.log(`${C.dim}    └───────────────────────────────────┘${C.reset}`);
+                    });
+                }
+            }
+
+            // 3. :images - format bare images
+            if (showImages) {
+                const images = extractImages(consolidated);
+                if (images.length > 0) {
+                    console.log(`${C.cyan}${C.bold}  🖼️ Bare Images Simulation:${C.reset}`);
+                    images.forEach((img, idx) => {
+                        console.log(`    [product image - ${img}]`);
+                    });
+                }
             }
 
             console.log(`${C.dim}  ⏱ ${ms}ms${C.reset}\n`);

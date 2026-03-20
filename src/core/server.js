@@ -760,6 +760,71 @@ app.post('/chat', async (req, res) => {
                 })
                 : consolidatedToolResults;
 
+            // --- LLM SUGGESTION EXTRACTION ---
+            // If the AI response contains suggestion phrasing, simulate NLU.
+            const suggestionPattern = /\b(would you|want me to|shall i|should i|do you want|can i help|what about)\b/i;
+            // Temporarily removing button restriction
+            // const hasButtons = !!whatsappButtons || !!productCardPayload;
+            
+            if (suggestionPattern.test(sanitizedResponse)) {
+                logDebug('SERVER:SUGGESTION_DETECTED', {
+                    _desc: 'Suggestion explicitly detected by heuristic; running NLU to extract payload',
+                    _example: 'Matched "would you like" (button restriction temporarily removed)',
+                    responseSnippet: sanitizedResponse.slice(-50)
+                });
+                
+                try {
+                    // Remove all newLines before splitting
+                    const cleanResponse = sanitizedResponse.replace(/\n/g, ' ');
+                    // Split sentences to focus on the conversational hooks
+                    const sentences = cleanResponse.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 0);
+                    
+                    const simState = await stateManager.getState(session_id);
+                    
+                    // Check up to the last 3 sentences for a supported suggestion
+                    const maxChecks = Math.min(3, sentences.length);
+                    for (let i = 1; i <= maxChecks; i++) {
+                        const targetSentence = sentences[sentences.length - i];
+                        const simResult = await resolveDeterministic(targetSentence, simState);
+                        
+                        if (simResult && simResult.result && simResult.result.intents && simResult.result.intents.length > 0) {
+                            const intentsArr = simResult.result.intents;
+                            const toolsArr = simResult.result.tools || [];
+                            const lastIntentObj = intentsArr[intentsArr.length - 1];
+                            const lastIntent = lastIntentObj.intentName;
+                            
+                            const allowedSuggestionIntents = [
+                                'add_to_cart', 'remove_from_cart', 
+                                'start_checkout', 'get_product_details'
+                            ];
+
+                            if (allowedSuggestionIntents.includes(lastIntent) && toolsArr.length > 0) {
+                                const correspondingTool = toolsArr.find(t => t.reason && t.reason.includes(lastIntent)) || toolsArr[toolsArr.length - 1];
+                                
+                                const suggestionData = {
+                                    type: 'conversational_simulation',
+                                    intent: lastIntent,
+                                    params: lastIntentObj.parameters || correspondingTool?.params || {},
+                                    tool: correspondingTool?.tool,
+                                    text: targetSentence
+                                };
+                                
+                                await stateManager.updateState(session_id, { last_bot_suggestion: suggestionData });
+                                
+                                logDebug('SERVER:SUGGESTION_SAVED', {
+                                    _desc: 'LLM suggestion saved to state for next turn resolution',
+                                    _example: `Saved ${lastIntent} from bottom-up sentence index ${i}`,
+                                    suggestionData
+                                });
+                                break; // Stop checking when the first supported suggestion is found (bottom-up)
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('[SERVER] Failed to simulate suggestion NLU:', e.message);
+                }
+            }
+
             const finalResponse = {
                 success: true,
                 reply: sanitizedResponse,

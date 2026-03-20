@@ -300,9 +300,17 @@
       "i'm looking for a [product] mentor",
       "can you shed some light on [product] for me?",
       "provide [product] guidance for the clueless",
-      "is there a [product] quickstart guide available?",
+      "can i get a [product] quickstart guide available?",
       "i need to learn [product] the easy way",
-      "can you outline the [product] essentials?"
+      "can you outline the [product] essentials?",
+      "can i use [product] to [action]?",
+      "is [product] capable of [action]?",
+      "will [product] work for [action]?",
+      "can i play [product] with [product]?",
+      "is it possible to use [product] for [action]?",
+      "can i play games on [product]?",
+      "is it possible to run [product] on [product]?",
+      "how do i use [product] to play [product]?"
     ],
     "metadata": {
       "runs": 7,

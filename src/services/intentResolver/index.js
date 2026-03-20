@@ -45,6 +45,7 @@ const stateManager = require('../../state/stateManager');
 const { resolveEngineeredToken, resolveGroupedOrdinal, resolveOrdinal } = require('../../utils/responseResolver');
 const { callBackendAPI } = require('../../utils/apiClient');
 const { processProductList } = require('../../utils/productUtility');
+const { isConfirmation } = require('../../middleware/suggestionHelper');
 
 /**
  * Helper: Reconcile a product name from its ID using available state context.
@@ -98,6 +99,38 @@ const idfMap = intentRegistry.buildIdfMap();
 async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const userId = state.user_id;
 
+    // --- LLM SUGGESTION CONFIRMATION INTERCEPT ---
+    const lastSuggestion = state.last_bot_suggestion;
+    if (lastSuggestion) {
+        // ALWAYS clear the suggestion so it only lives for exactly one turn
+        await stateManager.updateState(state.user_id, { last_bot_suggestion: null });
+        
+        const confirmationType = isConfirmation(userMessage);
+        if (confirmationType === 'yes') {
+            logDebug('PIPELINE:SUGGESTION_CONFIRMED', {
+                _desc: 'User confirmed the previous LLM suggestion. Bypassing NLU.',
+                suggestion: lastSuggestion
+            });
+            
+            return {
+                intents: [{
+                    intentName: lastSuggestion.intent,
+                    score: 1.0,
+                    parameters: lastSuggestion.params,
+                    matchedKeywords: ['suggestion_accepted']
+                }],
+                tools: [{
+                    tool: lastSuggestion.tool || 'unknown.tool',
+                    params: lastSuggestion.params,
+                    reason: 'LLM suggestion accepted by user affirmative'
+                }],
+                isMultiIntent: false,
+                corrections: { original: userMessage },
+                resolutions: []
+            };
+        }
+    }
+
     // Stage 0a: Engineered pagination tokens (no microstate required)
     // If user clicks a "See more" button, WA sends __nav:more__.
     // We re-run the last product.search with page increment.
@@ -118,7 +151,18 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             } catch (_) { }
         }
 
-        if (baseFilters) {
+        // ── MICROSTATE GUARD ──
+        // If any microstate is active, let the microstate runner handle __nav:more__/__nav:prev__.
+        // The runner already has handlers for all microstate types:
+        //   - product_compare.missing_products → advanceCompareRecommendations
+        //   - tool_pagination → re-runs tool with page offset
+        //   - all others → generic option window sliding
+        // Stage 0a is strictly for nav tokens when there is NO active microstate.
+        const activeMicrostateEarly = state?.microstate;
+        const isMicrostateActive = !!(activeMicrostateEarly?.intent && activeMicrostateEarly?.type);
+
+        if (baseFilters && !isMicrostateActive) {
+
             const currentPage = Number.isFinite(baseFilters.page) ? Number(baseFilters.page) : 1;
             const delta = (engineeredEarly.command === 'prev') ? -1 : 1;
             const nextPage = (engineeredEarly.command === 'results') ? 1 : Math.max(1, currentPage + delta);
@@ -866,7 +910,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             score: c.score,
             matchedKeywords: c.matchedKeywords,
             matchedParams: c.matchedParams,
-            breakdown: { deterministic: c.score, semantic: 0 }
+            breakdown: { 
+                deterministic: c.score, 
+                semantic: 0,
+                deterministicAudit: c.deterministicBreakdown || []
+            }
         }));
 
         if (semanticContext?.available && Array.isArray(semanticContext.classification)) {
@@ -887,7 +935,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         score: semanticPoints,
                         matchedKeywords: ['semantic'],
                         matchedParams: {},
-                        breakdown: { deterministic: 0, semantic: semanticPoints }
+                        breakdown: { 
+                            deterministic: 0, 
+                            semantic: semanticPoints,
+                            deterministicAudit: []
+                        }
                     });
                 }
             }
@@ -904,11 +956,15 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 intent: winner.intentName,
                 score: winner.score.toFixed(2),
                 deterministic: winner.breakdown.deterministic.toFixed(2),
-                semantic: winner.breakdown.semantic.toFixed(2)
+                semantic: winner.breakdown.semantic.toFixed(2),
+                audit: winner.breakdown.deterministicAudit
             } : null,
-            candidates: finalCandidates.slice(0, 3).map(c => ({
+            candidates: finalCandidates.slice(0, 5).map(c => ({
                 intent: c.intentName,
-                score: c.score.toFixed(2)
+                score: c.score.toFixed(2),
+                deterministic: c.breakdown?.deterministic?.toFixed(2),
+                semantic: c.breakdown?.semantic?.toFixed(2),
+                audit: c.breakdown?.deterministicAudit
             }))
         });
 
@@ -1351,8 +1407,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
                 // Detect explicit pronouns or reference words that imply context use
                 const PRONOUNS = ['ones', 'one', 'it', 'them', 'that', 'this', 'those', 'these', 'the_one', 'the_ones', 'the_products'];
-                const hasExplicitPronoun = (params.product_name && PRONOUNS.includes(params.product_name.toLowerCase())) ||
-                    (params.products && params.products.some(p => PRONOUNS.includes(p.toLowerCase())));
+                const hasExplicitPronoun = (typeof params.product_name === 'string' && PRONOUNS.includes(params.product_name.toLowerCase())) ||
+                    (Array.isArray(params.products) && params.products.some(p => PRONOUNS.includes(p.toLowerCase())));
 
                 // Clause match: trigger if matchedClauses exist OR if we have params.attributes for filtering
                 // (e.g., "add the white ones" when searchCtx.clauses is empty but params.attributes.color exists)
@@ -1627,7 +1683,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         });
 
                         // Clear product_name if it's a pronoun
-                        if (params.product_name && PRONOUNS.includes(params.product_name.toLowerCase())) {
+                        if (typeof params.product_name === 'string' && PRONOUNS.includes(params.product_name.toLowerCase())) {
                             params.product_name = null;
                         }
 

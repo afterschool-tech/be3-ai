@@ -75,6 +75,7 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         'have', 'has', 'had', 'having',
         'advice', 'advise', 'recommend', 'recommendation', 'suggest', 'suggestion', 'guidance', 'help',
         'product', 'products', 'item', 'items', 'gadget', 'gadgets',
+        'something', 'similar', 'guess', 'good', 'best',
         // Action verbs that should never be product names
         'looking', 'look', 'find', 'search', 'browse', 'explore', 'discover', 'view', 'see', 'seek',
         'buy', 'purchase', 'order', 'grab', 'add', 'remove', 'delete', 'update', 'change', 'modify'
@@ -115,7 +116,8 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             entities,
             resolutions,
             intentName: 'product_compare',
-            excludeSet
+            excludeSet,
+            categoryId
         });
 
         if (pieResults.length > 0) {
@@ -133,11 +135,17 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
                 if (p.intel.brand) {
                     seg.attributes.brand = p.intel.brand.value;
                 }
-                if (p.isResolved) seg._resolved_product_id = p.intel.resolvedId;
+                if (p.isResolved) {
+                    const rid = p.intel.resolvedId;
+                    seg._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
+                }
                 return seg;
             });
             // Legacy fallback for tool mapping compatibility until refactored
-            extracted.products = pieResults.map(p => p.intel.resolvedId || p.name);
+            extracted.products = pieResults.map(p => {
+                const rid = p.intel.resolvedId;
+                return ((rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid) || p.name;
+            });
         }
     }
 
@@ -149,13 +157,29 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             entities,
             resolutions,
             intentName: 'product_search',
-            excludeSet
+            excludeSet,
+            categoryId
         });
 
         if (pieResults.length > 0 && pieResults[0].name) {
-            extracted.product_name = pieResults[0].name;
-            if (pieResults[0].intel.resolvedId) {
-                extracted._resolved_product_id = pieResults[0].intel.resolvedId;
+            // NEW: Similarity Search Detection
+            // If the user asks for "similar" products, we populate 'similar_to' (parameter)
+            // instead of 'product_name' (query). This tells the tool handler to run Vector mode.
+            const hasSimilaritySignal = /\b(similar|like|resemble|equivalent|alternative|resembles|close to|kind of like|comparable)\b/i.test(text.toLowerCase());
+
+            if (hasSimilaritySignal) {
+                // NEW: UUID Priority — if we have a resolved ID from PIE or context, use it directly.
+                // This prevents redundant resolution calls in the tool handler.
+                const rid = pieResults[0].intel.resolvedId;
+                const flattenedId = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
+                extracted.similar_to = flattenedId || pieResults[0].name;
+                // DO NOT populate product_name to prevent fallback to keyword search (q param)
+            } else {
+                extracted.product_name = pieResults[0].name;
+                if (pieResults[0].intel.resolvedId) {
+                    const rid = pieResults[0].intel.resolvedId;
+                    extracted._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
+                }
             }
         }
     }
@@ -415,11 +439,27 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     const combinedBase = { ...deterministic, ...baseFromEntities };
 
     // ── INTEL SHIELD ──
-    // If this is a comparison, we strictly favor segmented results.
-    // For single search, we prepend deterministic residuals (e.g. "best") to the resolved product.
     const isCompare = candidates?.[0]?.intentName === 'product_compare';
-    if (!isCompare && baseFromEntities.product_name && deterministic.product_name && baseFromEntities.product_name !== deterministic.product_name) {
-        combinedBase.product_name = `${deterministic.product_name} ${baseFromEntities.product_name}`;
+    if (!isCompare && baseFromEntities.product_name && deterministic.product_name) {
+        const resolvedName = baseFromEntities.product_name.toLowerCase();
+        const pieWords = deterministic.product_name.split(/\s+/);
+        
+        // Deduplicate: Only keep words from PIE that don't already exist in the resolved name
+        // This prevents "iphone13 iPhone 13" or "iphone12pro iPhone 12 Pro"
+        const cleanPieWords = pieWords.filter(word => {
+            const w = word.toLowerCase();
+            if (resolvedName.includes(w)) return false;
+            // Also check for collapsed overlap (e.g. "iphone12pro" vs "iphone 12 pro")
+            const collapsedResolved = resolvedName.replace(/\s+/g, '');
+            if (collapsedResolved.includes(w)) return false;
+            return true;
+        });
+
+        if (cleanPieWords.length > 0) {
+            combinedBase.product_name = `${cleanPieWords.join(' ')} ${baseFromEntities.product_name}`;
+        } else {
+            combinedBase.product_name = baseFromEntities.product_name;
+        }
     }
 
     // ... rest of logic
@@ -496,6 +536,15 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     // Merge: base (deterministic) takes priority over AI
     const merged = { ...aiExtracted, ...combinedBase };
+
+    // ── SIMILARITY SUPPRESSION GUARD ──
+    // If 'similar_to' is present, we MUST NOT have 'product_name'.
+    // This ensures product.search tool runs in VECTOR/SIMILAR mode and doesn't
+    // fall back to a normal keyword match.
+    if (merged.similar_to) {
+        delete merged.product_name;
+        delete merged._resolved_product_id;
+    }
 
     logDebug('PARAM:EXTRACT_FINAL', {
         products: merged.products,

@@ -5,9 +5,10 @@ const { callBackendAPI } = require('./apiClient');
  * @param {string} query - The search keywords
  * @param {number} limit - Max results
  * @param {string} categoryId - Optional category ID
+ * @param {Object} extraParams - Optional additional filters (price_max, attributes, etc.)
  * @returns {Promise<Object|null>}
  */
-async function performVectorSearch(query, limit = 5, categoryId = null) {
+async function performVectorSearch(query, limit = 5, categoryId = null, extraParams = {}) {
     if (!query) return null;
 
     try {
@@ -18,6 +19,22 @@ async function performVectorSearch(query, limit = 5, categoryId = null) {
             mode: 'vector'
         });
         if (categoryId) params.append('category_id', categoryId);
+
+        // Append extra filters
+        if (extraParams) {
+            Object.entries(extraParams).forEach(([k, v]) => {
+                if (v !== undefined && v !== null) {
+                    if (typeof v === 'object') {
+                        // For attributes, we need to prefix with attribute.
+                        if (k === 'attributes') {
+                            Object.entries(v).forEach(([ak, av]) => params.append(`attribute.${ak}`, av));
+                        }
+                    } else {
+                        params.append(k, v);
+                    }
+                }
+            });
+        }
 
         const result = await callBackendAPI(`/search?${params.toString()}`);
 
@@ -44,9 +61,10 @@ async function performVectorSearch(query, limit = 5, categoryId = null) {
  * Executes a "find similar" search against the backend via unified /search.
  * @param {string} productId - The source product ID
  * @param {number} limit - Max results
+ * @param {Object} extraParams - Optional additional filters
  * @returns {Promise<Object|null>}
  */
-async function performSimilarSearch(productId, limit = 5) {
+async function performSimilarSearch(productId, limit = 5, extraParams = {}) {
     if (!productId) return null;
 
     try {
@@ -56,6 +74,21 @@ async function performSimilarSearch(productId, limit = 5) {
             per_page: limit,
             mode: 'similar'
         });
+
+        // Append extra filters
+        if (extraParams) {
+            Object.entries(extraParams).forEach(([k, v]) => {
+                if (v !== undefined && v !== null) {
+                    if (typeof v === 'object') {
+                        if (k === 'attributes') {
+                            Object.entries(v).forEach(([ak, av]) => params.append(`attribute.${ak}`, av));
+                        }
+                    } else {
+                        params.append(k, v);
+                    }
+                }
+            });
+        }
 
         const result = await callBackendAPI(`/search?${params.toString()}`);
 

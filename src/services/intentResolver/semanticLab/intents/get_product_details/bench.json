@@ -42,7 +42,14 @@
       "details and information for [product]",
       "what are the specifications of this [product]?",
       "show me what [product] has to offer",
-      "I'm looking for details about [product]"
+      "I'm looking for details about [product]",
+      "is [product] compatible with [product]?",
+      "what are the requirements for [product]?",
+      "will [product] run on my [product]?",
+      "compatibility info for [product]?",
+      "does [product] support [product]?",
+      "can [product] handle [product]?",
+      "is [product] usable with [product]?"
     ],
     "metadata": {
       "runs": 1,
