@@ -741,22 +741,20 @@ app.post('/chat', async (req, res) => {
                 productCardCount: productCardPayload?.cards?.length || 0
             });
 
-            // Prevent stale microstate UI payloads from leaking via the `results` array.
+            // Prevent stale tool UI payloads (buttons/cards/etc) from leaking via the `results` array.
             // Some clients render buttons directly off tool results (not just whatsapp_buttons).
-            // If this is a normal (non-direct) final response, strip `result.whatsapp` from any
-            // microstate.* tool results in the consolidated history.
-            const resultsForClient = (!directResponseResult && Array.isArray(consolidatedToolResults))
+            // We only want the UI elements from THIS turn's tools to be present in their respective results.
+            const resultsForClient = Array.isArray(consolidatedToolResults)
                 ? consolidatedToolResults.map(tr => {
-                    const toolName = String(tr?.tool || '');
-                    if (!toolName.startsWith('microstate.')) return tr;
-                    if (!tr || !tr.result || !tr.result.whatsapp) return tr;
-                    return {
-                        ...tr,
-                        result: {
-                            ...tr.result,
-                            whatsapp: null
-                        }
-                    };
+                    // Check if this tool instance was newly executed in this request
+                    const isNewInThisRequest = toolResults.some(newTr => newTr === tr);
+                    if (!isNewInThisRequest && tr.result) {
+                        const strippedResult = { ...tr.result };
+                        delete strippedResult.whatsapp;
+                        delete strippedResult.whatsapp_product_cards;
+                        return { ...tr, result: strippedResult };
+                    }
+                    return tr;
                 })
                 : consolidatedToolResults;
 

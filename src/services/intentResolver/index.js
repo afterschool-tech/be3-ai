@@ -136,6 +136,24 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // We re-run the last product.search with page increment.
     const rawEarly = String(userMessage || '').trim();
     const engineeredEarly = resolveEngineeredToken(rawEarly);
+
+    // Stage 0a (Cards): Engineered token to display product cards from cache
+    if (engineeredEarly && engineeredEarly.namespace === 'nav' && engineeredEarly.command === 'cards') {
+        const snapshotId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        return {
+            intents: [],
+            tools: [{
+                tool: 'product.showCards',
+                params: { snapshot_id: snapshotId },
+                reason: 'Engineered trigger to display product cards from cache'
+            }],
+            isMultiIntent: false,
+            corrections: { original: userMessage },
+            resolutions: [],
+            engineered_pagination: false
+        };
+    }
+
     if (engineeredEarly && engineeredEarly.namespace === 'nav' && (engineeredEarly.command === 'more' || engineeredEarly.command === 'prev' || engineeredEarly.command === 'results') && userId) {
         const last = state.product_context?.last_search;
         let baseFilters = last?.filters && typeof last.filters === 'object' ? last.filters : null;

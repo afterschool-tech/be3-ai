@@ -258,7 +258,7 @@ const productTools = {
                     whatsapp: {
                         type: 'button',
                         buttons: [
-                            { id: '__nav:results__', title: 'See product details' },
+                            { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
                             seeMoreBtn
                         ]
                     }
@@ -266,6 +266,44 @@ const productTools = {
             }
 
             return { products: [], total: 0, message: "I couldn't find any products matching your search." };
+        }
+    },
+
+    'product.showCards': {
+        description: 'Internal utility tool to render product cards from an active state snapshot',
+        params: {
+            snapshot_id: { type: 'string', description: 'The snapshot ID for the cached products' }
+        },
+        handler: async (params, context) => {
+            const { snapshot_id } = params;
+            
+            let cachedProducts = [];
+            try {
+                // Try targeted snapshot first
+                const snap = await stateManager.getSearchSnapshot(context.sessionId, snapshot_id);
+                if (snap && Array.isArray(snap.results) && snap.results.length > 0) {
+                    cachedProducts = snap.results;
+                } else {
+                    // Fallback to active state
+                    const state = await stateManager.getState(context.sessionId);
+                    const lastSearch = state?.product_context?.last_search?.results;
+                    if (Array.isArray(lastSearch) && lastSearch.length > 0) {
+                        cachedProducts = lastSearch;
+                    }
+                }
+            } catch (e) {}
+
+            if (cachedProducts.length === 0) {
+                return { error: "Could not retrieve the product cards because the session context expired." };
+            }
+
+            const cardsPayload = buildProductCards(cachedProducts.filter(Boolean));
+            
+            return {
+                directResponse: true,
+                message: "Here are the details for the products:",
+                whatsapp_product_cards: cardsPayload.cards.length > 0 ? { type: 'button', transaction: 'product_card', cards: cardsPayload.cards } : undefined
+            };
         }
     },
 
@@ -1096,13 +1134,15 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         
         globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: seeMoreTitle, priority: 100 });
     }
+    globalButtons.unshift({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
     globalButtons.push(...facetButtons);
 
     return {
         ...searchResult,
-        products,
+        ...(searchResult.results ? { results: searchResult.results.map(p => ({ ...p, suppress_images: true })) } : {}),
+        products: products.map(p => ({ ...p, suppress_images: true })),
         total: totalCount,
-        whatsapp_product_cards: cardsPayload.cards.length > 0 ? { type: 'button', transaction: 'product_card', cards: cardsPayload.cards } : undefined,
+        whatsapp_product_cards: undefined, // Decoupled: Cards are now summoned purely via __nav:cards:
         whatsapp: globalButtons.length > 0 ? { type: 'button', buttons: globalButtons.slice(0, 3) } : undefined
     };
 }
