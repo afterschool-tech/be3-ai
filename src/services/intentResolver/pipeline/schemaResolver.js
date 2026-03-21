@@ -597,7 +597,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         candidates: validCandidates, // Pass ALL valid candidates to semantic integration
         fallbackUsed,
         extractedEntities: entities,
-        residualWords
+        residualWords,
+        signalDensity: signalCount === 0 && entityCount > 0 ? 0 : signalDensity, // Ensure 0 is returned if no signals
+        entityCount
     };
 }
 

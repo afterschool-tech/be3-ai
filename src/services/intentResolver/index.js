@@ -836,6 +836,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
         const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
+        const signalDensity = resolution.signalDensity;
+        const entityCount = resolution.entityCount;
 
         // Stage 4.5: Semantic Integration + Confidence Gap Amplifier
         // Principle: If the transformer is confident about an intent (clear gap between #1 and #2),
@@ -858,8 +860,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }
         }));
 
+        let transformerGap = 0;
         if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
             const semanticResults = localSemanticContext.classification;
+            
+            // Calculate transformer gap (winner score - mean scores)
+            const highestSemanticScore = semanticResults[0]?.score || 0;
+            const meanSemanticScore = semanticResults.reduce((sum, s) => sum + (s.score || 0), 0) / (semanticResults.length || 1);
+            transformerGap = highestSemanticScore - meanSemanticScore;
 
             // ── Semantic Confidence Gap Amplifier ──
             const topScore = semanticResults[0]?.score || 0;
@@ -1019,7 +1027,12 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             statementText: statement.text,
             resolvedText: afterContext,
             stage2Resolutions: resolutions,
-            candidates: finalCandidates
+            candidates: finalCandidates,
+            metrics: {
+                signalDensity,
+                entityCount,
+                transformerGap
+            }
         });
 
         // [TEST] Residual chunk analysis — background, log-only, product_search with residuals

@@ -83,6 +83,24 @@ async function portIntents(intents, state) {
     for (const intent of intents) {
         let out = { ...intent };
 
+        // Degradation Check: Weak matches with no entities/actions and low transformer confidence
+        const metrics = intent.metrics || {};
+        const isExtremelyWeak = metrics.signalDensity === 0 && 
+                                metrics.entityCount === 0 && 
+                                metrics.transformerGap < 0.1;
+
+        if (isExtremelyWeak && intent.intentName !== 'conversation') {
+            logDebug('PIPELINE:STAGE7.5_DEGRADE_TO_CONVERSATION', {
+                _desc: 'Intent degradation — Extremely weak signal ported to conversation',
+                originalIntent: intent.intentName,
+                metrics: metrics,
+                text: (intent.statementText || '').slice(0, 80)
+            });
+            out.intentName = 'conversation';
+            out._downgraded = true;
+            out._original_intent = intent.intentName;
+        }
+
         // Phase 4: Consecutive naked product_search after add_to_cart → add_to_cart (one tool call per product)
         if (intent.intentName === 'product_search' && prevIntentName === 'add_to_cart') {
             if (isNakedProductSearch(intent) && !isQuestionPhrase(intent.statementText)) {
