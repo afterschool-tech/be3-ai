@@ -831,6 +831,15 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
         }
     }
 
+    // Special fallback for missing_query cases:
+    // If we're waiting for 'query', but the user's input was fully consumed by entity extraction
+    // (e.g. they typed "Smartphones" and it became a category), treat that entity as the query.
+    if (onFulfilled.includes('query') && !newParams.query) {
+        if (newParams.category) newParams.query = newParams.category;
+        else if (newParams.vendor) newParams.query = newParams.vendor;
+        else if (newParams.brand) newParams.query = newParams.brand;
+    }
+
     // Residual words might be the product name we're waiting for
     if (extractionResult.residualWords && extractionResult.residualWords.length > 0) {
         const residualText = extractionResult.residualWords.join(' ').trim();
@@ -886,6 +895,12 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
             if (onFulfilled.includes('product_name') && !newParams.product_name) {
                 newParams.product_name = residualText;
             }
+            
+            // If we're waiting for query, residuals are definitely it
+            if (onFulfilled.includes('query') && !newParams.query) {
+                newParams.query = residualText;
+            }
+
             // If we're waiting for products (list), use rawText for splitting
             // (residualWords may lose separators like "and", commas during cleaning/extraction)
             if (onFulfilled.includes('products') && !newParams.products) {

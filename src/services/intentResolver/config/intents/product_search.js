@@ -39,6 +39,7 @@ module.exports = {
     toolName: 'product.search',
     
     paramMap: {
+        query: 'query',
         products: { target: 'query', expand: false },
         product_name: 'query',
         category: 'category',
