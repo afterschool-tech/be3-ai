@@ -337,6 +337,23 @@ app.post('/chat', async (req, res) => {
             let toolsSelected = selection.tools || [];
             const intent = selection.intent || 'unknown';
 
+            // --- CONTEXTUAL CHECKOUT INJECTION ---
+            // If the user wants to checkout but their cart is empty, check if they are actively viewing a product.
+            const isCheckoutIntent = intent === 'start_checkout' || toolsSelected.some(t => t.tool === 'cart.checkout' || t.tool === 'start_checkout');
+            const isCartEmpty = !state.cart || !Array.isArray(state.cart.items) || state.cart.items.length === 0;
+            const currentlyViewing = state.product_context?.currently_viewing;
+
+            if (isCheckoutIntent && isCartEmpty && currentlyViewing) {
+                console.log(`[Server] 🛒 Empty cart checkout recovery: preemptively adding viewed product ${currentlyViewing} to cart.`);
+                
+                // Prepend an add_to_cart tool so the pipeline runs cart.add THEN cart.checkout
+                toolsSelected.unshift({
+                    tool: 'cart.add',
+                    params: { product_id: currentlyViewing, quantity: 1 },
+                    reason: 'Contextual checkout recovery (cart was empty but user is viewing a product)'
+                });
+            }
+
             logDebug('SERVER:INTENT_RESOLVED', {
                 _desc: 'Intent resolved — deterministic pipeline output, tools selected',
                 _example: 'add_to_cart → cart.add with product_id',

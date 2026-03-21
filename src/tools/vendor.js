@@ -204,6 +204,14 @@ const vendorTools = {
             // Prepend the new decoupled product details button
             globalButtons.push({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
 
+            // If exactly one product, allow immediate add to cart
+            if (products.length === 1) {
+                const singleId = products[0].id || products[0].handle || products[0].product_id;
+                if (singleId) {
+                    globalButtons.push({ id: `__cart:add:${singleId}__`, title: 'Add to cart', priority: 115 });
+                }
+            }
+
             if (hasNextPage) {
                 const titleBase = pickVendorSeeMoreTitle(vendor.business_name || vendor.tag);
                 const seeMoreTitle = truncateButtonTitle(titleBase || 'See more');

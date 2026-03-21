@@ -1140,6 +1140,15 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         
         globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: seeMoreTitle, priority: 100 });
     }
+
+    // If exactly one product, allow immediate add to cart
+    if (products.length === 1) {
+        const singleId = products[0].id || products[0].handle || products[0].product_id;
+        if (singleId) {
+            globalButtons.push({ id: `__cart:add:${singleId}__`, title: 'Add to cart', priority: 115 });
+        }
+    }
+
     globalButtons.unshift({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
     globalButtons.push(...facetButtons);
 
