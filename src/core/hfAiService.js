@@ -16,6 +16,12 @@ const client = new OpenAI({
  */
 async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2, extraParams = {}, modelOverride = null) {
     let targetModel = modelOverride || MODEL_ID;
+    let resolvedParams = typeof extraParams === 'object' ? extraParams : {};
+    
+    // Shorthand: If caller passed 'json_object' as the 5th arg, normalize it correctly
+    if (extraParams === 'json_object') {
+        resolvedParams = { response_format: { type: 'json_object' } };
+    }
 
     for (let i = 0; i <= retries; i++) {
         try {
@@ -29,7 +35,7 @@ async function queryAI(messages, maxTokens = 512, temperature = 0.7, retries = 2
                 messages: messages,
                 max_tokens: maxTokens,
                 temperature: temperature,
-                ...extraParams
+                ...resolvedParams
             });
 
             const content = completion.choices[0].message.content || "";

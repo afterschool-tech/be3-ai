@@ -527,7 +527,7 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     if (Object.keys(missingParams).length > 0 && aiQueryFn) {
         try {
             const prompt = buildExtractionPrompt(text, missingParams, Array.from(excludeWordsSet));
-            const response = await aiQueryFn(prompt, 500, 0.1, 0.9, 'json_object');
+            const response = await aiQueryFn(prompt, 500, 0.1, 2, 'json_object');
             aiExtracted = JSON.parse(response);
         } catch (error) {
             console.error('[ParameterExtractor] AI extraction failed:', error.message);

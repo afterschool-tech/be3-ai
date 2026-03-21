@@ -7,6 +7,7 @@
 
 const { resolveAndMap } = require('../services/intentResolver');
 const { CATEGORIES, VENDORS, ATTRIBUTES, COLLECTIONS } = require('../context/storeContext');
+const { queryAI } = require('./hfAiService');
 const { logDebug } = require('../utils/debugLogger');
 
 /**
@@ -40,7 +41,7 @@ async function resolveDeterministic(userMessage, state) {
     const result = await resolveAndMap(
         userMessage,
         state,
-        null, // AI Query Function - NULL means ZERO AI
+        queryAI, // 🧠 Activates IntelliSense (Stage 0b only)
         storeContext
     );
 

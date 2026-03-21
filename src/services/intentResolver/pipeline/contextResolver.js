@@ -116,19 +116,21 @@ function resolveIdToName(productId, state) {
 }
 
 /**
- * Resolve references in text using state data.
+ * Resolves references in text using state data (reference_map).
  * Scans for known reference patterns, replaces with product names.
  * Returns { resolvedText, resolutions[] }.
  */
-function resolveReferences(text, state, storeContext) {
-    if (!state || !state.reference_map) {
-        console.log(`[ContextResolver] resolveReferences: no state or reference_map, passing through`);
+function resolveReferences(text, state, storeContext, skipWords = []) {
+    if (!state || (!state.reference_map)) {
+        console.log(`[ContextResolver] resolveReferences: no state, passing through`);
         return { resolvedText: text, resolutions: [] };
     }
 
-    const referenceMap = state.reference_map;
+    const skipSet = new Set((skipWords || []).map(w => w.toLowerCase().trim()));
+
+    const referenceMap = state.reference_map || {};
     const refKeys = Object.keys(referenceMap).sort((a, b) => b.length - a.length);
-    console.log(`[ContextResolver] resolveReferences: input="${text.slice(0, 120)}${text.length > 120 ? '...' : ''}" | keys=[${refKeys.join(', ')}]`);
+
     logDebug('CONTEXT:RESOLVE_START', {
         _desc: 'Context resolution start — scan text for pronoun/ordinal references in reference_map',
         _example: '"add the first one" → scanning reference_map keys: [the_first_one, it, this]',
@@ -136,16 +138,23 @@ function resolveReferences(text, state, storeContext) {
         referenceKeys: refKeys.slice(0, 10),
         keyCount: refKeys.length
     });
-    const resolutions = [];
-    let resolvedText = text;
 
     if (refKeys.length === 0) return { resolvedText: text, resolutions: [] };
 
-    // Build a single-pass regex to avoid re-resolving already replaced text
-    const patterns = refKeys.map(k => `\\b${escapeRegex(k.replace(/_/g, ' '))}\\b`).join('|');
+    const resolutions = [];
+    let resolvedText = text;
+
+    // Single-pass regex for all keys in referenceMap
+    const patterns = refKeys.map(k => `\\b${escapeRegex(String(k).replace(/_/g, ' '))}\\b`).join('|');
     const regex = new RegExp(patterns, 'gi');
 
     resolvedText = text.replace(regex, (matched, offset, fullString) => {
+        // Skip resolution if word is in the IntelliSense skipSet
+        if (skipSet.has(matched.toLowerCase())) {
+            console.log(`[ContextResolver] 🚫 Skipping "${matched}" (flagged by IntelliSense skip_resolve)`);
+            return matched;
+        }
+
         // Skip resolution when word is a relative pronoun or temporal/discourse marker
         if (shouldSkipAmbiguousReference(fullString, offset, matched)) return matched;
 
@@ -156,50 +165,50 @@ function resolveReferences(text, state, storeContext) {
         const phrase = matched.toLowerCase();
         const refKey = phrase.replace(/ /g, '_');
 
-        // Exact match check (or underscore version)
-        const productId = referenceMap[refKey] || referenceMap[phrase];
-        if (!productId) return matched;
+        // FALLBACK: Long-term State (reference_map)
+        const productIdOrName = referenceMap[refKey] || referenceMap[phrase];
+        const source = 'reference_map';
 
-        // Handle comma-separated IDs (plurals like "all of them")
-        let productName;
-        if (typeof productId === 'string' && productId.includes(',')) {
-            const ids = productId.split(',');
-            const names = ids.map(id => resolveIdToName(id.trim(), state)).filter(Boolean);
-            productName = names.length > 0 ? names.join(' and ') : null;
-        } else {
-            productName = resolveIdToName(productId, state);
-        }
+        if (productIdOrName) {
+            let productName = null;
+            let productId = productIdOrName;
+            
+            if (typeof productIdOrName === 'string' && productIdOrName.includes(',')) {
+                const ids = productIdOrName.split(',');
+                const names = ids.map(id => resolveIdToName(id.trim(), state)).filter(Boolean);
+                productName = names.length > 0 ? names.join(' and ') : null;
+            } else {
+                productName = resolveIdToName(productId, state);
+            }
 
-        if (productName) {
-            // Token Masking: collapse multi-word product names into single tokens
-            // so downstream normalizeCategory cannot cannibalize individual words.
-            // e.g. "iPhone 16 Pro" → "iPhone16Pro"
-            const collapsed = collapseProductName(productName);
-            console.log(`[ContextResolver] ✅ Resolved "${matched}" → "${productName}" (collapsed: "${collapsed}") (${productId})`);
-            logDebug('CONTEXT:TOKEN_MASK', {
-                _desc: 'Token masking — collapsed resolved product name into single contiguous token',
-                _example: '"the first one" → "iPhone 16 Pro" collapsed to "iPhone16Pro" (prevents normalizeCategory cannibalization)',
-                original: matched,
-                resolved: productName,
-                collapsed: collapsed,
+            if (productName) {
+                // Token Masking: collapse multi-word product names into single tokens
+                const collapsed = collapseProductName(productName);
+                console.log(`[ContextResolver] ✅ Resolved "${matched}" → "${productName}" (collapsed: "${collapsed}") (${productId})`);
+                logDebug('CONTEXT:TOKEN_MASK', {
+                    _desc: 'Token masking — collapsed resolved product name into single contiguous token',
+                    original: matched,
+                    resolved: productName,
+                    collapsed: collapsed,
+                    productId: productId
+                });
+                resolutions.push({
+                    original: matched,
+                    resolved: productName,
+                    collapsed: collapsed,
+                    productId: productId,
+                    source: source
+                });
+                return collapsed;
+            }
+
+            console.log(`[ContextResolver] ⚠️ Matched "${matched}" in reference_map → ${productId} but no product name in search results`);
+            logDebug('CONTEXT:RESOLVE_MISS', {
+                _desc: 'Context resolution miss — reference_map key matched but no product name found in search results',
+                matched: matched,
                 productId: productId
             });
-            resolutions.push({
-                original: matched,
-                resolved: productName,
-                collapsed: collapsed,
-                productId: productId,
-                source: 'reference_map'
-            });
-            return collapsed;
         }
-        console.log(`[ContextResolver] ⚠️ Matched "${matched}" in reference_map → ${productId} but no product name in search results`);
-        logDebug('CONTEXT:RESOLVE_MISS', {
-            _desc: 'Context resolution miss — reference_map key matched but no product name found in search results',
-            _example: '"it" → product_id abc123 but product name not in search results cache',
-            matched: matched,
-            productId: productId
-        });
         return matched;
     });
 

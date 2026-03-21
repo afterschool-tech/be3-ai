@@ -375,7 +375,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     const matchedWordIndices = Array.from({ length: size }, (_, j) => i + j);
 
                     // ACCOUNTABILITY: Only consume words that normalizeCategory explicitly highlights as "used"
-                    let consumedWordIndices = matchedWordIndices;
+                    let consumedWordIndices = [];
                     if (catMeta && Array.isArray(catMeta.usedWords)) {
                         const usedWordsSet = new Set(catMeta.usedWords.map(w => w.toLowerCase()));
                         consumedWordIndices = matchedWordIndices.filter(idx => {
@@ -384,9 +384,6 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                             const subTokens = word.split(/[\s\-_\/]+/g).filter(Boolean);
                             return subTokens.some(st => usedWordsSet.has(st));
                         });
-
-                        // Fallback: if somehow filtering results in empty, consume the whole phrase to stay safe
-                        if (consumedWordIndices.length === 0) consumedWordIndices = matchedWordIndices;
                     }
 
                     entities.push({

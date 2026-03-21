@@ -31,6 +31,7 @@ const parameterBleeder = require('./pipeline/parameterBleeder');
 const parameterNormalizer = require('./pipeline/parameterNormalizer');
 const intentPorter = require('./pipeline/intentPorter');
 const toolMapper = require('./pipeline/toolMapper');
+const intelliSense = require('../intelliSense');
 const microstateRunner = require('./pipeline/microstateRunner');
 const stack = require('./pipeline/stack');
 const contextReconciler = require('./pipeline/contextReconciler');
@@ -665,26 +666,21 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         changed: userMessage !== afterFuzzy
     });
 
-    // Stage 2: Context resolution (pronouns, ordinals, brand refs)
-    const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(afterFuzzy, state, storeContext);
-    logDebug('PIPELINE:STAGE2_CONTEXT', {
-        _desc: 'Reference resolution — pronouns/ordinals replaced from reference_map',
-        _example: '"add the first one" → "add iPhone XS Max" (from ordinal_list)',
-        input: afterFuzzy,
-        resolved: afterContext,
-        resolutions: resolutions,
-        changed: afterFuzzy !== afterContext
-    });
+    // Stage 0b: IntelliSense Analysis (High-level LLM pre-pass)
+    const senseResult = await intelliSense.analyze(afterFuzzy, aiQueryFn);
+    const skipResolve = senseResult?.statements?.flatMap(s => s.skip_resolve) || [];
 
-    // Stage 3: Preprocess (normalize, negate, split)
-    const { statements, isMultiIntent } = preprocessor.preprocess(afterContext);
+    // Stage 3: Preprocess (normalize, negate, split) - MOVED UP TO START
+    const manualStatements = senseResult?.statements?.map(s => s.text) || [];
+    const { statements, isMultiIntent } = preprocessor.preprocess(afterFuzzy, manualStatements);
     logDebug('PIPELINE:STAGE3_PREPROCESS', {
         _desc: 'Preprocess — normalize, detect negation, split on conjunctions',
         _example: '"phones and laptops" → 2 statements; "dont want cheap" → negated: true',
-        input: afterContext,
+        input: afterFuzzy,
         statementCount: statements.length,
         isMultiIntent,
-        statements: statements.map(s => ({ text: s.text, negated: s.negated }))
+        statements: statements.map(s => ({ text: s.text, negated: s.negated })),
+        source: manualStatements.length > 0 ? 'INTELLISENSE' : 'DETERMINISTIC'
     });
 
     // ═══════════════════════════════════════════════
@@ -695,216 +691,119 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // The result is stored in `semanticContext` and passed to every downstream stage.
     // If the transformer is unreachable, semanticContext = null (graceful degradation).
     // ═══════════════════════════════════════════════
-    let semanticContext = null;
+    let batchedSemanticContext = null;
 
-    // Support for comparison testing: bypass transformer if flagged in state
     if (state && state.skipTransformer) {
         logDebug('PIPELINE:STAGE0.5_SKIP', {
             _desc: 'Transformer context acquisition skipped [FLAG: skipTransformer]',
             reason: 'Manual bypass for comparison/testing'
         });
     } else {
-        const transformerText = cleanText(afterContext);
+        const textsToAnalyze = statements.map(s => cleanText(s.text));
         try {
             const axios = require('axios');
             const transformerStart = Date.now();
             const transformerResponse = await axios.post('http://localhost:3009/analyze', {
-                text: transformerText
-            }, { timeout: 1200 });
+                texts: textsToAnalyze
+            }, { timeout: 2000 });
             const transformerDuration = Date.now() - transformerStart;
 
-            if (transformerResponse.data) {
-                semanticContext = {
-                    classification: transformerResponse.data.classification || [],
-                    entities: transformerResponse.data.entities || {},
-                    confidence: transformerResponse.data.confidence || {},
+            if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
+                batchedSemanticContext = {
+                    results: transformerResponse.data.results,
                     duration: transformerDuration,
                     available: true
                 };
             }
 
-            logDebug('PIPELINE:STAGE0.5_TRANSFORMER', {
-                _desc: 'Unified transformer call — classification + entity extraction in single roundtrip',
-                _example: '"cheap samsung phones" → classification: [product_search:0.91], entities: {category:[smartphones], clause:[affordable], attribute:{brand:[Samsung]}}',
-                url: 'http://localhost:3009/analyze',
-                text: transformerText,
+            logDebug('PIPELINE:STAGE0.5_BATCHED_TRANSFORMER', {
+                _desc: 'Batched transformer call — acquisition for all statements in one roundtrip',
+                statementCount: textsToAnalyze.length,
                 duration: `${transformerDuration}ms`,
                 status: 'OK',
-                classification: {
-                    top3: (semanticContext?.classification || []).slice(0, 3).map(c => ({
-                        intent: c.intentName,
-                        score: (c.score || 0).toFixed(3),
-                        matchedVariation: c.matchedVariation || ''
-                    })),
-                    totalCandidates: (semanticContext?.classification || []).length
-                },
-                entities: {
-                    categories: (semanticContext?.entities?.category || []).length,
-                    vendors: (semanticContext?.entities?.vendor || []).length,
-                    clauses: (semanticContext?.entities?.clause || []).length,
-                    attributes: Object.keys(semanticContext?.entities?.attribute || {}).length,
-                    detail: {
-                        category: (semanticContext?.entities?.category || []).map(c => c),
-                        vendor: (semanticContext?.entities?.vendor || []).map(v => v),
-                        clause: (semanticContext?.entities?.clause || []).map(c => c),
-                        attribute: semanticContext?.entities?.attribute || {}
-                    }
-                },
-                confidence: semanticContext?.confidence || {}
+                results: (batchedSemanticContext.results || []).map((r, idx) => ({
+                    statement: textsToAnalyze[idx],
+                    topIntent: (r.classification || [])[0]?.intentName || 'NONE',
+                    entities: Object.keys(r.entities || {}).length,
+                    confidence: r.confidence || {}
+                })),
+                raw_results: batchedSemanticContext.results
             });
         } catch (err) {
-            logDebug('PIPELINE:STAGE0.5_TRANSFORMER', {
-                _desc: 'Unified transformer call — UNREACHABLE or timed out. All stages fall back to deterministic-only.',
-                url: 'http://localhost:3009/analyze',
-                text: transformerText,
+            logDebug('PIPELINE:STAGE0.5_BATCHED_TRANSFORMER', {
+                _desc: 'Batched transformer call — UNREACHABLE or timed out.',
                 status: 'UNREACHABLE',
                 error: err.message
             });
-            // semanticContext stays null — all downstream stages use deterministic-only
         }
     }
 
-    // ═══════════════════════════════════════════════
-    // Stage 3a: Global Semantic Pre-pass
-    // Runs ONCE per query to find all clauses/brands across the entire message.
-    // These are "shielded" from the Category Scanner in each statement.
-    // ═══════════════════════════════════════════════
-    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterContext, resolutions, semanticContext);
-    logDebug('PIPELINE:STAGE3A_PREPASS', {
-        _desc: 'Global Semantic Pre-pass — clauses/brands detected across entire query before statement loop',
-        _example: '"show me cheap infinix phones" → cheap(clause), infinix(brand) detected globally',
-        entityCount: globalEntities.length,
-        entities: globalEntities.map(e => ({
-            type: e.type,
-            value: e.value,
-            clauseId: e.clauseId,
-            source: e.source,
-            globalWordIndex: e.globalWordIndex
-        })),
-        categoryHints: globalCategoryHints
-    });
-
-    // Build global word list for index reconciliation
-    const globalWords = afterContext.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-
     const resolvedStatements = [];
-
-    // Intra-query coreference: track entities from previous statements
-    // for pronoun resolution within the same multi-statement query
-    let prevStatementEntities = []; // entities from the last processed statement
-    let prevStatementResiduals = []; // residual words (likely product names) from last statement
-
-    // Pronouns that can refer to entities from previous statement
-    const SINGULAR_PRONOUNS = new Set(['it', 'this', 'that', 'the one', 'the product']);
-    const PLURAL_PRONOUNS = new Set(['them', 'they', 'those', 'these', 'the products', 'all of them', 'both']);
 
     for (let i = 0; i < statements.length; i++) {
         const statement = statements[i];
         let textForExtraction = statement.text;
 
-        // ── Stage 3b: Intra-Query Coreference Resolution ──
-        // Only for multi-statement queries (i > 0): replace pronouns using
-        // entities from the PREVIOUS statement in the same query.
-        // Single statements are always resolved from state (Stage 2 already did that).
-        if (isMultiIntent && i > 0 && prevStatementEntities.length > 0) {
-            const lowerText = textForExtraction.toLowerCase();
+        // ── Stage 4a: Context resolution (pronouns, ordinals, brand refs) ──
+        // Resolve using state.reference_map only.
+        const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(
+            statement.text, state, storeContext, skipResolve
+        );
 
-            // Collect product-like names from previous statement entities
-            const prevProductNames = [];
-            const prevVendorNames = [];
-            for (const e of prevStatementEntities) {
-                if (e.type === 'vendor') prevVendorNames.push(e.value);
-                else if (e.type === 'category') prevProductNames.push(e.value);
-                else if (e.type === 'brand') prevProductNames.push(e.value);
-            }
-            // Residual words from prev statement are also likely product names
-            if (prevStatementResiduals && prevStatementResiduals.length > 0) {
-                prevProductNames.push(prevStatementResiduals.join(' '));
-            }
-
-            const allPrevNames = [...prevProductNames];
-            const singularRef = allPrevNames.length > 0 ? allPrevNames[allPrevNames.length - 1] : null;
-            const pluralRef = allPrevNames.length > 0 ? allPrevNames.join(' and ') : null;
-
-            // Replace pronouns only if they weren't already resolved by Stage 2
-            // (Stage 2 resolves from state reference_map; we check if the pronoun
-            // is still present in the text — if so, state didn't resolve it)
-            // Skip when pronoun is relative ("laptop that can") or temporal ("after that")
-            if (singularRef) {
-                for (const pronoun of SINGULAR_PRONOUNS) {
-                    const regex = new RegExp(`\\b${pronoun.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-                    textForExtraction = textForExtraction.replace(regex, (matched, offset, fullString) => {
-                        if (shouldSkipAmbiguousReference(fullString, offset, matched)) return matched;
-                        return singularRef;
-                    });
-                }
-            }
-            if (pluralRef) {
-                for (const pronoun of PLURAL_PRONOUNS) {
-                    const regex = new RegExp(`\\b${pronoun.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-                    textForExtraction = textForExtraction.replace(regex, (matched, offset, fullString) => {
-                        if (shouldSkipAmbiguousReference(fullString, offset, matched)) return matched;
-                        return pluralRef;
-                    });
-                }
-            }
-
-            if (textForExtraction !== statement.text) {
-                logDebug(`PIPELINE:STAGE3B_COREF [Statement ${i + 1}]`, {
-                    _desc: 'Intra-query coreference — resolve pronouns in multi-statement using prev statement entities',
-                    _example: '"add the first one" (stmt2) → "add iphone xs max" using stmt1 entities',
-                    original: statement.text,
-                    resolved: textForExtraction,
-                    prevEntities: prevStatementEntities.map(e => e.type + ':' + (e.value || e.verb))
-                });
-            }
-        }
-
-        const cleanedText = cleanText(textForExtraction);
-        logDebug(`PIPELINE:STAGE3C_NLP_CLEAN [Statement ${i + 1}]`, {
-            _desc: 'NLP cleaning — remove adverbs, punctuation, normalize text',
-            _example: '"Can you maybe please just show me, like, cheap phones???" → "show me cheap phones"',
-            before: textForExtraction,
-            after: cleanedText,
-            changed: textForExtraction !== cleanedText
+        const cleanedText = cleanText(afterContext);
+        logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN [Statement ${i + 1}]`, {
+            _desc: 'Statement-level resolution & cleaning — resolve pronouns and normalize',
+            original: statement.text,
+            resolved: afterContext,
+            cleaned: cleanedText,
+            resolutions: resolutions,
+            changed: statement.text !== cleanedText
         });
 
-        // ── Stage 3d: Reconcile Global Pre-pass entities to this statement ──
-        // Map global word indices to local statement word indices.
-        const localWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-        const statementPreEntities = [];
-
-        for (const gEnt of globalEntities) {
-            // Find the global word in the local statement words
-            const globalWord = globalWords[gEnt.globalWordIndex];
-            if (!globalWord) continue;
-
-            const localIdx = localWords.indexOf(globalWord);
-            if (localIdx !== -1) {
-                statementPreEntities.push({
-                    ...gEnt,
-                    localWordIndex: localIdx
-                });
-            }
+        // ── Stage 4b: Map Batched Semantic Context ──
+        // Use results from Stage 0.5 (batched query)
+        let localSemanticContext = null;
+        if (batchedSemanticContext?.results?.[i]) {
+            localSemanticContext = {
+                ...batchedSemanticContext.results[i],
+                available: true
+            };
         }
 
-        if (statementPreEntities.length > 0) {
-            logDebug(`PIPELINE:STAGE3D_RECONCILE [Statement ${i + 1}]`, {
-                _desc: 'Reconcile global pre-pass entities to local statement indices',
-                _example: 'Global "cheap" at index 2 → local index 1 in statement "cheap phones"',
-                globalEntityCount: globalEntities.length,
-                reconciledCount: statementPreEntities.length,
-                reconciled: statementPreEntities.map(e => ({
-                    value: e.value,
-                    globalIdx: e.globalWordIndex,
-                    localIdx: e.localWordIndex
-                }))
-            });
-        }
+        const statementPreEntities = []; // Entities pre-extracted (IntelliSense/Global)
 
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, semanticContext);
+
+        // INJECTION: If IntelliSense found products, convert them to statementPreEntities
+        const senseStmt = senseResult?.statements?.[i];
+        if (senseStmt && Array.isArray(senseStmt.products)) {
+            const statementWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            for (const p of senseStmt.products) {
+                const nameLower = p.name.toLowerCase();
+                const nameTokens = nameLower.split(/\s+/).filter(t => t.length > 1);
+                
+                // Find all indices of these tokens in the cleaned statement text
+                const indices = [];
+                nameTokens.forEach(token => {
+                    statementWords.forEach((word, idx) => {
+                        if (word.includes(token)) indices.push(idx);
+                    });
+                });
+
+                statementPreEntities.push({
+                    type: 'resolved_product',
+                    value: p.name, // e.g., "Angel wipes"
+                    adjectives: p.adjectives || [],
+                    source: 'INTELLISENSE_OVERRIDE',
+                    quality: 1.0,
+                    localWordIndex: indices.length > 0 ? Math.min(...indices) : undefined,
+                    wordCount: nameTokens.length > 0 ? nameTokens.length : 1
+                });
+            }
+        }
+
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, [], localSemanticContext);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
@@ -928,11 +827,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
         const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
 
-        // ═══════════════════════════════════════════════
-        // Stage 4.5: Semantic Integration (The Transformer Layer)
-        // Reads from semanticContext (fetched at Stage 0.5) instead of a separate HTTP call.
-        // Merges transformer classification scores with deterministic schema scores.
-        // ═══════════════════════════════════════════════
+        // Stage 4.5: Semantic Integration
+        // Reads from localSemanticContext (mapped from the batched call)
         let finalCandidates = resolution.candidates.map(c => ({
             intentName: c.intentName,
             score: c.score,
@@ -945,8 +841,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }
         }));
 
-        if (semanticContext?.available && Array.isArray(semanticContext.classification)) {
-            const semanticResults = semanticContext.classification;
+        if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
+            const semanticResults = localSemanticContext.classification;
 
             for (const sem of semanticResults) {
                 // Mapping: Similarity (0-1) * 10 = Pipeline Points
@@ -996,11 +892,6 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }))
         });
 
-        // Always update coreference trackers — previous statement entities
-        // are valid antecedents even if no intent winner was found
-        prevStatementEntities = extractionResult.entities;
-        prevStatementResiduals = extractionResult.residualWords;
-
         if (!winner) {
             logDebug(`PIPELINE:STAGE4_NO_MATCH [Statement ${i + 1}]`, {
                 _desc: 'No intent matched — neither schema nor transformer found valid candidates',
@@ -1019,9 +910,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }));
 
         // Stage 5: Parameter extraction (AI + Deterministic)
-        // Uses the resolved candidates to fill remaining params
+        // SCOPED AI: We pass null for the AI func here to keep this stage 
+        // 100% deterministic by default, even if IntelliSense is active.
         const extractedParams = await parameterExtractor.extractParameters(
-            cleanedText, candidates, aiQueryFn, storeContext, resolutions, extractionResult.entities,
+            cleanedText, candidates, (state.enableAiFallback ? aiQueryFn : null), storeContext, resolutions, extractionResult.entities,
             textForExtraction // rawText: pre-clean, comma-preserved — used by PIE for segmentation
         );
         logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
@@ -1067,6 +959,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             ...reconciledStmt,
             extractedParams,
             statementText: statement.text,
+            resolvedText: afterContext,
             stage2Resolutions: resolutions,
             candidates: finalCandidates
         });
@@ -1095,7 +988,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             intents: [{ intentName: 'fallback_unknown', score: 0, parameters: {} }],
             tools: [{ tool: 'conversation.clarify', params: { query: userMessage }, reason: 'Rule 8: Unknown Intent' }],
             isMultiIntent: false,
-            corrections: { original: userMessage, afterFuzzy, afterContext }
+            corrections: { original: userMessage, afterFuzzy, afterContext: afterFuzzy }
         };
     }
 
@@ -1228,11 +1121,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     }
 
     // ═══════════════════════════════════════════════
-    // Stage 8a: SEARCH CONTEXT — Write & Read
-    // Write: After search/discovery, capture semantic context.
-    // Read: For cart/compare/availability, resolve references from context.
-    // TTL: Decrement on every message.
-    // ═══════════════════════════════════════════════
+    // Collect all resolutions and build final corrected text for logging
+    const allResolutions = resolvedStatements.flatMap(s => s.stage2Resolutions || []);
+    const finalResolvedText = resolvedStatements.map(s => s.resolvedText).join(' ');
+
+    // ── Stage 8a: SEARCH CONTEXT ──
     const winnerIntent = intentsToProcess[0];
     if (userId) {
         // Always decrement TTL on every message
@@ -1844,8 +1737,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 reason: 'Ordinal choice: pick which option'
             }],
             isMultiIntent: false,
-            corrections: { original: userMessage, afterFuzzy, afterContext },
-            resolutions,
+            corrections: { original: userMessage, afterFuzzy, afterContext: finalResolvedText },
+            resolutions: allResolutions,
             microstate_opened: true
         };
     }
@@ -1983,9 +1876,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 corrections: {
                     original: userMessage,
                     afterFuzzy,
-                    afterContext
+                    afterContext: finalResolvedText
                 },
-                resolutions,
+                resolutions: allResolutions,
                 microstate_opened: true
             };
         }
@@ -1998,9 +1891,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         corrections: {
             original: userMessage,
             afterFuzzy,
-            afterContext
+            afterContext: finalResolvedText
         },
-        resolutions,
+        resolutions: allResolutions,
         statementResolutions: resolvedStatements,
         stack_active: stackResult.stack_active || false,
         stack_remaining: stackResult.stack_active ? stackResult.total_intents - 1 : 0

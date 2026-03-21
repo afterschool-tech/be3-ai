@@ -141,7 +141,10 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     }
 
     // If there are residual words, they could be product names
-    if (residualWords.length > 0) {
+    // 🛡️ SCORER GUARD: Only populate if the slot isn't already filled by a high-confidence
+    // resolved_product (from Context or IntelliSense). This prevents "orphans"
+    // from overwriting our vetted product names during scoring.
+    if (residualWords.length > 0 && !entityParams['product_name']) {
         entityParams['product_name'] = {
             type: 'product_name',
             value: residualWords.join(' '),

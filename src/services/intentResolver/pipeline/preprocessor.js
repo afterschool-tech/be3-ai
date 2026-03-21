@@ -132,9 +132,13 @@ function isSocialNoise(stmt) {
  * Takes normalized, fuzzy-corrected, context-resolved text.
  * Returns structured output with statements and metadata.
  */
-function preprocess(text) {
+function preprocess(text, manualStatements = []) {
     const normalized = normalize(text);
-    const rawStatements = splitStatements(normalized);
+    
+    // Use manual statements (from IntelliSense) if provided, otherwise use regex split.
+    const rawStatements = (Array.isArray(manualStatements) && manualStatements.length > 0)
+        ? manualStatements
+        : splitStatements(normalized);
 
     // Filter out statements that are pure social noise if there are other statements.
     // This prevents "yes, i want phones" from being marked as multi-intent.

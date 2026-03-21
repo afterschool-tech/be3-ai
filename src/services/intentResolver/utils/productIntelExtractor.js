@@ -203,8 +203,14 @@ function extractProductIntel(options) {
             clauses: segmentEntities.filter(e => e.type === 'clause')
         };
 
+        // PIE FORTIFICATION: If the signal is a high-confidence resolved_product, 
+        // use its name directly as the reconstructed name (handles LLM re-writes).
+        const finalName = (intel.resolvedId?.source === 'INTELLISENSE_OVERRIDE' && intel.resolvedId.value)
+            ? intel.resolvedId.value
+            : reconstructedName;
+
         return {
-            name: reconstructedName,
+            name: finalName,
             intel,
             confidence: maxLevel / 4,
             isResolved: !!intel.resolvedId
