@@ -760,11 +760,21 @@ app.post('/chat', async (req, res) => {
 
             // --- LLM SUGGESTION EXTRACTION ---
             // If the AI response contains suggestion phrasing, simulate NLU.
+            // ⚠️ GUARD: Skip suggestion detection entirely when a microstate is active.
+            // resolveDeterministic → resolveAndMap → Stage 0 runs the microstate runner,
+            // which feeds the bot's OWN response text through the active microstate sandbox.
+            // This causes an unintended breakthrough that clears the microstate before the
+            // user even gets a chance to respond.
+            const activeMicrostateForSuggestion = await stateManager.getMicrostate(session_id);
             const suggestionPattern = /\b(would you|want me to|shall i|should i|do you want|can i help|what about)\b/i;
             // Temporarily removing button restriction
             // const hasButtons = !!whatsappButtons || !!productCardPayload;
             
-            if (suggestionPattern.test(sanitizedResponse)) {
+            if (activeMicrostateForSuggestion) {
+                console.log(`[Server] ⚡ Skipping suggestion detection — microstate active (${activeMicrostateForSuggestion.type})`);
+            }
+
+            if (!activeMicrostateForSuggestion && suggestionPattern.test(sanitizedResponse)) {
                 logDebug('SERVER:SUGGESTION_DETECTED', {
                     _desc: 'Suggestion explicitly detected by heuristic; running NLU to extract payload',
                     _example: 'Matched "would you like" (button restriction temporarily removed)',
