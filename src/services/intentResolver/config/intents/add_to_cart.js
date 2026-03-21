@@ -88,7 +88,8 @@ module.exports = {
         product_is_category: {
             trigger: (params, entities) => {
                 // If context reconciler already resolved specific products, skip
-                if (params.product_id || (params.products && params.products.length > 0 && params.products[0] !== params.product_name)) {
+                // NOTE: Pipeline sets _resolved_product_id (not product_id) — must check both
+                if (params.product_id || params._resolved_product_id || (params.products && params.products.length > 0 && params.products[0] !== params.product_name)) {
                     return false;
                 }
 
@@ -100,10 +101,20 @@ module.exports = {
                 const name = params.product_name || (params.products && params.products[0]);
                 if (!name || isGeneric(name)) return false;
 
+                // If entities already identified this as a resolved_product (e.g. via IntelliSense),
+                // it's a specific product — don't treat it as a category.
+                if (Array.isArray(entities) && entities.some(e => e.type === 'resolved_product')) {
+                    return false;
+                }
+
+                // If the name contains digits (model numbers like "iphone 15", "samsung s24"),
+                // it's a specific product, not a category. Only exact category matches should trigger.
+                const hasModelNumber = /\d/.test(name);
+
                 // Only trigger when the product name itself clearly resolves to a category
                 // (e.g. "add iphones to cart" where "iphones" is a category),
                 // not just because some unrelated category entity exists.
-                const resolvedCatId = normalizeCategory(name, null, false, { debug: true, initiator: 'add_to_cart' });
+                const resolvedCatId = normalizeCategory(name, null, hasModelNumber, { debug: true, initiator: 'add_to_cart' });
                 return !!resolvedCatId;
             },
             sandbox: 'soft',
@@ -128,6 +139,9 @@ module.exports = {
             trigger: (params, entities) => {
                 const genericWords = ['something', 'product', 'item', 'stuff'];
                 const isGeneric = (name) => name && genericWords.includes(name.toLowerCase());
+
+                // If pipeline already resolved a product, don't ask again
+                if (params._resolved_product_id || params.product_id) return false;
 
                 const hasNoParams = !params.product_name && !params.products && (!params.query || params.query.length < 2);
                 const hasGenericParam = isGeneric(params.product_name) || (params.products && isGeneric(params.products[0]));

@@ -958,6 +958,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         resolvedStatements.push({
             ...reconciledStmt,
             extractedParams,
+            pipelineEntities: extractionResult.entities, // Carry entities for Stage 10 (microstate triggers)
             statementText: statement.text,
             resolvedText: afterContext,
             stage2Resolutions: resolutions,
@@ -1766,7 +1767,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // ═══════════════════════════════════════════════
     const winner = intentsToProcess[0];
     if (winner && userId) {
-        const entities = extractEntities(cleanText(userMessage), storeContext, idfMap).entities;
+        // Use pipeline entities (includes IntelliSense/PIE resolved_product signals)
+        // instead of re-extracting from scratch, so triggers can trust the full pipeline.
+        const entities = winner.pipelineEntities || extractEntities(cleanText(userMessage), storeContext, idfMap).entities;
         const triggered = microstateRegistry.checkTriggers(
             winner.intentName,
             winner.parameters,
