@@ -224,7 +224,7 @@ const productTools = {
             // Attempt 1: Drop query, keep filters
             const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
             if (attempt1 && attempt1.products.length > 0) {
-                const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId);
+                const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
                 const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
                 return {
                     ...final,
@@ -246,7 +246,7 @@ const productTools = {
             // Attempt 2: Drop everything but category
             const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
             if (attempt2 && attempt2.products.length > 0) {
-                const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId);
+                const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
                 const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
                 return {
                     ...final,
@@ -987,7 +987,7 @@ const productTools = {
  * Common handler to process search results (Standard, Semantic, Vector, or Similar)
  * Updates state, reference map, and builds WhatsApp UI components.
  */
-async function handleSearchResults(searchResult, params, context, snapshotId, cat, catId) {
+async function handleSearchResults(searchResult, params, context, snapshotId, cat, catId, isSuggestion = false) {
     const { query, limit = 5, page = 1, sort = 'relevance', attributes = {} } = params;
     const { logDebug } = require('../utils/debugLogger');
 
@@ -1082,27 +1082,37 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
             seeMoreTitle = pickVendorSeeMoreTitle(tagFilter);
         } else {
             // General query/category search title
-            const qStrRaw = typeof query === 'object' ? (query?.query || null) : query;
-            const qStr = Array.isArray(qStrRaw) ? qStrRaw.join(' ').trim() : (typeof qStrRaw === 'string' ? qStrRaw.trim() : null);
-            
-            if (typeof buildDefaultSeeMoreTitle === 'function') {
-                // 1. Extract System Clause and User Clause
-                let systemClause = null;
-                let userClause = qStr;
+            const catName = cat?.label || '';
+            const clauseWords = params.clause_words || [];
+            let userClause = null;
+            let systemClause = null;
 
-                const clauseWords = params.clause_words || [];
-                if (Array.isArray(clauseWords) && clauseWords.length > 0) {
-                    systemClause = clauseWords[0].clauseId;
-                    if (!userClause) userClause = clauseWords[0].word;
-                } else {
-                    const attributes = params.attributes || {};
-                    systemClause = typeof deriveClauseNameFromAttributes === 'function' ? deriveClauseNameFromAttributes(attributes) : null;
-                    if (systemClause && systemClause.length <= 1) systemClause = null; // Prevent weird '(p)' extractions
+            if (Array.isArray(clauseWords) && clauseWords.length > 0) {
+                userClause = clauseWords[0].word;
+                systemClause = clauseWords[0].clauseId;
+            } else {
+                const attributes = params.attributes || {};
+                systemClause = typeof deriveClauseNameFromAttributes === 'function' ? deriveClauseNameFromAttributes(attributes) : null;
+                if (systemClause && systemClause.length <= 1) systemClause = null;
+            }
+
+            if (isSuggestion) {
+                // --- SUGGESTION TIERED LABELING ---
+                // Tier 1: Clause + Category suggestions
+                if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName} suggestions`;
+                
+                // Tier 2: Category suggestions (or Clause suggestions)
+                if ((!seeMoreTitle || seeMoreTitle.length > 45) && (userClause || catName)) {
+                    if (catName) seeMoreTitle = `See more ${catName} suggestions`;
+                    else seeMoreTitle = `See more ${userClause} suggestions`;
                 }
 
-                const catName = cat?.label || '';
-
-                // --- TIERED LABEL ESCALATION (Category Persistent) ---
+                // Tier 3: Generic Fallback
+                if (!seeMoreTitle || seeMoreTitle.length > 45) {
+                    seeMoreTitle = 'See more suggestions';
+                }
+            } else {
+                // --- STANDARD TIERED LABELING ---
                 // Tier 1: User Phrasing + Category
                 if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName}`;
                 else if (userClause) seeMoreTitle = `See more ${userClause}`;
@@ -1125,10 +1135,6 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
                         seeMoreTitle = 'See more products';
                     }
                 }
-            } else if (qStr) {
-                seeMoreTitle = qStr.length > 11 ? 'See more results' : `See more ${qStr}`;
-            } else if (cat?.label) {
-                seeMoreTitle = cat.label.length > 11 ? 'See more products' : `See more ${cat.label}`;
             }
         }
         
