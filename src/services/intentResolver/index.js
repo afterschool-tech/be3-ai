@@ -827,8 +827,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
         const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
 
-        // Stage 4.5: Semantic Integration
-        // Reads from localSemanticContext (mapped from the batched call)
+        // Stage 4.5: Semantic Integration + Confidence Gap Amplifier
+        // Principle: If the transformer is confident about an intent (clear gap between #1 and #2),
+        // reward that decisiveness proportionally — the bigger the gap, the bigger the bonus.
+        // This ensures parameter-poor intents can compete WITHOUT a fixed magic number.
+        const CONFIDENCE_GAP_THRESHOLD = 0.04;  // min similarity gap to activate amplifier
+        const GAP_AMPLIFIER = 20;               // bonus = gap × this (gap 0.05→+1.0, gap 0.10→+2.0, gap 0.25→+5.0)
+
         let finalCandidates = resolution.candidates.map(c => ({
             intentName: c.intentName,
             score: c.score,
@@ -837,6 +842,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             breakdown: { 
                 deterministic: c.score, 
                 semantic: 0,
+                semanticRaw: 0,
+                semanticGapBonus: 0,
                 deterministicAudit: c.deterministicBreakdown || []
             }
         }));
@@ -844,14 +851,48 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
             const semanticResults = localSemanticContext.classification;
 
+            // ── Semantic Confidence Gap Amplifier ──
+            const topScore = semanticResults[0]?.score || 0;
+            const secondScore = semanticResults[1]?.score || 0;
+            const confidenceGap = topScore - secondScore;
+            const isConfident = confidenceGap >= CONFIDENCE_GAP_THRESHOLD;
+            const topIntentName = semanticResults[0]?.intentName;
+            const gapBonus = isConfident ? confidenceGap * GAP_AMPLIFIER : 0;
+
+            logDebug(`PIPELINE:STAGE4.5_CONFIDENCE_AMPLIFIER [Statement ${i + 1}]`, {
+                _type: 'CONFIDENCE_AMPLIFIER',
+                _icon: '🛡️',
+                _color: '#8b5cf6',
+                _desc: 'Semantic Confidence Amplifier — rewards transformer decisiveness proportionally to gap',
+                topIntent: topIntentName,
+                topScore: topScore.toFixed(4),
+                secondIntent: semanticResults[1]?.intentName || 'none',
+                secondScore: secondScore.toFixed(4),
+                confidenceGap: confidenceGap.toFixed(4),
+                threshold: CONFIDENCE_GAP_THRESHOLD,
+                amplifier: GAP_AMPLIFIER,
+                gapBonus: gapBonus.toFixed(2),
+                isConfident,
+                verdict: isConfident
+                    ? `✅ AMPLIFIER ACTIVE — "${topIntentName}" gets +${gapBonus.toFixed(2)} bonus (gap ${confidenceGap.toFixed(4)} × ${GAP_AMPLIFIER})`
+                    : `⏸️ AMPLIFIER INACTIVE — gap ${confidenceGap.toFixed(4)} < threshold ${CONFIDENCE_GAP_THRESHOLD}`
+            });
+
             for (const sem of semanticResults) {
                 // Mapping: Similarity (0-1) * 10 = Pipeline Points
-                const semanticPoints = (sem.score || 0) * 10.0;
+                const rawSemantic = (sem.score || 0) * 10.0;
+
+                // Apply gap bonus only to the TOP semantic intent, and only when confident
+                const isTopSemantic = sem.intentName === topIntentName;
+                const appliedBonus = isTopSemantic ? gapBonus : 0;
+                const semanticPoints = rawSemantic + appliedBonus;
 
                 const existing = finalCandidates.find(c => c.intentName === sem.intentName);
                 if (existing) {
                     existing.score += semanticPoints;
                     existing.breakdown.semantic = semanticPoints;
+                    existing.breakdown.semanticRaw = rawSemantic;
+                    existing.breakdown.semanticGapBonus = appliedBonus;
                 } else {
                     // Transformer introduced a candidate not found by schemaResolver
                     finalCandidates.push({
@@ -862,6 +903,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         breakdown: { 
                             deterministic: 0, 
                             semantic: semanticPoints,
+                            semanticRaw: rawSemantic,
+                            semanticGapBonus: appliedBonus,
                             deterministicAudit: []
                         }
                     });
@@ -881,6 +924,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 score: winner.score.toFixed(2),
                 deterministic: winner.breakdown.deterministic.toFixed(2),
                 semantic: winner.breakdown.semantic.toFixed(2),
+                semanticRaw: winner.breakdown.semanticRaw?.toFixed(2),
+                semanticGapBonus: winner.breakdown.semanticGapBonus?.toFixed(2) || "0.00",
                 audit: winner.breakdown.deterministicAudit
             } : null,
             candidates: finalCandidates.slice(0, 5).map(c => ({
@@ -888,6 +933,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 score: c.score.toFixed(2),
                 deterministic: c.breakdown?.deterministic?.toFixed(2),
                 semantic: c.breakdown?.semantic?.toFixed(2),
+                semanticRaw: c.breakdown?.semanticRaw?.toFixed(2),
+                semanticGapBonus: c.breakdown?.semanticGapBonus?.toFixed(2) || "0.00",
                 audit: c.breakdown?.deterministicAudit
             }))
         });

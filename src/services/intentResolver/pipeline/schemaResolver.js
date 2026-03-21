@@ -515,6 +515,44 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         });
     }
 
+    // ── Phase 3.5: Signal Density Gating ──
+    // Principle: Entity-derived boosts (slot matches, orphan product, discovery boost) should be
+    // scaled down when there's no intentional signal (action verbs or keyword matches).
+    // High entity count with zero actions/keywords = entity extraction noise, not user intent.
+    const signalCount = actionEntities.length + (nonSearchHitIntents.size > 0 ? 1 : 0);
+    const entityCount = entities.length;
+    const signalDensity = entityCount > 0 ? signalCount / entityCount : 1.0;
+    const MIN_SIGNAL_DENSITY = 0.3;
+    const isLowSignal = signalDensity < MIN_SIGNAL_DENSITY && signalCount === 0;
+
+    if (isLowSignal) {
+        for (const candidate of scored) {
+            if (candidate.score > 0) {
+                const originalScore = candidate.score;
+                candidate.score = candidate.score * 0.5;
+                candidate.deterministicBreakdown.push({
+                    value: candidate.score - originalScore,
+                    reason: `Signal Density Gate: ${signalDensity.toFixed(2)} density (0 actions, 0 keyword hits) → halved`
+                });
+
+                logDebug('SCORING:SIGNAL_DENSITY_GATE', {
+                    _type: 'SIGNAL_DENSITY',
+                    _icon: '🚧',
+                    _color: '#f59e0b',
+                    _desc: 'Signal Density Gating — entity-derived boosts halved due to zero intentional signal',
+                    intent: candidate.intentName,
+                    signalDensity: signalDensity.toFixed(2),
+                    actionCount: actionEntities.length,
+                    keywordHits: nonSearchHitIntents.size,
+                    entityCount,
+                    originalScore: originalScore.toFixed(2),
+                    gatedScore: candidate.score.toFixed(2),
+                    reduction: (originalScore - candidate.score).toFixed(2)
+                });
+            }
+        }
+    }
+
     // ── Phase 4: Sort and select winner ──
     scored.sort((a, b) => b.score - a.score);
 
@@ -556,7 +594,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
     return {
         winner,
-        candidates: validCandidates.slice(0, 5), // Top 5 for diagnostics
+        candidates: validCandidates, // Pass ALL valid candidates to semantic integration
         fallbackUsed,
         extractedEntities: entities,
         residualWords
