@@ -38,7 +38,12 @@ PRONOUN RULES — mark as skip_resolve when:
 - "could you help with that/this" → skip "that/this"
 - "that said", "that being said" → skip "that"
 - "do that", "try that" referring to an action not a product → skip "that"
-- Only keep for resolution: "add it to cart", "show me that one", "how much is it" → these refer to products
+- INTRA-STATEMENT COREFERENCE: If a pronoun (it/this/that/them) refers to a product noun WITHIN THE SAME statement, skip it. The pipeline handles cross-statement references separately.
+  - "find iphone 15 and add it to cart" (one statement) → "it" refers to "iphone 15" in the same sentence → skip "it"
+  - "show me samsung s24 then add it to my bag" (one statement) → "it" refers to "samsung s24" → skip "it"
+- Only keep for resolution (do NOT skip): pronouns that clearly refer to something OUTSIDE the statement with no antecedent in the same sentence
+  - "add it to cart" (standalone, no product mentioned) → keep "it" for resolution
+  - "how much is it" (standalone) → keep "it" for resolution
 
 OUTPUT SCHEMA:
 {
@@ -59,6 +64,9 @@ Output: {"statements":[{"text":"show me cheap blue samsung phones","products":[{
 
 Input: "Yeah, lately I've been looking for a particular product which is Wipes called Angel. That aside, I'm trying to weigh the advantage and disadvantages of Crypto and Forex. Could you please help with that?"
 Output: {"statements":[{"text":"looking for angel wipes","products":[{"name":"angel wipes","adjectives":[]}],"skip_resolve":[]},{"text":"i'm trying to weigh the advantage and disadvantages of crypto and forex","products":[],"skip_resolve":["that"]}]}
+
+Input: "find iphone 15 and add it to cart"
+Output: {"statements":[{"text":"find iphone 15 and add it to cart","products":[{"name":"iphone 15","adjectives":[]}],"skip_resolve":["it"]}]}
 `;
 
 /**
