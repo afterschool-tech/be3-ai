@@ -759,78 +759,46 @@ app.post('/chat', async (req, res) => {
                 : consolidatedToolResults;
 
             // --- LLM SUGGESTION EXTRACTION ---
-            // If the AI response contains suggestion phrasing, simulate NLU.
-            // ⚠️ GUARD: Skip suggestion detection entirely when a microstate is active.
-            // resolveDeterministic → resolveAndMap → Stage 0 runs the microstate runner,
-            // which feeds the bot's OWN response text through the active microstate sandbox.
-            // This causes an unintended breakthrough that clears the microstate before the
-            // user even gets a chance to respond.
-            const activeMicrostateForSuggestion = await stateManager.getMicrostate(session_id);
-            const suggestionPattern = /\b(would you|want me to|shall i|should i|do you want|can i help|what about)\b/i;
-            // Temporarily removing button restriction
-            // const hasButtons = !!whatsappButtons || !!productCardPayload;
+            // If the AI response contains a <suggestion> XML block, parse and store it.
+            // This replaces the old heuristic NLU pipeline simulation.
+            let extractedSuggestion = null;
+            const suggestionRegex = /<suggestion>([\s\S]*?)<\/suggestion>/i;
+            const match = sanitizedResponse.match(suggestionRegex);
             
-            if (activeMicrostateForSuggestion) {
-                console.log(`[Server] ⚡ Skipping suggestion detection — microstate active (${activeMicrostateForSuggestion.type})`);
-            }
-
-            if (!activeMicrostateForSuggestion && suggestionPattern.test(sanitizedResponse)) {
-                logDebug('SERVER:SUGGESTION_DETECTED', {
-                    _desc: 'Suggestion explicitly detected by heuristic; running NLU to extract payload',
-                    _example: 'Matched "would you like" (button restriction temporarily removed)',
-                    responseSnippet: sanitizedResponse.slice(-50)
-                });
-                
+            if (match) {
                 try {
-                    // Remove all newLines before splitting
-                    const cleanResponse = sanitizedResponse.replace(/\n/g, ' ');
-                    // Split sentences to focus on the conversational hooks
-                    const sentences = cleanResponse.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 0);
-                    
-                    const simState = await stateManager.getState(session_id);
-                    
-                    // Check up to the last 3 sentences for a supported suggestion
-                    const maxChecks = Math.min(3, sentences.length);
-                    for (let i = 1; i <= maxChecks; i++) {
-                        const targetSentence = sentences[sentences.length - i];
-                        const simResult = await resolveDeterministic(targetSentence, simState);
+                    const parsed = JSON.parse(match[1].trim());
+                    if (parsed && parsed.is_suggestion && parsed.rephrase) {
+                        extractedSuggestion = {
+                            type: 'structured_payload',
+                            hint: parsed.hint || 'general',
+                            rephrase: parsed.rephrase
+                        };
                         
-                        if (simResult && simResult.result && simResult.result.intents && simResult.result.intents.length > 0) {
-                            const intentsArr = simResult.result.intents;
-                            const toolsArr = simResult.result.tools || [];
-                            const lastIntentObj = intentsArr[intentsArr.length - 1];
-                            const lastIntent = lastIntentObj.intentName;
-                            
-                            const allowedSuggestionIntents = [
-                                'add_to_cart', 'remove_from_cart', 
-                                'start_checkout', 'get_product_details'
-                            ];
-
-                            if (allowedSuggestionIntents.includes(lastIntent) && toolsArr.length > 0) {
-                                const correspondingTool = toolsArr.find(t => t.reason && t.reason.includes(lastIntent)) || toolsArr[toolsArr.length - 1];
-                                
-                                const suggestionData = {
-                                    type: 'conversational_simulation',
-                                    intent: lastIntent,
-                                    params: lastIntentObj.parameters || correspondingTool?.params || {},
-                                    tool: correspondingTool?.tool,
-                                    text: targetSentence
-                                };
-                                
-                                await stateManager.updateState(session_id, { last_bot_suggestion: suggestionData });
-                                
-                                logDebug('SERVER:SUGGESTION_SAVED', {
-                                    _desc: 'LLM suggestion saved to state for next turn resolution',
-                                    _example: `Saved ${lastIntent} from bottom-up sentence index ${i}`,
-                                    suggestionData
-                                });
-                                break; // Stop checking when the first supported suggestion is found (bottom-up)
-                            }
-                        }
+                        await stateManager.updateState(session_id, { last_bot_suggestion: extractedSuggestion });
+                        
+                        // Strip the XML block from the final reply sent to the user so they don't see JSON
+                        sanitizedResponse = sanitizedResponse.replace(suggestionRegex, '').trim();
                     }
                 } catch (e) {
-                    console.error('[SERVER] Failed to simulate suggestion NLU:', e.message);
+                    console.error('[SERVER] Failed to parse <suggestion> JSON block:', e.message);
+                    // Still remove the problematic block so the user doesn't see broken JSON text
+                    sanitizedResponse = sanitizedResponse.replace(suggestionRegex, '').trim();
                 }
+            }
+
+            // Always log the result to telemetry for visibility
+            if (extractedSuggestion) {
+                logDebug('PIPELINE:SUGGESTION_AVAILABLE', {
+                    _desc: 'The LLM provided a structured follow-up suggestion',
+                    suggestion: extractedSuggestion,
+                    _icon: '💡'
+                });
+            } else {
+                logDebug('PIPELINE:NO_SUGGESTION', {
+                    _desc: 'The LLM did not provide any follow-up suggestions in this response',
+                    _icon: '🚫'
+                });
             }
 
             const finalResponse = {

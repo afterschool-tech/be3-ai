@@ -172,6 +172,16 @@ const vendorTools = {
             if (context.sessionId) {
                 const scope = context && context.microstate_active ? 'microstate' : 'global';
                 await stateManager.updateReferenceMap(context.sessionId, products, { scope });
+                
+                // CRITICAL: Update last_search so the decoupled "See product details" button
+                // (__nav:cards:) can access the cached products via product.showCards fallback.
+                await stateManager.updateLastSearch(
+                    context.sessionId, 
+                    vendor.business_name || vendor.tag || 'Vendor Products',
+                    params,
+                    products,
+                    result.data.pagination?.total || result.data.total || products.length
+                );
             }
 
             const hasNextPage = computeHasNextPage({
@@ -190,12 +200,16 @@ const vendorTools = {
             const clauseName = deriveClauseNameFromAttributes(attributes);
 
             const globalButtons = [];
+
+            // Prepend the new decoupled product details button
+            globalButtons.push({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
+
             if (hasNextPage) {
                 const titleBase = pickVendorSeeMoreTitle(vendor.business_name || vendor.tag);
                 const seeMoreTitle = truncateButtonTitle(titleBase || 'See more');
                 globalButtons.push({
                     id: `__nav:more:${snapshotId}__`,
-                    title: seeMoreTitle || 'See more',
+                    title: seeMoreTitle || 'See more products',
                     priority: 100
                 });
             }
@@ -203,19 +217,15 @@ const vendorTools = {
             const refiners = [...clauseButtons, ...valueButtons];
             if (refiners.length > 0) globalButtons.push(...refiners);
 
-            const cardsPayload = buildProductCards(products);
-
             return {
                 vendor: vendor.business_name,
                 method: 'search',
-                products,
+                products, // Intentionally NOT setting suppress_images: true so images still fire on initial response
                 total: result.data.pagination?.total || result.data.total || products.length,
                 facets: result.data.facets,
-                whatsapp_product_cards: (Array.isArray(cardsPayload?.cards) && cardsPayload.cards.length > 0)
-                    ? cardsPayload
-                    : undefined,
-                whatsapp: (globalButtons.length > 0)
-                    ? { type: 'button', buttons: globalButtons }
+                whatsapp_product_cards: undefined, // Decoupled: Cards are now summoned via __nav:cards:
+                whatsapp: globalButtons.length > 0 
+                    ? { type: 'button', buttons: globalButtons.slice(0, 3) } 
                     : undefined
             };
         }

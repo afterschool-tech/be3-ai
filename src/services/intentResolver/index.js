@@ -107,9 +107,19 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         await stateManager.updateState(state.user_id, { last_bot_suggestion: null });
         
         const confirmationType = isConfirmation(userMessage);
-        if (confirmationType === 'yes') {
+        if (confirmationType === 'yes' && lastSuggestion.rephrase) {
             logDebug('PIPELINE:SUGGESTION_CONFIRMED', {
-                _desc: 'User confirmed the previous LLM suggestion. Bypassing NLU.',
+                _desc: 'User confirmed the structured LLM suggestion. Rephrasing query and restarting pipeline.',
+                originalInput: userMessage,
+                rephrasedInput: lastSuggestion.rephrase
+            });
+            
+            // Elegantly recurse using the rephrased suggestion string ("show me other products from Dareymi")
+            return await resolveAndMap(lastSuggestion.rephrase, state, aiQueryFn, storeContext);
+        } else if (confirmationType === 'yes') {
+            // Fallback for legacy suggestions, just in case
+            logDebug('PIPELINE:SUGGESTION_CONFIRMED', {
+                _desc: 'User confirmed legacy suggestion. Bypassing NLU.',
                 suggestion: lastSuggestion
             });
             

@@ -154,6 +154,9 @@ function summarizeToolResultsForLLM(results) {
                     }, {})
                     : null;
             }
+            if (rr.vendor) {
+                base.vendor = rr.vendor;
+            }
         }
 
         const hasProducts = Array.isArray(rr.products) || Array.isArray(rr.results);
