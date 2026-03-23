@@ -80,9 +80,11 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const intentKeywordTokenSet = (intent) => {
         const out = new Set();
         for (const kw of (intent.keywords || [])) {
+            if (!kw) continue;
             tokenize(kw).forEach(t => out.add(t));
         }
         for (const syn of (intent.synonyms || [])) {
+            if (!syn) continue;
             tokenize(syn).forEach(t => out.add(t));
         }
         return out;
@@ -94,15 +96,21 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         if (!intent || intent.name === 'product_search') continue;
         let hit = false;
         for (const kw of (intent.keywords || [])) {
-            const kwLower = String(kw || '').toLowerCase();
-            if (kwLower && textWords.includes(kwLower)) {
+            if (typeof kw !== 'string') continue;
+            const kwLower = kw.toLowerCase();
+            if (!kwLower) continue;
+            // Support multi-word keyword phrases (e.g. "similar to") via substring match
+            const isMultiWord = kwLower.includes(' ');
+            const matched = isMultiWord ? textLower.includes(kwLower) : textWords.includes(kwLower);
+            if (matched) {
                 hit = true;
                 break;
             }
         }
         if (!hit) {
             for (const syn of (intent.synonyms || [])) {
-                const synLower = String(syn || '').toLowerCase();
+                if (typeof syn !== 'string') continue;
+                const synLower = syn.toLowerCase();
                 if (synLower && synLower.includes(' ') && textLower.includes(synLower)) {
                     hit = true;
                     break;
@@ -191,6 +199,8 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         if (action.idf > bestActionIdf) bestActionIdf = action.idf;
     }
 
+
+
     // ── Phase 3: Score each intent ──
     const scored = [];
 
@@ -278,14 +288,21 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
         // 3d. IDF Keyword Match (beyond action verbs): Check intent keywords against text words
         for (const kw of (intent.keywords || [])) {
+            if (typeof kw !== 'string') continue;
             const kwLower = kw.toLowerCase();
-            if (textWords.includes(kwLower) && !matchedKeywords.includes(kwLower)) {
+            const isMultiWord = kwLower.includes(' ');
+            const matched = isMultiWord
+                ? textLower.includes(kwLower)  // Multi-word: substring match against full text
+                : textWords.includes(kwLower); // Single-word: token match
+            if (matched && !matchedKeywords.includes(kwLower)) {
                 const kwIdf = idfMap[kwLower] || 0.5;
                 if (intentName === 'vendor_contact') console.log(`[SchemaResolver] Match for vendor_contact: "${kwLower}" in words: [${textWords.join(', ')}] with IDF ${kwIdf}`);
                 // Boost for exact keyword matches (especially for test/debug intents)
                 const exactMatch = kwLower === textWords.join(' ').trim();
                 const exactMatchBoost = exactMatch ? 3.0 : 0;
-                applyModifier(kwIdf + exactMatchBoost, `Keyword match: "${kwLower}"${exactMatch ? ' (Exact match +3.0)' : ''}`);
+                // Multi-word keyword phrases get a higher boost (they are more specific signals)
+                const phraseBoost = isMultiWord ? 1.5 : 0;
+                applyModifier(kwIdf + exactMatchBoost + phraseBoost, `Keyword match: "${kwLower}"${exactMatch ? ' (Exact match +3.0)' : ''}${isMultiWord ? ' (Phrase +1.5)' : ''}`);
                 matchedKeywords.push(kwLower);
             }
         }
@@ -492,14 +509,19 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
             if (intentName === 'vendor_identity') applyModifier(-1.0, 'Orphan Product identity penalty');
         }
 
-        // [New] Similarity Dominance Rule: If user asks for "similar" or "like" products, 
-        // boost product_search significantly.
-        if (intentName === 'product_search') {
-            const hasSimilaritySignal = /\b(similar|like|resemble|equivalent|alternative|resembles|close to|kind of like|comparable)\b/i.test(textLower);
-            if (hasSimilaritySignal) {
-                applyModifier(4.0, 'Similarity signal boost');
+        // [Similarity Dominance Rule]: Same pattern as Compare Dominance (3f).
+        // When product_similar has keyword matches, suppress product_search to prevent
+        // the massive bench bias from drowning out the explicit similarity signal.
+        if (nonSearchHitIntents.has('product_similar')) {
+            if (intentName === 'product_similar') {
+                applyModifier(6.0, 'Similarity Dominance boost');
+            }
+            if (intentName === 'product_search') {
+                applyModifier(-4.0, 'Similarity Dominance suppression');
             }
         }
+
+
 
         scored.push({
             intentName,
@@ -598,7 +620,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         fallbackUsed,
         extractedEntities: entities,
         residualWords,
-        signalDensity: signalCount === 0 && entityCount > 0 ? 0 : signalDensity, // Ensure 0 is returned if no signals
+        signalDensity: signalCount === 0 ? 0 : signalDensity,
         entityCount
     };
 }

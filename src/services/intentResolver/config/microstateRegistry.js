@@ -87,6 +87,7 @@ function checkTriggers(intentName, params, entities = [], toolResult = null) {
                      */
                     buildMicrostate: (winner) => ({
                         type: triggerName,
+                        tool: triggerDef.prompt.tool, // Preserve the UI tool type
                         intent: intentName,
                         sandbox: triggerDef.sandbox || 'soft',
                         boostScore: triggerDef.boostScore || 10.0,
@@ -116,7 +117,8 @@ function checkTriggers(intentName, params, entities = [], toolResult = null) {
                         tool: triggerDef.prompt.tool,
                         params: {
                             ...triggerDef.prompt.params,
-                            parentIntent: intentName
+                            parentIntent: intentName,
+                            controls: { ...(triggerDef.prompt.params?.controls || {}), cancel: true }
                         },
                         reason: `Microstate trigger: ${triggerName}`
                     }

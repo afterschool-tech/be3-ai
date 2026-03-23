@@ -106,6 +106,16 @@ const microstateTools = {
                 formattedMessage = `${contextLines}\n\n${question}`;
             }
 
+            const buttons = [
+                { id: 'ms_yes', title: 'Yes' },
+                { id: 'ms_no', title: 'No' }
+            ];
+
+            // Standardize Cancel button as 3rd button if requested
+            if (params.controls?.cancel) {
+                buttons.push({ id: '__flow:cancel__', title: 'Cancel' });
+            }
+
             return {
                 directResponse: true,
                 message: formattedMessage,
@@ -115,10 +125,7 @@ const microstateTools = {
                 // WhatsApp-optimized: can be rendered as button message
                 whatsapp: {
                     type: 'button',
-                    buttons: [
-                        { id: 'ms_yes', title: 'Yes' },
-                        { id: 'ms_no', title: 'No' }
-                    ]
+                    buttons: buttons.slice(0, 3)
                 }
             };
         }
@@ -134,17 +141,18 @@ const microstateTools = {
             paramName: { type: 'string', required: true, description: 'Name of the parameter to collect' },
             message: { type: 'string', required: true, description: 'Human-readable prompt' },
             parentIntent: { type: 'string', required: false, description: 'The intent that needs this param' },
-            hint: { type: 'string', required: false, description: 'Example or format hint (e.g. "e.g., #12345")' }
+            hint: { type: 'string', required: false, description: 'Example or format hint (e.g. "e.g., #12345")' },
+            controls: { type: 'dict', required: false, description: 'Optional controls: { cancel: boolean }' }
         },
         handler: async (params) => {
-            const { paramName, message, parentIntent, hint } = params;
+            const { paramName, message, parentIntent, hint, controls } = params;
 
             let formattedMessage = message;
             if (hint) {
                 formattedMessage = `${message}\n_(${hint})_`;
             }
 
-            return {
+            const res = {
                 directResponse: true,
                 message: formattedMessage,
                 action: 'param_collection_requested',
@@ -152,6 +160,16 @@ const microstateTools = {
                 parentIntent,
                 updateHistory: true
             };
+
+            // Standardize Cancel button for text collection
+            if (controls?.cancel) {
+                res.whatsapp = {
+                    type: 'button',
+                    buttons: [{ id: '__flow:cancel__', title: 'Cancel' }]
+                };
+            }
+
+            return res;
         }
     },
 

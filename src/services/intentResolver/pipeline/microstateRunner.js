@@ -133,7 +133,7 @@ async function run(userMessage, microstate, state, storeContext) {
                                 parentIntent: microstate.intent,
                                 options: next.window,
                                 baseIndex: 0,
-                                controls: { more: next.hasMore, cancel: true, recommendedIndex: 0 },
+                                controls: { more: next.hasMore, recommendedIndex: 0, ...(microstate.controls || {}), cancel: true },
                                 missingParam: 'products'
                             },
                             reason: 'Compare recommendations: next'
@@ -237,7 +237,7 @@ async function run(userMessage, microstate, state, storeContext) {
                         parentIntent: microstate.intent,
                         options: nextWindow,
                         baseIndex: nextOffset,
-                        controls: { more: hasMore, cancel: true, recommendedIndex: 0 }
+                        controls: { more: hasMore, recommendedIndex: 0, ...(microstate.controls || {}), cancel: true }
                     },
                     reason: 'Microstate pagination'
                 }],
@@ -511,13 +511,13 @@ async function run(userMessage, microstate, state, storeContext) {
         result: {
             intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: mergedParams }],
             tools: [{
-                tool: 'microstate.disambiguate',
+                tool: msForReprompt.tool || 'microstate.disambiguate',
                 params: {
                     reason: 'reprompt',
                     message: repromptMessage,
                     parentIntent: microstate.intent,
                     options: msForReprompt.options,
-                    controls: { more: true, cancel: true, recommendedIndex: 0 },
+                    controls: { more: true, recommendedIndex: 0, ...(msForReprompt.controls || {}), cancel: true },
                     missingParam: 'products'
                 },
                 reason: 'Microstate re-prompt'
@@ -1026,13 +1026,19 @@ function checkFulfillment(onFulfilled, params) {
  * A breakthrough occurs when the user says something completely unrelated
  * to the microstate's intent — e.g., "cancel my order" while in a cart microstate.
  */
-function applyBreakthroughConfig(microstate, winnerIntentName, winnerScore) {
+function applyBreakthroughConfig(microstate, winnerIntentName, winnerScore, microstateIntentScore = 0) {
     const cfg = microstate.breakthrough || {};
-    const minScore = typeof cfg.minScore === 'number' ? cfg.minScore : 1.5;
+    // INCREASED: default threshold moved from 1.5 to 3.5 to prevent low-signal noise (just a name)
+    // from breaking sandboxes.
+    const minScore = typeof cfg.minScore === 'number' ? cfg.minScore : 3.5;
     const blockIntents = Array.isArray(cfg.blockIntents) ? cfg.blockIntents : [];
 
     const isDifferentIntent = winnerIntentName !== microstate.intent;
-    const isStrongSignal = winnerScore >= minScore;
+    
+    // Breakthrough must be a STRONG signal, and MUST be higher than the current intent's score.
+    // This provides a natural tie-breaker: if both are 1.5 (e.g. just a vendor name), 
+    // the microstate wins and NO breakthrough occurs.
+    const isStrongSignal = winnerScore >= minScore && winnerScore > microstateIntentScore;
     const isBlocked = blockIntents.includes(winnerIntentName);
 
     return { isDifferentIntent, isStrongSignal, isBlocked };
@@ -1040,21 +1046,42 @@ function applyBreakthroughConfig(microstate, winnerIntentName, winnerScore) {
 
 function checkBreakthrough(text, microstate, storeContext) {
     // Run schema resolution on the new message
-    const extractionResult = extractEntities(text, storeContext, getIdfMap());
-    const resolution = resolveIntent(extractionResult, text, getIdfMap(), storeContext);
+    const idfMap = getIdfMap();
+    const extractionResult = extractEntities(text, storeContext, idfMap);
+    const resolution = resolveIntent(extractionResult, text, idfMap, storeContext);
 
     if (!resolution.winner) return null;
+
+    // Find the current microstate's intent score for tie-breaking
+    const currentIntentMatch = resolution.candidates.find(c => c.intentName === microstate.intent);
+    const msScore = currentIntentMatch ? currentIntentMatch.score : 0;
 
     // A breakthrough occurs if:
     // 1. Winner is a DIFFERENT intent than the microstate's
     // 2. Winner scores above a threshold (strong signal, not noise)
     const { isDifferentIntent, isStrongSignal, isBlocked } =
-        applyBreakthroughConfig(microstate, resolution.winner.intentName, resolution.winner.score);
+        applyBreakthroughConfig(microstate, resolution.winner.intentName, resolution.winner.score, msScore);
 
-    // Don't break through for discovery intents (they're often refinement responses)
-    const isRelated = ['product_search', 'browse_collection', 'add_to_cart'].includes(resolution.winner.intentName);
+    // ── REQUIRED PARAMETER OVERLAP GUARD ─────────────────────────────────────────
+    // If the winning intent is different, but it requires the EXACT SAME parameter
+    // that the microstate is currently collecting (e.g. both want 'vendor'),
+    // do NOT break through. It's likely a collision, not a subject change.
+    let hasParamOverlap = false;
+    if (isDifferentIntent) {
+        const winnerDef = intentRegistry.get(resolution.winner.intentName);
+        const onFulfilled = Array.isArray(microstate.contract.onFulfilled) ? microstate.contract.onFulfilled : [];
+        
+        if (winnerDef && winnerDef.parameters) {
+            hasParamOverlap = Object.entries(winnerDef.parameters).some(([pName, pDef]) => {
+                return (pDef.required) && onFulfilled.includes(pName);
+            });
+        }
+    }
 
-    if (isDifferentIntent && isStrongSignal && !isRelated && !isBlocked) {
+    // Don't break through for discovery intents or functionally related intents
+    const isRelated = ['product_search', 'browse_collection', 'add_to_cart', 'vendor_products', 'vendor_info', 'vendor_contact'].includes(resolution.winner.intentName);
+
+    if (isDifferentIntent && isStrongSignal && !isRelated && !isBlocked && !hasParamOverlap) {
         return {
             intentName: resolution.winner.intentName,
             score: resolution.winner.score,

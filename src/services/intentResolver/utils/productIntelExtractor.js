@@ -81,14 +81,44 @@ function extractProductIntel(options) {
         });
     });
 
-    wordMap.forEach(item => {
+    wordMap.forEach((item, idx) => {
         if (item.word === ',') {
             item.level = LEVELS.NOISE;
             return;
         }
         if (item.level === LEVELS.TRAIT) {
-            if (/\d/.test(item.word) || item.word.length <= 3) {
+            // ── GLUE LEVEL STRICTNESS ──────────────────────────────────────────
+            // Old behaviour: ANY short token (<=3 chars) or token containing a digit
+            // was promoted to GLUE. This was too permissive — fragments like "i'd",
+            // "ok", "a" survived Phase 3 reconstruction purely because they were short,
+            // producing ghost products (e.g. "i'd" from "i'd like to purchase a laptop").
+            //
+            // New rule: a TRAIT word is only promoted to GLUE if it ALSO meets at
+            // least one of the following anchoring conditions:
+            //   1. Contains a digit (model numbers, specs: "s24", "16", "a16")
+            //   2. Is adjacent (within 1 position) to a PIVOT or CONTEXT word —
+            //      meaning it's flanked by a brand/resolved-product/category signal
+            //      that gives it real product relevance (e.g. "pro" next to "iphone")
+            //
+            // Pure short words with no digit and no anchor stay at TRAIT level,
+            // where the saturation guard and core-proximity filter can safely drop them.
+            const hasDigit = /\d/.test(item.word);
+            const isShort = item.word.length <= 3;
+
+            if (hasDigit) {
+                // Always GLUE if it contains a digit — model numbers, storage specs, etc.
                 item.level = LEVELS.GLUE;
+            } else if (isShort) {
+                // Short non-digit token: only promote to GLUE if anchored by a
+                // PIVOT or CONTEXT neighbour within 1 position in either direction.
+                const prev = wordMap[idx - 1];
+                const next = wordMap[idx + 1];
+                const isAnchored = (prev && prev.level >= LEVELS.CONTEXT) ||
+                    (next && next.level >= LEVELS.CONTEXT);
+                if (isAnchored) {
+                    item.level = LEVELS.GLUE;
+                }
+                // Otherwise: stays TRAIT — will be dropped unless within 3 words of a core
             }
         }
     });
@@ -109,10 +139,10 @@ function extractProductIntel(options) {
                 // If it's a soft splitter, we only split if we're in comparison mode 
                 // OR if we suspect multiple products (e.g. brand clash)
                 let shouldSplit = hardSplitters.includes(item.word);
-                
+
                 if (intentName === 'product_compare') shouldSplit = true;
                 if (item.word === 'like') shouldSplit = true; // "phone LIKE iphone"
-                
+
                 if (shouldSplit) {
                     splits.push(i + 1);
                     item.isConsumed = true;
@@ -160,7 +190,7 @@ function extractProductIntel(options) {
 
             productIndices = productIndices.filter(idx => {
                 const s = segment.find(seg => seg.index === idx);
-                if (s.level >= LEVELS.CONTEXT) return true; 
+                if (s.level >= LEVELS.CONTEXT) return true;
 
                 const distToCore = idx < minCore ? (minCore - idx) : (idx - maxCore);
                 // Traits allowed up to 3 words away now to handle fillers
@@ -213,9 +243,72 @@ function extractProductIntel(options) {
             name: finalName,
             intel,
             confidence: maxLevel / 4,
-            isResolved: !!intel.resolvedId
+            isResolved: !!intel.resolvedId,
+            // Store the raw word indices this product was reconstructed from.
+            // Used by the purchase-verb pre-position guard below to determine
+            // whether this product appeared before or after the transaction verb.
+            _sourceIndices: productIndices
         };
     }).filter(Boolean);
+
+    // ── PURCHASE VERB PRE-POSITION GUARD ──────────────────────────────────────
+    // Problem: PIE can produce spurious "products" from fragments that appear
+    // BEFORE a purchase verb in the sentence. E.g. "i'd like to purchase a laptop"
+    // segments into ["i'd"] and ["laptop"] — "i'd" survives Phase 3 because it's
+    // a short token (GLUE level) with no noise classification.
+    //
+    // Rule: If the text contains a purchase verb AND multiple products were found,
+    // locate the purchase verb's word index and discard any product whose source
+    // word indices ALL fall before that position.
+    //
+    // Edge cases handled:
+    //   - No purchase verb → guard is skipped entirely, nothing changes.
+    //   - Only one product → guard is skipped (no ambiguity to resolve).
+    //   - All products before the verb → guard is skipped to avoid returning
+    //     nothing (better to let downstream handle it than discard everything).
+    //   - Product spans the verb (e.g. a brand name containing a verb word) →
+    //     kept, since at least one of its indices is >= the verb position.
+    //
+    // Purchase verbs deliberately kept narrow — only true transaction verbs.
+    // Broader verbs like "want", "need", "get" intentionally excluded because
+    // they frequently appear BEFORE the product ("I want the iPhone") and would
+    // incorrectly discard the real product name.
+    const PURCHASE_VERBS = new Set(['purchase', 'buy', 'order']);
+
+    if (products.length > 1) {
+        // Find the first purchase verb in the wordMap and record its index.
+        // We check level === NOISE because action verbs are marked NOISE in Phase 1.
+        const purchaseVerbIndex = wordMap.findIndex(
+            item => PURCHASE_VERBS.has(item.word) && item.level === LEVELS.NOISE
+        );
+
+        if (purchaseVerbIndex !== -1) {
+            // Keep only products that have at least one source word at or after the verb
+            const afterVerb = products.filter(p =>
+                Array.isArray(p._sourceIndices) &&
+                p._sourceIndices.some(idx => idx >= purchaseVerbIndex)
+            );
+
+            // Only apply the filter if it leaves at least one product standing.
+            // If everything is before the verb (unusual edge case), leave the array
+            // untouched so downstream can still attempt a search rather than returning nothing.
+            if (afterVerb.length > 0 && afterVerb.length < products.length) {
+                const discarded = products
+                    .filter(p => !afterVerb.includes(p))
+                    .map(p => p.name);
+                logDebug('PIE:PURCHASE_VERB_GUARD', {
+                    purchaseVerb: wordMap[purchaseVerbIndex].word,
+                    purchaseVerbIndex,
+                    discarded,
+                    kept: afterVerb.map(p => p.name)
+                });
+                products.splice(0, products.length, ...afterVerb);
+            }
+        }
+    }
+
+    // Clean up internal _sourceIndices before returning — callers don't need them
+    products.forEach(p => delete p._sourceIndices);
 
     logDebug('PIE:EXTRACTION', {
         text,

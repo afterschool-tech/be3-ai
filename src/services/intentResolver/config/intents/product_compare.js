@@ -63,7 +63,7 @@ module.exports = {
                     reason: 'compare_recommendations',
                     message: 'Which products would you like to compare?',
                     options: [],
-                    controls: { more: true, cancel: true, recommendedIndex: 0 },
+                    controls: { more: true, recommendedIndex: 0 },
                     missingParam: 'products'
                 }
             },

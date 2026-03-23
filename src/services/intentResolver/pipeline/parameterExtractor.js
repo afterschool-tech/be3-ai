@@ -162,24 +162,59 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
         });
 
         if (pieResults.length > 0 && pieResults[0].name) {
-            // NEW: Similarity Search Detection
-            // If the user asks for "similar" products, we populate 'similar_to' (parameter)
-            // instead of 'product_name' (query). This tells the tool handler to run Vector mode.
-            const hasSimilaritySignal = /\b(similar|like|resemble|equivalent|alternative|resembles|close to|kind of like|comparable)\b/i.test(text.toLowerCase());
+            // ── BARE CATEGORY GUARD ──────────────────────────────────────────────
+            // When IntelliSense extracts a product name that is strictly and exactly
+            // a known category label or slug (e.g. "laptop", "iphones", "smartphones"),
+            // we must NOT use it as product_name / query — doing so runs a keyword
+            // search that gives worse coverage than a proper category browse.
+            //
+            // The category is already set upstream by the entity extractor (STAGE4A),
+            // so we simply drop the product_name here and let the category do its job.
+            //
+            // Rule: exact match only. "laptop" drops. "gaming laptop" keeps.
+            // "iphone" drops (it IS the category slug). "iphone 15" keeps.
+            const candidateName = pieResults[0].name.toLowerCase().trim();
+            const isBareCategory = storeContext?.CATEGORIES && Object.values(storeContext.CATEGORIES).some(cat => {
+                const label = (cat.label || '').toLowerCase().trim();
+                const slug = (cat.slug || '').toLowerCase().trim();
+                const aliases = Array.isArray(cat.aliases) ? cat.aliases.map(a => a.toLowerCase().trim()) : [];
+                return label === candidateName || slug === candidateName || aliases.includes(candidateName);
+            });
 
-            if (hasSimilaritySignal) {
-                // NEW: UUID Priority — if we have a resolved ID from PIE or context, use it directly.
-                // This prevents redundant resolution calls in the tool handler.
-                const rid = pieResults[0].intel.resolvedId;
-                const flattenedId = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
-                extracted.similar_to = flattenedId || pieResults[0].name;
-                // DO NOT populate product_name to prevent fallback to keyword search (q param)
+            if (isBareCategory) {
+                // Category already captured upstream — product_name left unset so the
+                // missing_query microstate or category browse takes over naturally.
+                logDebug('PARAM:PIE_BARE_CATEGORY_DROPPED', {
+                    name: pieResults[0].name,
+                    reason: 'Exact category match — using category browse instead of keyword search'
+                });
             } else {
                 extracted.product_name = pieResults[0].name;
                 if (pieResults[0].intel.resolvedId) {
                     const rid = pieResults[0].intel.resolvedId;
                     extracted._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
                 }
+            }
+        }
+    }
+
+    // 6. Similarity Search (Product Similar) — POWERED BY PIE
+    const isSimilar = candidates.length > 0 && candidates[0].intentName === 'product_similar';
+    if (isSimilar) {
+        const pieResults = extractProductIntel({
+            text,
+            entities,
+            resolutions,
+            intentName: 'product_similar',
+            excludeSet,
+            categoryId
+        });
+
+        if (pieResults.length > 0 && pieResults[0].name) {
+            extracted.product_name = pieResults[0].name;
+            if (pieResults[0].intel.resolvedId) {
+                const rid = pieResults[0].intel.resolvedId;
+                extracted._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
             }
         }
     }
@@ -443,7 +478,7 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     if (!isCompare && baseFromEntities.product_name && deterministic.product_name) {
         const resolvedName = baseFromEntities.product_name.toLowerCase();
         const pieWords = deterministic.product_name.split(/\s+/);
-        
+
         // Deduplicate: Only keep words from PIE that don't already exist in the resolved name
         // This prevents "iphone13 iPhone 13" or "iphone12pro iPhone 12 Pro"
         const cleanPieWords = pieWords.filter(word => {

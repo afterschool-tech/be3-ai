@@ -121,7 +121,8 @@ const ACKS = new Set(acknowledgments);
  * "i need phones" → false
  */
 function isSocialNoise(stmt) {
-    const cleaned = stmt.toLowerCase().replace(/[^\w\s]/g, '').trim();
+    const text = typeof stmt === 'object' ? (stmt.text || '') : stmt;
+    const cleaned = text.toLowerCase().replace(/[^\w\s]/g, '').trim();
     if (!cleaned) return false;
     const words = cleaned.split(/\s+/);
     return words.every(w => ACKS.has(w));
@@ -152,8 +153,15 @@ function preprocess(text, manualStatements = []) {
     }
 
     const statements = filteredStatements.map(stmt => {
-        const { negated, cleanText } = detectNegation(stmt);
-        return { text: cleanText, negated };
+        const stmtText = typeof stmt === 'object' ? stmt.text : stmt;
+        const { negated, cleanText } = detectNegation(stmtText);
+        
+        // Return object with processed text and any metadata from the original stmt object
+        return { 
+            ...(typeof stmt === 'object' ? stmt : {}),
+            text: cleanText, 
+            negated 
+        };
     });
 
     return {

@@ -95,10 +95,10 @@ function buildIdfMap() {
     for (const [name, intent] of Object.entries(intents)) {
         const allWords = new Set();
         (intent.keywords || []).forEach(kw => {
-            kw.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
+            if (typeof kw === 'string') kw.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
         });
         (intent.synonyms || []).forEach(syn => {
-            syn.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
+            if (typeof syn === 'string') syn.toLowerCase().split(/\s+/).forEach(w => allWords.add(w));
         });
 
         for (const word of allWords) {

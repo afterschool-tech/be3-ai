@@ -4,115 +4,177 @@ const { logDebug } = require('../utils/debugLogger');
  * IntelliSense Service
  * LLM-powered pre-processor for multi-statement splitting, product extraction,
  * and pronoun disambiguation logic.
- * 
- * Includes STRICT vetting to ensure LLM does not hallucinate product names 
- * or "semantic translations" (like something to eat -> food) that aren't in the text.
+ *
+ * Each statement carries TWO text fields:
+ *   - `original` → verbatim span from the user message (transformer input)
+ *   - `text`     → constrained-normalized version (entity extraction input)
+ *
+ * `text` is NOT a free paraphrase. It strips only conversational filler while
+ * explicitly preserving everything the pipeline depends on downstream.
+ *
+ * Vetting guarantees:
+ *   1. `original` must be a real substring of the source message.
+ *      Fallback: single-statement → full source. Multi-statement → stmt.text.
+ *   2. `text` must be grounded — at least one significant token must appear in
+ *      the source. If not (e.g. LLM returned an example verbatim), text is
+ *      replaced with `original`. Replacement not discard — pipeline always
+ *      has something real to work with.
+ *   3. Products/adjectives must exist in text OR original.
+ *   4. Unstable semantic translations dropped.
+ *   5. skip_resolve pronouns must exist in text.
  */
 
-const SYSTEM_PROMPT = `You are a text pre-processor for a shopping assistant. Given a user message, return ONLY a JSON object with no explanation.
+const SYSTEM_PROMPT = `You are a pre-processor for a shopping assistant. Return ONLY a JSON object.
 
-TASK:
-1. Split the message into separate statements only when the user is clearly switching topics
-2. Extract product names (resolve naming patterns like "X called Y" → product is "Y X" or just "Y")
-3. Mark pronouns that are discourse/idiomatic and should NOT be resolved to products
+TASK: For each user message —
+1. Split into statements only on clear topic changes
+2. For each statement return a verbatim original span and a normalized text
+3. Extract product names
+4. Mark idiomatic pronouns to skip
 
-SPLITTING RULES:
-- Split on clear topic changes ("that aside", "by the way", separate questions about different things)
-- Do NOT split coordinated noun phrases: "advantage and disadvantages" = one statement
-- Do NOT split on "and/or" when both sides are about the same topic
-- "and then" and "then" between different actions = split
-- When unsure, keep as one statement
+SPLITTING: Split on "that aside", "by the way", or clearly separate questions. Do NOT split coordinated phrases or same-topic "and/or". "and then"/"then" between different actions = split. When unsure, keep as one.
 
-PRODUCT EXTRACTION RULES:
-- "X called Y" → { name: "Y X", adjectives: [] }
-- "X named Y" → { name: "Y X", adjectives: [] }  
-- "cheap blue Samsung phone" → { name: "Samsung phone", adjectives: ["cheap", "blue"] }
-- "something to eat" → { name: "food", adjectives: [] }
-- Abstract concepts (crypto, forex, politics, finance) → NOT a product, leave products: []
-- If no product is mentioned → products: []
+ORIGINAL: Copy verbatim from the message. No changes. Single statement = full message. Multi = each chunk exactly as written.
 
-PRONOUN RULES — mark as skip_resolve when:
-- "that aside" → skip "that"
-- "this aside" → skip "this"  
-- "help with that" at end of sentence → skip "that"
-- "could you help with that/this" → skip "that/this"
-- "that said", "that being said" → skip "that"
-- "do that", "try that" referring to an action not a product → skip "that"
-- INTRA-STATEMENT COREFERENCE: If a pronoun (it/this/that/them) refers to a product noun WITHIN THE SAME statement, skip it. The pipeline handles cross-statement references separately.
-  - "find iphone 15 and add it to cart" (one statement) → "it" refers to "iphone 15" in the same sentence → skip "it"
-  - "show me samsung s24 then add it to my bag" (one statement) → "it" refers to "samsung s24" → skip "it"
-- Only keep for resolution (do NOT skip): pronouns that clearly refer to something OUTSIDE the statement with no antecedent in the same sentence
-  - "add it to cart" (standalone, no product mentioned) → keep "it" for resolution
-  - "how much is it" (standalone) → keep "it" for resolution
+TEXT (constrained normalization — NOT free paraphrase):
+- Lowercase and remove ONLY: greetings, "please", "kindly", "actually", filler sounds ("ahh", "oo", "hmm"), discourse openers ("so", "well", "basically")
+- KEEP exactly: action verbs, negations, interrogative openers (how do i / can you / do you have), quantities, product names, model numbers, brand names, adjectives, specs
 
-OUTPUT SCHEMA:
-{
-  "statements": [
-    {
-      "text": "cleaned statement text",
-      "products": [
-        { "name": "product name", "adjectives": ["adj1", "adj2"] }
-      ],
-      "skip_resolve": ["pronoun1"]
-    }
-  ]
-}
+PRODUCTS:
+- "X called Y" / "X named Y" → { name: "Y X" }
+- Abstract concepts (crypto, forex, politics) → NOT a product
+- No product mentioned → products: []
+
+PRONOUNS — skip_resolve when idiomatic or intra-statement:
+- "that aside", "help with that" (end), "that said", "do/try that" (action) → skip
+- Pronoun refers to product IN SAME statement → skip ("find iphone and add it" → skip "it")
+- Keep only cross-statement pronouns with no local antecedent ("add it to cart" standalone → keep)
+
+OUTPUT:
+{"statements":[{"original":"verbatim span","text":"normalized text","products":[{"name":"","adjectives":[]}],"skip_resolve":[]}]}
 
 EXAMPLES:
-Input: "Show me cheap blue samsung phones"
-Output: {"statements":[{"text":"show me cheap blue samsung phones","products":[{"name":"samsung phones","adjectives":["cheap","blue"]}],"skip_resolve":[]}]}
+In: "how do i make moi moi please"
+Out: {"statements":[{"original":"how do i make moi moi please","text":"how do i make moi moi","products":[],"skip_resolve":[]}]}
 
-Input: "Yeah, lately I've been looking for a particular product which is Wipes called Angel. That aside, I'm trying to weigh the advantage and disadvantages of Crypto and Forex. Could you please help with that?"
-Output: {"statements":[{"text":"looking for angel wipes","products":[{"name":"angel wipes","adjectives":[]}],"skip_resolve":[]},{"text":"i'm trying to weigh the advantage and disadvantages of crypto and forex","products":[],"skip_resolve":["that"]}]}
+In: "find iphone 15 and add it to cart"
+Out: {"statements":[{"original":"find iphone 15 and add it to cart","text":"find iphone 15 and add it to cart","products":[{"name":"iphone 15","adjectives":[]}],"skip_resolve":["it"]}]}
 
-Input: "find iphone 15 and add it to cart"
-Output: {"statements":[{"text":"find iphone 15 and add it to cart","products":[{"name":"iphone 15","adjectives":[]}],"skip_resolve":["it"]}]}
+In: "I want Wipes called Angel. That aside, advantage and disadvantages of Crypto. Could you help with that?"
+Out: {"statements":[{"original":"I want Wipes called Angel","text":"want angel wipes","products":[{"name":"angel wipes","adjectives":[]}],"skip_resolve":[]},{"original":"advantage and disadvantages of Crypto. Could you help with that?","text":"advantage and disadvantages of crypto","products":[],"skip_resolve":["that"]}]}
+
+In: "Show me cheap blue samsung phones"
+Out: {"statements":[{"original":"Show me cheap blue samsung phones","text":"show me cheap blue samsung phones","products":[{"name":"samsung phones","adjectives":["cheap","blue"]}],"skip_resolve":[]}]}
+
+In: "None of it because I'm not an Iphone Freak"
+Out: {"statements":[{"original":"None of it because I'm not an Iphone Freak","text":"not an iphone freak","products":[],"skip_resolve":["it"]}]}
 `;
 
+// Tokens too generic to serve as grounding evidence
+const STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'from', 'that', 'this', 'its', 'are', 'was', 'has', 'have']);
+
 /**
- * Perform strict vetting on the LLM output.
- * 1. Product names/adjectives MUST exist in the original statement text.
- * 2. Semantic translations like "something to eat" -> "food" are forbidden and dropped.
- * 3. Pronouns in skip_resolve MUST exist in the statement.
+ * Extract significant tokens from a string for grounding/vetting checks.
  */
-function vetResults(originalText, parsed) {
+function significantTokens(str) {
+    return str
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(t => t.length > 2 && !STOP_WORDS.has(t));
+}
+
+/**
+ * Vet LLM output against the original source text.
+ *
+ * Pass 1 — original: must be a real substring of the source.
+ * Pass 2 — text grounding: stmt.text must share tokens with source.
+ *           If not, replaced with stmtOriginal (real but noisier — never discarded).
+ * Pass 3 — products: token presence in combined (text + original) search space.
+ * Pass 4 — skip_resolve: pronouns must exist in text.
+ */
+function vetResults(sourceText, parsed) {
     if (!parsed || !Array.isArray(parsed.statements)) return null;
 
     const vettedStatements = [];
     const logs = [];
+    const sourceLower = sourceText.toLowerCase();
+    const isMultiStatement = parsed.statements.length > 1;
 
     for (const stmt of parsed.statements) {
-        const stmtText = (stmt.text || '').toLowerCase();
-        
-        // 1. Validate product names and adjectives
+
+        // ── Pass 1: vet original ──────────────────────────────────────────────
+        let stmtOriginal = (stmt.original || '').trim();
+        const originalIsValid = stmtOriginal && sourceLower.includes(stmtOriginal.toLowerCase());
+
+        if (!originalIsValid) {
+            if (stmtOriginal) {
+                logs.push(
+                    `original "${stmtOriginal.substring(0, 40)}..." not in source — ` +
+                    `fallback: ${isMultiStatement ? 'stmt.text' : 'full message'}`
+                );
+            }
+            stmtOriginal = isMultiStatement ? (stmt.text || sourceText) : sourceText;
+        }
+
+        // ── Pass 2: vet text grounding ────────────────────────────────────────
+        // stmt.text must share at least one significant token with the source.
+        // Catches example-leakage (LLM returning its own few-shot example verbatim).
+        // Replace with stmtOriginal rather than discard — keeps pipeline running.
+        let stmtText = (stmt.text || '').toLowerCase();
+        const textTokens = significantTokens(stmtText);
+        const textIsGrounded = textTokens.length === 0 || textTokens.some(t => sourceLower.includes(t));
+
+        if (!textIsGrounded) {
+            logs.push(
+                `stmt.text "${stmtText.substring(0, 40)}..." not grounded in source ` +
+                `(likely example leakage) — replacing with original`
+            );
+            stmtText = stmtOriginal.toLowerCase();
+        }
+
+        // ── Pass 2.5: discard fully ungrounded statements ─────────────────────
+        // If both text AND original share no significant tokens with the source,
+        // there is nothing real left to work with — discard the statement entirely.
+        // This handles the case where original fallback landed on stmt.text which
+        // was itself ungrounded (circular collapse), producing a fabricated statement
+        // that would otherwise fire real tools against invented data.
+        const originalGroundedAfterFallback = significantTokens(stmtOriginal).some(t => sourceLower.includes(t));
+        const textGroundedAfterReplacement = significantTokens(stmtText).some(t => sourceLower.includes(t));
+
+        if (!originalGroundedAfterFallback && !textGroundedAfterReplacement) {
+            logs.push(`Statement fully ungrounded — both text and original share no tokens with source, discarding`);
+            continue;
+        }
+
+        // Combined search space for product/adjective vetting
+        const searchSpace = `${stmtText} ${stmtOriginal.toLowerCase()}`;
+
+        // ── Pass 3: vet products ──────────────────────────────────────────────
         const vettedProducts = [];
         if (Array.isArray(stmt.products)) {
             for (const p of stmt.products) {
                 const name = (p.name || '').toLowerCase();
                 const adjs = Array.isArray(p.adjectives) ? p.adjectives : [];
 
-                // 1.1 Drops unstable semantic translation: "something to eat" -> "food"
-                if (['food', 'drink', 'drinks', 'stuff', 'item', 'product'].includes(name)) {
-                    logs.push(`Dropped unstable semantic translation: "${name}"`);
+                // Drop generic semantic translations
+                if (['food', 'drink', 'drinks', 'stuff', 'item', 'product', 'things', 'something'].includes(name)) {
+                    logs.push(`Dropped semantic translation: "${name}"`);
                     continue;
                 }
 
-                // 1.2 Multi-token logic: At least one significant token (>2 chars) must exist in text.
-                // This allows "Angel wipes" for "Wipes called Angel".
-                const nameTokens = name.split(/\s+/)
-                    .filter(t => t.length > 2 && !['the', 'and', 'for', 'with', 'from', 'called', 'named'].includes(t));
-                
-                const someFound = nameTokens.some(t => stmtText.includes(t));
+                // At least one significant token must exist in search space
+                const nameTokens = name
+                    .split(/\s+/)
+                    .filter(t => t.length > 2 && !STOP_WORDS.has(t) && !['called', 'named'].includes(t));
 
-                if (nameTokens.length > 0 && !someFound) {
-                    logs.push(`Dropped hallucinated product: "${name}" (no significant tokens found in statement text)`);
+                if (nameTokens.length > 0 && !nameTokens.some(t => searchSpace.includes(t))) {
+                    logs.push(`Dropped hallucinated product: "${name}"`);
                     continue;
                 }
 
-                // 1.3 Adjective check (strict, must be in text)
                 const vettedAdjs = adjs.filter(adj => {
-                    const found = stmtText.includes(adj.toLowerCase());
-                    if (!found) logs.push(`Dropped hallucinated adjective: "${adj}" for product "${name}"`);
+                    const found = searchSpace.includes(adj.toLowerCase());
+                    if (!found) logs.push(`Dropped hallucinated adjective: "${adj}" for "${name}"`);
                     return found;
                 });
 
@@ -120,32 +182,33 @@ function vetResults(originalText, parsed) {
             }
         }
 
-        // 2. Validate skip_resolve pronouns
-        const vettedSkip = [];
-        if (Array.isArray(stmt.skip_resolve)) {
-            for (const pr of stmt.skip_resolve) {
-                if (stmtText.includes(pr.toLowerCase())) {
-                    vettedSkip.push(pr);
-                } else {
-                    logs.push(`Dropped invalid skip_resolve: "${pr}" (not found in statement text)`);
-                }
-            }
-        }
+        // ── Pass 4: vet skip_resolve ──────────────────────────────────────────
+        const vettedSkip = (stmt.skip_resolve || []).filter(pr => {
+            const found = stmtText.includes(pr.toLowerCase());
+            if (!found) logs.push(`Dropped invalid skip_resolve: "${pr}"`);
+            return found;
+        });
 
         vettedStatements.push({
-            ...stmt,
+            original: stmtOriginal,
+            text: stmtText,
             products: vettedProducts,
             skip_resolve: vettedSkip
         });
     }
+
+    // If all statements were discarded, return null so the pipeline falls back
+    // to processing the raw message directly rather than running with no data
+    if (vettedStatements.length === 0) return null;
 
     return { vettedStatements, logs };
 }
 
 /**
  * Analyze text using LLM and return vetted IntelliSense data.
+ *
  * @param {string} text - User message
- * @param {Function} aiQueryFn - Function to call LLM (provided by resolveAndMap)
+ * @param {Function} aiQueryFn - LLM caller provided by resolveAndMap
  * @returns {Promise<Object|null>}
  */
 async function analyze(text, aiQueryFn) {
@@ -161,7 +224,6 @@ async function analyze(text, aiQueryFn) {
         const response = await aiQueryFn(prompt, 800, 0.1, 2, 'json_object', 'llama-3.1-8b-instant');
         const parsed = JSON.parse(response);
 
-        // Vetting phase
         const { vettedStatements, logs } = vetResults(text, parsed);
         const duration = Date.now() - startTime;
 

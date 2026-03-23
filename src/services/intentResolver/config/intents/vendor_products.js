@@ -76,8 +76,7 @@ module.exports = {
                 escalation: null
             },
             breakthrough: {
-                minScore: 1.5,
-                blockIntents: []
+                // Now uses global default (3.5) for safer stability
             }
         }
     }

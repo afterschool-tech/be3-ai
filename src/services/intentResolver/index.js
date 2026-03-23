@@ -475,7 +475,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     params: {
                         paramName: 'products',
                         message: 'What is the second product you want to compare with?',
-                        hint: 'e.g., "Galaxy S24"'
+                        hint: 'e.g., "Galaxy S24"',
+                        controls: { cancel: true }
                     },
                     reason: 'Compare: collect second product'
                 }],
@@ -681,7 +682,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const skipResolve = senseResult?.statements?.flatMap(s => s.skip_resolve) || [];
 
     // Stage 3: Preprocess (normalize, negate, split) - MOVED UP TO START
-    const manualStatements = senseResult?.statements?.map(s => s.text) || [];
+    const manualStatements = senseResult?.statements || [];
     const { statements, isMultiIntent } = preprocessor.preprocess(afterFuzzy, manualStatements);
     logDebug('PIPELINE:STAGE3_PREPROCESS', {
         _desc: 'Preprocess — normalize, detect negation, split on conjunctions',
@@ -709,7 +710,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             reason: 'Manual bypass for comparison/testing'
         });
     } else {
-        const textsToAnalyze = statements.map(s => cleanText(s.text));
+        const textsToAnalyze = statements.map(s => s.original || s.text);
         try {
             const axios = require('axios');
             const transformerStart = Date.now();
@@ -1765,6 +1766,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             : `You have ${count} options. Which one do you want? Reply with a number (1 to ${count}) or say "the first one", "the second one", etc.`;
         const msObj = {
             type: 'ordinal_choice',
+            tool: 'microstate.disambiguate',
             intent: winnerIntent.intentName,
             sandbox: 'soft',
             boostScore: 10.0,
@@ -1803,7 +1805,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     reason: 'ordinal_choice',
                     message,
                     parentIntent: winnerIntent.intentName,
-                    options: ids.map((id, i) => ({ value: id, label: `${i + 1}. Option ${i + 1}` }))
+                    options: ids.map((id, i) => ({ value: id, label: `${i + 1}. Option ${i + 1}` })),
+                    controls: { cancel: true }
                 },
                 reason: 'Ordinal choice: pick which option'
             }],
@@ -1919,7 +1922,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         })(),
                         parentIntent: winner.intentName,
                         options: msObj.options || [],
-                        controls: { more: true, cancel: true, recommendedIndex: 0 },
+                        controls: { more: true, recommendedIndex: 0, cancel: true },
                         missingParam: 'products'
                     },
                     reason: 'Compare: recommended products'
