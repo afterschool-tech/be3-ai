@@ -79,7 +79,7 @@ module.exports = {
             },
             breakthrough: {
                 // Be relatively permissive to let users change topic if they want
-                minScore: 1.5,
+                minScore: 2.5,
                 blockIntents: []
             }
         }

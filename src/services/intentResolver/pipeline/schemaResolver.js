@@ -543,7 +543,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     // High entity count with zero actions/keywords = entity extraction noise, not user intent.
     const signalCount = actionEntities.length + (nonSearchHitIntents.size > 0 ? 1 : 0);
     const entityCount = entities.length;
-    const signalDensity = entityCount > 0 ? signalCount / entityCount : 1.0;
+    // Fix: If there are ZERO entities and ZERO keywords, the density is 0, not 1.0. 
+    // Defaulting to 1.0 was letting pure gibberish bypass the low-signal gate.
+    const signalDensity = entityCount > 0 ? signalCount / entityCount : 0.0;
     const MIN_SIGNAL_DENSITY = 0.3;
     const isLowSignal = signalDensity < MIN_SIGNAL_DENSITY && signalCount === 0;
 

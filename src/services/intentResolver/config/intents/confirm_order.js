@@ -69,7 +69,7 @@ module.exports = {
                 escalation: null
             },
             breakthrough: {
-                minScore: 1.5,
+                minScore: 2.5,
                 blockIntents: []
             }
         }

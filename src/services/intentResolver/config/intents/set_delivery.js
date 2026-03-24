@@ -78,7 +78,7 @@ module.exports = {
             },
             breakthrough: {
                 // Allow user to pivot away if they strongly express another intent
-                minScore: 1.5,
+                minScore: 2.5,
                 blockIntents: []
             }
         }

@@ -1028,9 +1028,9 @@ function checkFulfillment(onFulfilled, params) {
  */
 function applyBreakthroughConfig(microstate, winnerIntentName, winnerScore, microstateIntentScore = 0) {
     const cfg = microstate.breakthrough || {};
-    // INCREASED: default threshold moved from 1.5 to 3.5 to prevent low-signal noise (just a name)
+    // INCREASED: default threshold set to 2.5 to prevent low-signal noise (just a name)
     // from breaking sandboxes.
-    const minScore = typeof cfg.minScore === 'number' ? cfg.minScore : 3.5;
+    const minScore = typeof cfg.minScore === 'number' ? cfg.minScore : 2.5;
     const blockIntents = Array.isArray(cfg.blockIntents) ? cfg.blockIntents : [];
 
     const isDifferentIntent = winnerIntentName !== microstate.intent;
@@ -1078,10 +1078,11 @@ function checkBreakthrough(text, microstate, storeContext) {
         }
     }
 
-    // Don't break through for discovery intents or functionally related intents
-    const isRelated = ['product_search', 'browse_collection', 'add_to_cart', 'vendor_products', 'vendor_info', 'vendor_contact'].includes(resolution.winner.intentName);
+    // The parameter overlap guard and the 2.5 minScore threshold inherently protect
+    // against accidental naked entity breakouts. We no longer need a blanket ban
+    // on jumping to discovery intents.
 
-    if (isDifferentIntent && isStrongSignal && !isRelated && !isBlocked && !hasParamOverlap) {
+    if (isDifferentIntent && isStrongSignal && !isBlocked && !hasParamOverlap) {
         return {
             intentName: resolution.winner.intentName,
             score: resolution.winner.score,
