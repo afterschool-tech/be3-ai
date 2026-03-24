@@ -749,6 +749,35 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
+    // ═══════════════════════════════════════════════
+    // Stage 3a: Global Semantic Pre-pass
+    // Runs ONCE per query to find all clauses/brands across the entire message.
+    // These are "shielded" from the Category Scanner in each statement.
+    // ═══════════════════════════════════════════════
+    // Construct a merged semantic context from the first batched result (covers the full query
+    // for single-statement inputs; for multi-statement, clause detection is word-level anyway).
+    const mergedSemanticContext = batchedSemanticContext?.results?.[0]
+        ? { ...batchedSemanticContext.results[0], available: true }
+        : null;
+
+    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterFuzzy, [], mergedSemanticContext);
+    logDebug('PIPELINE:STAGE3A_PREPASS', {
+        _desc: 'Global Semantic Pre-pass — clauses/brands detected across entire query before statement loop',
+        _example: '"show me cheap infinix phones" → cheap(clause), infinix(brand) detected globally',
+        entityCount: globalEntities.length,
+        entities: globalEntities.map(e => ({
+            type: e.type,
+            value: e.value,
+            clauseId: e.clauseId,
+            source: e.source,
+            globalWordIndex: e.globalWordIndex
+        })),
+        categoryHints: globalCategoryHints
+    });
+
+    // Build global word list for index reconciliation
+    const globalWords = afterFuzzy.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+
     const resolvedStatements = [];
 
     for (let i = 0; i < statements.length; i++) {
@@ -786,7 +815,42 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
 
+        // ── Stage 3d: Reconcile Global Pre-pass entities to this statement ──
+        // PRIORITY: Clause/brand entities are pushed FIRST so they get word-level
+        // consumption priority over IntelliSense products. This prevents "cheap"
+        // from being absorbed into "cheap smartphones" as a product name.
+        const localWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+
+        for (const gEnt of globalEntities) {
+            // Find the global word in the local statement words
+            const globalWord = globalWords[gEnt.globalWordIndex];
+            if (!globalWord) continue;
+
+            const localIdx = localWords.indexOf(globalWord);
+            if (localIdx !== -1) {
+                statementPreEntities.push({
+                    ...gEnt,
+                    localWordIndex: localIdx
+                });
+            }
+        }
+
+        if (statementPreEntities.length > 0) {
+            logDebug(`PIPELINE:STAGE3D_RECONCILE [Statement ${i + 1}]`, {
+                _desc: 'Reconcile global pre-pass entities to local statement indices',
+                _example: 'Global "cheap" at index 2 → local index 1 in statement "cheap phones"',
+                globalEntityCount: globalEntities.length,
+                reconciledCount: statementPreEntities.length,
+                reconciled: statementPreEntities.map(e => ({
+                    value: e.value,
+                    globalIdx: e.globalWordIndex,
+                    localIdx: e.localWordIndex
+                }))
+            });
+        }
+
         // INJECTION: If IntelliSense found products, convert them to statementPreEntities
+        // These come AFTER pre-pass entities so clauses/brands take word priority.
         const senseStmt = senseResult?.statements?.[i];
         if (senseStmt && Array.isArray(senseStmt.products)) {
             const statementWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
@@ -814,7 +878,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }
         }
 
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, [], localSemanticContext);
+        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, localSemanticContext);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
