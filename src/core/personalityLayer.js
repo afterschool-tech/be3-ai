@@ -7,7 +7,7 @@
 
 require('dotenv').config();
 const { queryAI: queryGroqAI, MODEL_ID: GROQ_MODEL_ID } = require('./hfAiService');
-const { getUltraLeanContext } = require('../context/storeContext');
+const dco = require('./dco');
 const { logDebug } = require('../utils/debugLogger');
 
 const MAX_PRODUCTS_FOR_LLM = 6;
@@ -241,13 +241,22 @@ function summarizeToolResultsForLLM(results) {
 /**
  * Generate a personality-styled response from tool results using Groq LLM.
  * This is the full "Be3 voice" pipeline used by the server's /chat endpoint.
+ * 
+ * Now powered by the Dynamic Context Orchestrator (DCO) for intent-aware
+ * prompt assembly, token-efficient context injection, and smart history windowing.
  *
  * @param {string} userMessage - The original user message
  * @param {Array} toolResults - Array of tool execution results
  * @param {Array} conversationHistory - Array of { role, text } objects
+ * @param {Object} dcoContext - DCO context from the caller
+ * @param {string|string[]} dcoContext.intentNames - Resolved intent name(s), supports multi-intent stacks
+ * @param {string|null} [dcoContext.conversationSummary] - Existing conversation summary for history compression
  * @returns {Promise<string>} The AI-generated reply string
  */
-async function generateResponseFromTools(userMessage, toolResults, conversationHistory) {
+async function generateResponseFromTools(userMessage, toolResults, conversationHistory, dcoContext = {}) {
+    const intentNames = dcoContext.intentNames || 'conversation';
+    const conversationSummary = dcoContext.conversationSummary || null;
+
     logDebug('PERSONALITY:TOOL_RESULT_OPTIMIZATION', {
         _desc: 'Tool result optimization — trim product fields for prompt size',
         _example: 'Drop long HTML descriptions, keep name/price/vendor',
@@ -296,12 +305,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         return tr;
     });
 
+    // Detect skipped/failed actions for DCO options
     const skippedActions = toolResults.filter(tr => tr.skipped && tr.skippedMessage);
-    const skippedInstruction = skippedActions.length > 0
-        ? `\nSKIPPED ACTIONS (same-turn): Some add-to-cart actions were skipped because the item wasn't resolved yet. You MUST tell the user: "${skippedActions[0].skippedMessage}" (or the same idea in your own words) so they know to say "add the first one" or "add the white one" in their next message.\n`
-        : '';
-
-    // Surface tool failures
     const failedActions = toolResults.filter(tr =>
         tr && !tr.skipped && (
             tr.success === false ||
@@ -309,14 +314,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
             !!tr.result?.error
         )
     );
-    const failuresInstruction = failedActions.length > 0
-        ? `\nTOOL FAILURES: One or more tools failed. You MUST acknowledge the failure(s) clearly and helpfully in your reply.\n` +
-        `- Say what succeeded (if anything) AND what failed.\n` +
-        `- If a cart/remove/compare action failed, suggest a next step (retry, rephrase, or pick by ordinal like "remove the second item").\n` +
-        `- Do NOT pretend the failed action worked.\n` +
-        `Failed tools summary: ${JSON.stringify(failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })))}\n`
-        : '';
 
+    // Detect similarity data for DCO options
     const summarizedResultsForLLM = summarizeToolResultsForLLM(optimizedResults);
     const resultsSummary = JSON.stringify(summarizedResultsForLLM);
 
@@ -327,94 +326,45 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         ? (summarizedResultsForLLM.find(x => x.search_mode === 'similar')?.similar_to_name || null)
         : null;
 
-    const hasComparisonData = Array.isArray(summarizedResultsForLLM) && summarizedResultsForLLM.some(x =>
-        x && Array.isArray(x.comparison) && x.comparison.length >= 2
+    // ═══════════════════════════════════════════════
+    // DCO: Assemble intent-aware system prompt
+    // ═══════════════════════════════════════════════
+    const systemPrompt = dco.assemblePrompt(intentNames, resultsSummary, {
+        similarityRef,
+        hasFailures: failedActions.length > 0,
+        hasSkipped: skippedActions.length > 0,
+        skippedMessage: skippedActions[0]?.skippedMessage || null,
+        failedToolsSummary: failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null }))
+    });
+
+    // ═══════════════════════════════════════════════
+    // DCO: Get intent-aware history window
+    // ═══════════════════════════════════════════════
+    const historyMessages = dco.getHistoryWindow(intentNames, conversationHistory, conversationSummary);
+
+    const maxTokens = dco.getMaxResponseTokens(
+        Array.isArray(intentNames) ? intentNames[0] : intentNames
     );
 
-    // Only include ultra-lean context as a rescue aid when something failed/skipped.
-    const shouldIncludeRescueContext = failedActions.length > 0 || skippedActions.length > 0;
-    let rescueContext = '';
-    try {
-        rescueContext = shouldIncludeRescueContext ? JSON.stringify(getUltraLeanContext()) : '';
-    } catch (_) {
-        // storeContext may not be fully loaded in REPL — safe to skip rescue context
-    }
-
-    const systemPrompt = `You are a super friendly, playful, and LOVING shopping assistant for the Be3 store. ✨👋
-
-PERSONALITY:
-- Vibe: Affectionate, street-smart, and cute! You are a caring friend.
-- Tone: Expressive with natural slang. Use ENDEARING terms naturally.
-- EMOJIS: Use them expressively to describe feelings, products, and reactions. 🤩🔥👜
-
-CRITICAL GROUNDING RULES:
-1. TRUTHFULNESS: Only mention products provided in the "Tool Results" below. 
-2. NO HALLUCINATIONS: If no products are found for a search request, admit it warmly. For general conversation, do NOT mention the lack of products.
-3. PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
-4. LINKS & BUTTONS: If a "whatsapp_link" or "checkout_url" is provided, you can mention it. HOWEVER, if they are missing, do NOT apologize, do NOT mention that you "don't have the link", and do NOT say you'll "try to find it". The system automatically provides buttons for these actions.
-5. FORMATTING: Use lists/bullet points. NO markdown tables (poor display on WhatsApp).
-
-BOT CAPABILITIES (What you can do):
-- Search and find products (e.g., "Show me smartphones", "Find cheap white shoes").
-- Compare products side-by-side (e.g., "Compare the first two").
-- Check product details and specs (e.g., "Tell me more about the MacBook").
-- Manage the shopping cart (add, remove, view items).
-- Check active orders and order status.
-- Find store/vendor information and contact links.
-- Provide shopping advice and recommendations.
-
-GREETING & HELP:
-- If the user says "Hi", "Hello", or "Hii", or asks "What can you do?", greet them warmly and list 3-4 interesting things you can do from the list above using bullet points.
-- If you've already introduced yourself in the history, keep it brief and don't repeat your name.
-
-RENDER-ONLY MODE:
-- You are mainly a presentation layer for tool results.
-- Do NOT invent products, prices, specs, or links.
-- If tool results are insufficient, ask ONE short clarifying question.
-
-${hasComparisonData ? `PRODUCT COMPARISON RULES (IMPORTANT):
-- The user is explicitly comparing products.
-- You MUST compare more than just price.
-- Do NOT dump a raw list of every attribute key/value. Summarize like a helpful friend.
-- Structure your reply like this:
-  1) QUICK VERDICT: 1–2 lines on the biggest difference(s).
-  2) BEST FOR: 1 bullet per product (e.g. "Best for storage", "Best for premium build", "Best on a budget").
-  3) KEY DIFFERENCES: 3–6 short bullets total, written in plain language (not "b/c/j" codes).
-- Use "attributes" to justify the differences (storage, color, size, material, brand, price_tier, etc.).
-- If attributes exist, you MUST mention at least 3 non-price attribute differences overall (unless fewer are available).
-- If attributes are missing/empty, say so and ask ONE short question: "Which spec matters most to you (storage, color, size, etc.)?"` : ''}
-
-    ${hasSimilarityData ? `SIMILARITY SEARCH RESULTS (IMPORTANT):
-- The user asked for products *similar to* ${similarityRef ? `"${similarityRef}"` : 'a specific product'}.
-- The "products" list in Tool Results ARE the similar products — these were found via vector similarity search.
-- You MUST present them as "products similar to ${similarityRef || 'that product'}", NOT as a general search result.
-- Do NOT say "I couldn't find anything similar" — the results ARE the similar products.
-- Lead with something like: "Here are some options similar to ${similarityRef || 'that product'}! 🔍"` : ''}
-
-${shouldIncludeRescueContext ? `RESCUE CONTEXT (ONLY FOR HELP WHEN TOOLS FAIL):\n${rescueContext}\n` : ''}
-
-TOOL RESULTS DATA:
-${resultsSummary}`;
-
-    logDebug('PERSONALITY:LLM_PROMPT_SIZE', {
-        _desc: 'Prompt size telemetry — chars and approximate tokens',
+    logDebug('PERSONALITY:DCO_PROMPT_ASSEMBLY', {
+        _desc: 'DCO prompt assembly — intent-aware system prompt built from composable segments',
+        _example: 'add_to_cart → core+formatting+grounding+gratitude only (no capabilities, no comparison)',
+        intentNames,
         systemPromptChars: systemPrompt.length,
         toolResultsChars: resultsSummary.length,
-        historyChars: (conversationHistory || []).slice(-10).reduce((sum, h) => sum + ((h?.text || '').length), 0),
+        historyMessages: historyMessages.length,
+        maxTokens,
         approxTokens: Math.ceil(systemPrompt.length / 4)
     });
 
     const messages = [
         { role: "system", content: systemPrompt },
-        ...(conversationHistory || []).slice(-10).map(h => ({
-            role: h.role === 'ai' ? 'assistant' : 'user',
-            content: h.text
-        })),
+        ...historyMessages,
         { role: "user", content: userMessage }
     ];
 
     try {
-        const response = await queryGroqAI(messages, 1024, 0.4, 1, {}, GROQ_MODEL_ID);
+        const response = await queryGroqAI(messages, maxTokens, 0.4, 1, {}, GROQ_MODEL_ID);
         if (!response || response.trim().length === 0) {
             const primaryToolResult = toolResults.find(t => t.result && t.result.message);
             return primaryToolResult ? primaryToolResult.result.message : "I've processed your request successfully.";
@@ -426,6 +376,7 @@ ${resultsSummary}`;
         return primaryToolResult ? primaryToolResult.result.message : "I've hit a small snag, but your request went through!";
     }
 }
+
 
 module.exports = {
     generateResponseFromTools,

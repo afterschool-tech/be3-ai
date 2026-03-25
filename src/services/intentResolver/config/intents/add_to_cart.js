@@ -50,6 +50,13 @@ module.exports = {
     maxProducts: null,
     invertTo: 'remove_from_cart',
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'gratitude'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
+    },
     /**
      * Microstate trigger declarations.
      * Auto-collected by microstateRegistry at boot time.

@@ -38,5 +38,13 @@ module.exports = {
 
     minProducts: 0,
     maxProducts: 0,
-    invertTo: null
+    invertTo: null,
+
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'suggestions'],
+        storeContext: 'none',
+        historyDepth: 6,
+        includeSummary: true,
+        maxResponseTokens: 1024
+    }
 };

@@ -36,6 +36,13 @@ module.exports = {
     maxProducts: 1,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'vendor_rules'],
+        storeContext: 'none',
+        historyDepth: 4,
+        includeSummary: false,
+        maxResponseTokens: 768
+    },
     /**
      * Microstates:
      *  - collect_product_for_vendor_identity: ask which product they're asking about when product_name is missing.

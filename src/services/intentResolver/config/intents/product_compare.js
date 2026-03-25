@@ -46,6 +46,13 @@ module.exports = {
     maxProducts: 4,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'comparison'],
+        storeContext: 'none',
+        historyDepth: 4,
+        includeSummary: false,
+        maxResponseTokens: 1024
+    },
     microstates: {
         missing_products: {
             trigger: (params, entities) => {

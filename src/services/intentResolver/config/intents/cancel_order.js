@@ -33,6 +33,13 @@ module.exports = {
     maxProducts: 0,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
+    },
     /**
      * Microstates:
      *  - collect_cancel_order_id: collect a concrete order_number when missing

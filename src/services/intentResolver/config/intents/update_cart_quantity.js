@@ -38,6 +38,13 @@ module.exports = {
     maxProducts: 1,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
+    },
     /**
      * Microstates:
      *  - collect_quantity: ask for a clear quantity when missing or invalid

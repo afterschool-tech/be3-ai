@@ -42,6 +42,13 @@ module.exports = {
     maxProducts: 0,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'vendor_rules', 'suggestions'],
+        storeContext: 'none',
+        historyDepth: 4,
+        includeSummary: false,
+        maxResponseTokens: 1024
+    },
     /**
      * Microstates:
      *  - collect_vendor_for_products: ask which vendor's products to show when vendor is missing.

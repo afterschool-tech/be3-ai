@@ -31,6 +31,13 @@ module.exports = {
     maxProducts: 0,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'checkout_links', 'gratitude'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 768
+    },
     /**
      * Microstates:
      *  - collect_confirm_order_id: ask which order to confirm when missing

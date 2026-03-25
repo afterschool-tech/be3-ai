@@ -48,5 +48,13 @@ module.exports = {
         category: 'category',
         product_query: 'query',
         attributes: 'attributes'
+    },
+
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
     }
 };

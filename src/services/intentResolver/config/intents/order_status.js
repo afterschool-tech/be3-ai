@@ -38,6 +38,13 @@ module.exports = {
     maxProducts: 0,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
+    },
     /**
      * Microstates:
      *  - collect_order_id: ask for a valid-looking order ID if missing/ambiguous

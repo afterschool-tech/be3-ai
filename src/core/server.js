@@ -558,16 +558,31 @@ app.post('/chat', async (req, res) => {
                 });
                 response = directResponseResult.result.message;
             } else {
-                // Normal flow: generate response through personality layer
+                // Collect all intent names for DCO (multi-intent / stacked intent support)
+                const allIntentNames = [intent];
+                const latestStack = await stateManager.getStack(session_id);
+                if (latestStack?.executed_intents?.length > 0) {
+                    for (const ei of latestStack.executed_intents) {
+                        if (ei.intentName && !allIntentNames.includes(ei.intentName)) {
+                            allIntentNames.push(ei.intentName);
+                        }
+                    }
+                }
+
+                // Normal flow: generate response through personality layer (DCO-powered)
                 logDebug('SERVER:AI_RESPONSE_GENERATION', {
-                    _desc: 'AI personality path — Groq Llama generates response from tool results',
-                    _example: 'cart.add success → "Yaaas, I added the drawer! 🎉"',
+                    _desc: 'AI personality path — DCO assembles intent-aware prompt, Groq generates response',
+                    _example: 'product_search+add_to_cart → merged DCO segments → "Found it and added! 🎉"',
                     model: 'llama-3.3-70b-versatile',
-                    purpose: 'Personality response from tool results',
+                    purpose: 'DCO-powered personality response',
+                    intentNames: allIntentNames,
                     inputToolCount: consolidatedToolResults.length,
                     conversationHistoryLength: state.conversation_history?.length || 0
                 });
-                response = await generateResponseFromTools(message, consolidatedToolResults, state.conversation_history);
+                response = await generateResponseFromTools(message, consolidatedToolResults, state.conversation_history, {
+                    intentNames: allIntentNames.length === 1 ? allIntentNames[0] : allIntentNames,
+                    conversationSummary: state.conversation_summary || null
+                });
             }
 
             logDebug('SERVER:AI_RAW_RESPONSE', {
@@ -619,12 +634,14 @@ app.post('/chat', async (req, res) => {
             });
             await stateManager.extendTTL(session_id);
 
-            if (toolResults.length % 10 === 0) {
+            // DCO: Trigger summarizer every 4 messages (not every 10 tools)
+            const historyLen = state.conversation_history?.length || 0;
+            if (historyLen > 0 && historyLen % 4 === 0) {
                 logDebug('SERVER:CONVERSATION_SUMMARIZATION', {
-                    _desc: 'Conversation summarization — background AI summarizes long chats',
-                    _example: 'Every 10 tool runs → "User is shopping for cheap Android phones"',
-                    toolCount: toolResults.length,
-                    trigger: 'every_10_tools'
+                    _desc: 'Conversation summarization — shopping-journey-aware summary for DCO history compression',
+                    _example: 'Every 4 messages → "User browsed phones, added Samsung A55, prefers mid-range"',
+                    historyLength: historyLen,
+                    trigger: 'every_4_messages'
                 });
                 summarizeConversation(session_id).catch(err => console.error(err));
             }
@@ -875,12 +892,22 @@ app.post('/chat', async (req, res) => {
 async function summarizeConversation(sessionId) {
     const history = await stateManager.getConversationHistory(sessionId, 20);
     if (history.length < 3) return;
+
+    const SUMMARIZER_PROMPT = `You are summarizing a shopping conversation for an AI assistant's memory.
+Capture ONLY:
+- Products discussed (names, not IDs)
+- Categories browsed
+- Cart actions (added/removed what)
+- User preferences (budget, color, brand, size)
+- Current shopping stage (just browsing / comparing / ready to buy)
+Keep it under 80 words. No fluff. No greetings. Facts only.`;
+
     const messages = [
-        { role: "system", content: "Summarize concisely." },
+        { role: "system", content: SUMMARIZER_PROMPT },
         { role: "user", content: history.map(h => `${h.role}: ${h.text}`).join('\n') }
     ];
     try {
-        const summary = await queryAI(messages, 128, 0.3);
+        const summary = await queryAI(messages, 150, 0.3);
         if (summary) await stateManager.updateConversationSummary(sessionId, summary.trim());
     } catch (error) {
         console.error('[Summarizer] Error:', error.message);

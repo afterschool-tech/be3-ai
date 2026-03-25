@@ -31,11 +31,11 @@ module.exports = {
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' }
     },
-    
+
     slotTags: ['[clause]', '[product]', '[category]', '[price]'],
-    
+
     toolName: 'product.search',
-    
+
     paramMap: {
         query: 'query',
         products: { target: 'query', expand: false },
@@ -53,6 +53,13 @@ module.exports = {
     maxProducts: null,
     invertTo: null,
 
+    dco: {
+        segments: ['core', 'formatting', 'grounding', 'suggestions', 'availability'],
+        storeContext: 'none',
+        historyDepth: 6,
+        includeSummary: true,
+        maxResponseTokens: 1024
+    },
     microstates: {
         missing_query: {
             trigger: (params, entities) => {

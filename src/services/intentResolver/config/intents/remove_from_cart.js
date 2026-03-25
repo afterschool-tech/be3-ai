@@ -35,5 +35,13 @@ module.exports = {
 
     minProducts: 1,
     maxProducts: null,
-    invertTo: 'add_to_cart'
+    invertTo: 'add_to_cart',
+
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
+    }
 };

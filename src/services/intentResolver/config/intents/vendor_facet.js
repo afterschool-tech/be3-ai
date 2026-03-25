@@ -44,5 +44,13 @@ module.exports = {
         category: 'category',
         facet_target: 'facet_target',
         attributes: 'attributes'
+    },
+
+    dco: {
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
+        historyDepth: 3,
+        includeSummary: false,
+        maxResponseTokens: 512
     }
 };
