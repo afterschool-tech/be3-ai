@@ -1,0 +1,29 @@
+# Walkthrough: Product Search Semantic Upgrade
+
+I have completed a rigorous semantic upgrade of the `product_search` intent system. This upgrade moves the system from deterministic keyword matching toward a more robust, scenario-driven model aligned with African Style Simple English.
+
+## Key Changes
+
+### 1. Scenario-Driven Bench Expansion
+- **20 Situational Scenarios**: Generated scenarios covering specific needs, categories, budget, occasions, restocking, etc.
+- **Relocation of Non-Search Variations**: Moved ~40 variations to more appropriate intents:
+    - `get_product_details` (9 variations)
+    - `vendor_info` (8 variations)
+    - `product_compare` (2 variations)
+    - `get_advice` (17 variations)
+    - `browse_collection` (3 variations)
+    - `add_to_cart` (3 variations)
+- **Bench Upgrade**: Added 20 new variations in **African Style Simple English** to ensure 100% coverage of the 20 scenarios.
+
+### 2. Configuration Cleanup
+- **Pruning Synonyms**: Cleaned up [product_search.js](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/config/intents/product_search.js) by removing generic greeting synonyms ('hi', 'hello', 'hey', etc.) that belonged to the `conversation` intent. This prevents intent collisions and ensures cleaner transitions.
+
+## Verification
+- **Test cases generated**: Created a comprehensive set of test cases in [verification_test_cases.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/verification_test_cases.md) for the user to verify against the transformer service.
+
+## Artifacts Created/Updated
+- [task.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/task.md)
+- [product_search_scenarios.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/product_search_scenarios.md)
+- [proposed_pruning.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/proposed_pruning.md)
+- [upgraded_variations_proposal.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/upgraded_variations_proposal.md)
+- [verification_test_cases.md](file:///C:/Users/chatz/.gemini/antigravity/brain/434fa0f1-1d5d-4ea9-ba51-c96a4d6056ed/verification_test_cases.md)

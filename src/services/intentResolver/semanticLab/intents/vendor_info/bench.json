@@ -325,7 +325,15 @@
       "Can you share the story of how [vendor] started in Nigeria?",
       "I need to know the reputation of [vendor] for original [product].",
       "What is the profile and history of the [vendor] store owner?",
-      "I want to know more about the values of [vendor] in business."
+      "I want to know more about the values of [vendor] in business.",
+      "tell me bout ur [product] return policy",
+      "u got any [product] w/ a warranty?",
+      "u got any [product] w/ a trial period?",
+      "u got any [product] w/ a free trial?",
+      "tell me bout ur [product] subscription service",
+      "got any [product] w/ a price match guarantee?",
+      "where can i find a [product] with a warranty?",
+      "i'm interested in learning more about your [product] services"
     ],
     "metadata": {
       "runs": 6,

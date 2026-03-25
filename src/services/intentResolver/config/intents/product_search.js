@@ -15,7 +15,6 @@ module.exports = {
         'do you have', 'what do you have', 'any', 'got any',
         'help me find', 'where can i find',
         'display', 'view', 'buy', 'want', 'get', 'need',
-        'hi', 'hello', 'hey', 'start', 'onboarding',
         'pull up', 'filter for', 'can i see', 'is there any', 'search for', 'find me',
         'catalogue', 'gallery', 'list products', 'check for', 'recommend', 'suggestions',
         'what is in stock', 'what items'

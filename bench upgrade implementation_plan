@@ -1,0 +1,40 @@
+# Intent Semantic Upgrade Plan
+
+This plan outlines a rigorous, scenario-driven approach to upgrading our intent resolution system. We will shift from simple deterministic variations to situation-aware semantic mapping.
+
+## Proposed Process
+
+For each intent (selected by the user), we will follow this strict sequence:
+
+### 1. Intent Selection & Scenario Generation
+The user picks the target intent. Without reviewing existing variations, I will generate 20 diverse "scenarios" (situations or triggers) that lead to this intent.
+
+### 2. Variation Pruning and Relocation
+- Analyze [bench.json](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/semanticLab/intents/joint_bench.json) for the selected intent.
+- Identify variations that fit better under a different intent.
+- Move these "misaligned" variations to their appropriate [bench.json](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/semanticLab/intents/joint_bench.json) files.
+
+### 3. Scenario-Variation Alignment
+- Evaluate remaining variations against the 20 generated scenarios.
+- Fill coverage gaps by adding new variations.
+- Ensure all variations use "African Style Simple English" (natural phrasing, no pidgin).
+
+### 4. Configuration Review
+- Check `config.json` in `C:\Users\chatz\Downloads\eCommerce\be3_ai\src\services\intentResolver\config\intents`.
+- Adjust thresholds or parameters to match the refreshed semantic scope.
+
+### 5. Documentation and Verification
+- Create a `walkthrough.md` summarizing the changes.
+- Provide proof of verification (e.g., successful resolution of new variations).
+
+### 6. Handoff
+Wait for user permission before proceeding to the next intent.
+
+## Verification Plan
+
+### Automated Tests
+- Run `intentResolver` tests (if available) to ensure no regressions.
+- Verify that the new "African Style" variations correctly trigger the target intent with high confidence.
+
+### Manual Verification
+- Review the pruned and relocated variations to ensure they now reside in the most semantically accurate bucket.

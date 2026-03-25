@@ -396,7 +396,10 @@
       "Add [product] to my cart from [vendor] store, please.",
       "I want to see [attributes] [product] in my cart for [vendor].",
       "Kindly add [product] to my cart so I can finalize.",
-      "I want to buy [product] from [vendor], kindly add to cart."
+      "I want to buy [product] from [vendor], kindly add to cart.",
+      "grab me a [product], stat!",
+      "cop me a [product] with good reviews",
+      "looking to cop a [product] that's off the chain"
     ],
     "metadata": {
       "runs": 9,

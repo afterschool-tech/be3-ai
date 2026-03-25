@@ -394,7 +394,9 @@
       "Which one is cheaper between [attributes] [product] and [attributes] [product]?",
       "How much more does [product] cost compared to [product]?",
       "I want to see the price comparison of [product] and [product] correctly.",
-      "Which of these [product] is the most expensive on the list?"
+      "Which of these [product] is the most expensive on the list?",
+      "whats the diff between ur [product] models?",
+      "wanna c sum [product] comparisons"
     ],
     "metadata": {
       "runs": 6,

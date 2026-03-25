@@ -376,7 +376,10 @@
       "I want to see the premium [product] collection specifically.",
       "Can you show me the latest and greatest [attributes] [product]?",
       "Show me the [product] that is currently trending for [vendor].",
-      "I want to see the variety of [product] recently released in the market."
+      "I want to see the variety of [product] recently released in the market.",
+      "let me browse your [product] selection",
+      "i'll take a look at your [product] selection",
+      "let me browse your selection of [product] for a bit"
     ],
     "metadata": {
       "runs": 7,

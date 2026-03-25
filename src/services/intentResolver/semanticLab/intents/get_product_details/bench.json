@@ -49,7 +49,16 @@
       "compatibility info for [product]?",
       "does [product] support [product]?",
       "can [product] handle [product]?",
-      "is [product] usable with [product]?"
+      "is [product] usable with [product]?",
+      "gimme some info about [product]",
+      "i need some details about [product]",
+      "i want to view some [product] specs",
+      "describe your [product] to me",
+      "can i get a list of [product] features?",
+      "i want to learn about [product] maintenance",
+      "where can i find [product] sizing info?",
+      "can you give me some [product] tips and tricks?",
+      "need some assistance with [product] installation"
     ],
     "metadata": {
       "runs": 1,
