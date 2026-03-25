@@ -171,18 +171,48 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
     // BEFORE the Category N-gram scanner runs, guaranteeing shielding.
     if (preDetectedEntities && preDetectedEntities.length > 0) {
         for (const preEnt of preDetectedEntities) {
+            // ── Phantom Entity Fast Path ──
+            // Entities from Ambient Context have no position in the text.
+            // Ingest them directly without trying to compute or consume word indices.
+            if (preEnt.source === 'AMBIENT_CONTEXT') {
+                entities.push({
+                    type: preEnt.type,
+                    value: preEnt.value,
+                    categoryId: preEnt.categoryId,
+                    productId: preEnt.productId,
+                    attributeCode: preEnt.attributeCode,
+                    source: preEnt.source,
+                    wordIndices: [] // Phantom
+                });
+                continue;
+            }
+
             // Support both globalWordIndex (from Stage 3 pre-pass) and localWordIndex (from Stage 3d reconciliation)
             let localIdx = preEnt.localWordIndex;
             if (localIdx === undefined) localIdx = preEnt.globalWordIndex;
 
-            const wordCount = preEnt.wordCount || 1; // Default to 1 if not provided
-            if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
-
-            // Generate full range of indices
-            const indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
+            // Prefer explicit wordIndices when available (e.g. from IntelliSense multi-word products);
+            // fall back to localIdx + wordCount synthesis for pre-pass entities.
+            let indices;
+            if (Array.isArray(preEnt.wordIndices) && preEnt.wordIndices.length > 0) {
+                indices = preEnt.wordIndices.filter(idx => idx >= 0 && idx < words.length);
+            } else {
+                const wordCount = preEnt.wordCount || 1;
+                if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
+                indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
+            }
+            if (indices.length === 0) continue;
+            if (localIdx === undefined) localIdx = Math.min(...indices);
 
             // Only skip if the VERY FIRST word is already consumed
-            if (consumed.has(localIdx)) continue;
+            if (consumed.has(localIdx)) {
+                // For resolved_product: even if entity is skipped, shield ALL its word indices
+                // from the category scanner. We don't want product words leaking into N-gram scan.
+                if (preEnt.type === 'resolved_product') {
+                    indices.forEach(idx => consumed.add(idx));
+                }
+                continue;
+            }
 
             entities.push({
                 type: preEnt.type,
@@ -344,6 +374,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             return pos;
         });
 
+        let semanticOnlyFallback = null; // Saved semantic-only match — used if N-gram exhausts without lexical match
+
         for (let size = 3; size >= 1; size--) {
             for (let i = 0; i <= words.length - size; i++) {
                 let overlaps = false;
@@ -364,6 +396,15 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 const catId = catRes && typeof catRes === 'object' ? catRes.id : catRes;
                 const catMeta = catRes && typeof catRes === 'object' ? (catRes.meta || null) : null;
                 if (catId) {
+                    // Semantic-only layer2 match (no lexical evidence) — save as fallback
+                    // but don't terminate the loop. Let the N-gram scan exhaust to give
+                    // determinism a chance to find a real word match at a later position.
+                    if (catMeta && catMeta.layer === 'layer2' && (catMeta.lexScore === 0 || catMeta.lexScore === undefined)) {
+                        if (!semanticOnlyFallback || (catMeta.score || 0) > (semanticOnlyFallback.catMeta?.score || 0)) {
+                            semanticOnlyFallback = { catId, catMeta, phrase, matchedWordIndices: Array.from({ length: size }, (_, j) => i + j) };
+                        }
+                        continue;
+                    }
                     let categoryQuality = 1.0;
                     if (catMeta && catMeta.layer === 'layer2') {
                         const tier = Number(catMeta.lexTier || 0);
@@ -404,6 +445,72 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 }
             }
             if (entities.some(e => e.type === 'category')) break;
+        }
+
+        // If N-gram loop exhausted without a lexical match, accept the semantic-only fallback
+        if (!entities.some(e => e.type === 'category') && semanticOnlyFallback) {
+            entities.push({
+                type: 'category',
+                value: semanticOnlyFallback.phrase,
+                id: semanticOnlyFallback.catId,
+                source: 'storeContext.CATEGORIES',
+                matchMeta: semanticOnlyFallback.catMeta,
+                quality: 0.10,
+                wordIndices: semanticOnlyFallback.matchedWordIndices,
+                consumedWordIndices: []
+            });
+
+            logDebug('ENTITY:SEMANTIC_ONLY_FALLBACK', {
+                _desc: 'N-gram exhausted without lexical match — accepting semantic-only category as fallback',
+                phrase: semanticOnlyFallback.phrase,
+                catId: semanticOnlyFallback.catId,
+                lexScore: semanticOnlyFallback.catMeta?.lexScore || 0
+            });
+        }
+
+
+        // ── 3b. Semantic Category Kickstart ──
+        // When determinism had zero free words to scan (all consumed by prepass/IntelliSense),
+        // semantic takes over entirely. The transformer's top category slug is resolved
+        // directly from storeContext.CATEGORIES — no normalizeCategory needed since
+        // determinism can't contribute anyway.
+        if (!entities.some(e => e.type === 'category') && semanticContext?.available && semanticContext.entities?.category?.length > 0) {
+            const hasUnconsumedNonFiller = words.some((w, i) => !consumed.has(i) && !FILLERS.has(w) && w.length > 1);
+
+            if (!hasUnconsumedNonFiller) {
+                const semCategories = semanticContext.entities.category
+                    .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
+                    .sort((a, b) => b.confidence - a.confidence);
+
+                const topSlug = semCategories[0]?.slug;
+                if (topSlug) {
+                    // Direct lookup — find category by key, slug, or label
+                    const catEntry = Object.entries(storeContext.CATEGORIES).find(([key, c]) =>
+                        key === topSlug || c.slug === topSlug || c.label?.toLowerCase() === topSlug
+                    );
+
+                    if (catEntry) {
+                        const [, cat] = catEntry;
+                        entities.push({
+                            type: 'category',
+                            value: topSlug,
+                            id: cat.id,
+                            source: 'SEMANTIC_KICKSTART',
+                            quality: 0.35,
+                            wordIndices: [-1],
+                            consumedWordIndices: []
+                        });
+
+                        logDebug('ENTITY:SEMANTIC_CATEGORY_KICKSTART', {
+                            _desc: 'Semantic kickstart — determinism had no free words, transformer directly resolved category',
+                            slug: topSlug,
+                            confidence: semCategories[0].confidence,
+                            resolvedId: cat.id,
+                            resolvedLabel: cat.label
+                        });
+                    }
+                }
+            }
         }
 
         // ── 2b. Vendor-Category Prioritization ──

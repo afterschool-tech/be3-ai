@@ -11,6 +11,7 @@ const { CLAUSES } = require('../../../context/clauses');
 const stateManager = require('../../../state/stateManager');
 const { extractProductIntel } = require('../utils/productIntelExtractor');
 const { logDebug } = require('../../../utils/debugLogger');
+const CATEGORY_ALIASES = require('../../../context/categoryAliases');
 
 /**
  * Deterministic extraction patterns.
@@ -177,11 +178,17 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             const isBareCategory = storeContext?.CATEGORIES && Object.values(storeContext.CATEGORIES).some(cat => {
                 const label = (cat.label || '').toLowerCase().trim();
                 const slug = (cat.slug || '').toLowerCase().trim();
-                const aliases = Array.isArray(cat.aliases) ? cat.aliases.map(a => a.toLowerCase().trim()) : [];
-                return label === candidateName || slug === candidateName || aliases.includes(candidateName);
+                const metadataAliases = Array.isArray(cat.aliases) ? cat.aliases.map(a => a.toLowerCase().trim()) : [];
+                
+                // Also check the global CATEGORY_ALIASES file
+                const globalAliases = (CATEGORY_ALIASES && (CATEGORY_ALIASES[cat.id] || CATEGORY_ALIASES[cat.slug] || CATEGORY_ALIASES[cat.label])) || [];
+                const allAliases = [...metadataAliases, ...globalAliases.map(a => a.toLowerCase().trim())];
+                
+                return label === candidateName || slug === candidateName || allAliases.includes(candidateName);
             });
 
             if (isBareCategory) {
+                extracted._blocked_bare_category = true;
                 // Category already captured upstream — product_name left unset so the
                 // missing_query microstate or category browse takes over naturally.
                 logDebug('PARAM:PIE_BARE_CATEGORY_DROPPED', {
@@ -430,7 +437,7 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     const baseFromEntities = {};
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
-            if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id;
+            if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id || ent.categoryId || ent.value;
             if (ent.type === 'vendor' && !baseFromEntities.vendor) baseFromEntities.vendor = ent.value;
             if (ent.type === 'brand' && !baseFromEntities.brand) baseFromEntities.brand = ent.value;
             if (ent.type === 'order_id' && !baseFromEntities.order_id) baseFromEntities.order_id = ent.value;
@@ -438,10 +445,18 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
             if (ent.type === 'price_max' && !baseFromEntities.price_max) baseFromEntities.price_max = ent.value;
             if (ent.type === 'price_min' && !baseFromEntities.price_min) baseFromEntities.price_min = ent.value;
 
-            // Context-resolved products: use the original (un-collapsed) name
-            if (ent.type === 'resolved_product' && !baseFromEntities.product_name) {
-                baseFromEntities.product_name = ent.value;  // ent.value = original human name
-                baseFromEntities._resolved_product_id = ent.productId;
+            // Context-resolved products: support multiple for comparison/cart
+            if (ent.type === 'resolved_product') {
+                if (!baseFromEntities.products) baseFromEntities.products = [];
+                if (!baseFromEntities.product_ids) baseFromEntities.product_ids = [];
+                
+                if (ent.value) baseFromEntities.products.push(ent.value);
+                if (ent.productId) baseFromEntities.product_ids.push(ent.productId);
+
+                if (!baseFromEntities.product_name) {
+                    baseFromEntities.product_name = ent.value;
+                    baseFromEntities._resolved_product_id = ent.productId;
+                }
             }
 
             if (ent.type === 'clause') {
@@ -467,6 +482,13 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     // 1. Run Deterministic Fallback (Keyword/Category Stripping)
     const categoryId = baseFromEntities.category;
     const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities, rawText);
+
+    // Communicate PIE drops to base entities so they don't resurrect dropped names
+    if (deterministic._blocked_bare_category) {
+        baseFromEntities.product_name = null;
+        baseFromEntities._resolved_product_id = null;
+        delete deterministic._blocked_bare_category;
+    }
 
     // Merge base results (entities + deterministic) with array awareness
     // NOTE: extractStructural has been deprecated (StructuralMatcher retired).

@@ -26,6 +26,7 @@ const preprocessor = require('./pipeline/preprocessor');
 const { extractEntities } = require('./pipeline/entityExtractor');
 const { resolveClausesGlobal } = require('../../utils/semanticClauseResolver');
 const { resolveIntent } = require('./pipeline/schemaResolver');
+const { resolveAmbientContext, buildAmbientEntities } = require('./pipeline/ambientContextResolver');
 const parameterExtractor = require('./pipeline/parameterExtractor');
 const parameterBleeder = require('./pipeline/parameterBleeder');
 const parameterNormalizer = require('./pipeline/parameterNormalizer');
@@ -810,6 +811,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             };
         }
 
+        // ── Stage 2.5: Ambient Context Confidence Check ──
+        let confidenceGap = 1.0; // Assume confident if no transformer
+        if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
+            const topScore = localSemanticContext.classification[0]?.score || 0;
+            const secondScore = localSemanticContext.classification[1]?.score || 0;
+            confidenceGap = topScore - secondScore;
+        }
+
         const statementPreEntities = []; // Entities pre-extracted (IntelliSense/Global)
 
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
@@ -873,31 +882,49 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     source: 'INTELLISENSE_OVERRIDE',
                     quality: 1.0,
                     localWordIndex: indices.length > 0 ? Math.min(...indices) : undefined,
+                    wordIndices: indices.length > 0 ? indices : undefined,
                     wordCount: nameTokens.length > 0 ? nameTokens.length : 1
                 });
             }
         }
 
+        // (Stage 2.5 Ambient Injection moved to Stage 4.1)
         const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, localSemanticContext);
 
         logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
             _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
-            _example: '"add samsung phone to cart" → action:add, brand:samsung, residual:phone',
             text: cleanedText,
-            entities: extractionResult.entities.map(e => ({
-                type: e.type,
-                value: e.value || e.verb,
-                category: e.category,
-                idf: e.idf,
-                quality: e.quality,
-                matchMeta: e.matchMeta,
-                wordIndices: e.wordIndices,
-                consumedWordIndices: e.consumedWordIndices
-            })),
+            entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb })),
             residualWords: extractionResult.residualWords,
-            categoryHints: extractionResult.categoryHints || [],
             shape: extractionResult.shape || ''
         });
+
+        // ── Stage 4.1: Late Ambient Context Injection ──
+        // Use full extraction results (Stage 4A) to verify if a "Strong Entity" (Category/Product) 
+        // already exists. If not, inject ambient context to support vague follow-ups.
+        const semanticResults = localSemanticContext?.classification || [];
+        const gap = (semanticResults[0]?.score || 0) - (semanticResults[1]?.score || 0);
+
+        const ambientResult = await resolveAmbientContext(cleanedText, extractionResult.entities, state);
+        if (ambientResult && ambientResult.pendingAmbient && (gap < 0.04 || extractionResult.entities.length === 0)) {
+            const injected = buildAmbientEntities(ambientResult.pendingAmbient, state, reconcileNameFromId);
+            extractionResult.entities.push(...injected);
+            logDebug(`PIPELINE:STAGE4.1_INJECT [Statement ${i + 1}]`, {
+                _desc: 'Ambient Context Injection — phantom entities added late (post-extraction)',
+                topicType: ambientResult.pendingAmbient.type,
+                injectedCount: injected.length,
+                entities: injected.map(e => e.type),
+                gap: gap.toFixed(4)
+            });
+        } else if (ambientResult && ambientResult.pendingAmbient) {
+            logDebug(`PIPELINE:STAGE4.1_INJECT_SKIP [Statement ${i + 1}]`, {
+                _desc: 'Ambient Context Injection SKIPPED — strong entities found or transformer is confident',
+                gap: gap.toFixed(4),
+                threshold: 0.04,
+                entityCount: extractionResult.entities.length,
+                topicType: ambientResult.pendingAmbient.type
+            });
+        }
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
         const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);

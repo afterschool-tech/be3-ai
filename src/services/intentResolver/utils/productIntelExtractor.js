@@ -14,6 +14,12 @@ const LEVELS = {
     PIVOT: 4     // Resolved products or confirmed brands
 };
 
+const PREDICATE_NOISE = new Set([
+    'cheaper', 'cheapest', 'better', 'best', 'more', 'less', 
+    'affordable', 'expensive', 'closest', 'nearest', 'fastest',
+    'which', 'is', 'the', 'one', 'ones'
+]);
+
 /**
  * Main entry point for PIE analysis.
  */
@@ -50,7 +56,7 @@ function extractProductIntel(options) {
 
     // Phase 1: Mapping
     wordMap.forEach(item => {
-        if (excludeSet.has(item.word)) item.level = LEVELS.NOISE;
+        if (excludeSet.has(item.word) || PREDICATE_NOISE.has(item.word)) item.level = LEVELS.NOISE;
     });
 
     entities.forEach(ent => {

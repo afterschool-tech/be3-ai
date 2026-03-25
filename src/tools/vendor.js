@@ -182,6 +182,29 @@ const vendorTools = {
                     products,
                     result.data.pagination?.total || result.data.total || products.length
                 );
+
+                // --- AMBIENT CONTEXT: Record active vendor topic ---
+                let finalCatId = catId;
+                let finalCatLabel = cat?.label;
+                
+                if (!finalCatId && rawProducts.length > 0) {
+                    const firstProduct = rawProducts[0];
+                    const meta = firstProduct.metadata || {};
+                    if (Array.isArray(meta.category_ids) && meta.category_ids.length > 0) {
+                        finalCatId = meta.category_ids[0];
+                        finalCatLabel = Array.isArray(meta.category_names) ? meta.category_names[0] : null;
+                    }
+                }
+
+                await stateManager.setActiveTopic(context.sessionId, {
+                    type: "vendor",
+                    category_id: finalCatId || null,
+                    category_label: finalCatLabel || null,
+                    vendor: vendorTag,
+                    product_id: null,
+                    product_name: null,
+                    attributes: params.attributes || null
+                });
             }
 
             const hasNextPage = computeHasNextPage({
@@ -284,6 +307,19 @@ const vendorTools = {
             const vendorKeyRaw = vendor.tag || vendor.business_name || vendor.id;
             const vendorKey = vendorKeyRaw ? encodeBase64Url(vendorKeyRaw) : '';
             const contactTitle = truncateButtonTitle(`Contact ${vendor.business_name || vendor.tag || 'vendor'}`);
+
+            if (context.sessionId) {
+                // --- AMBIENT CONTEXT: Record active vendor topic ---
+                await stateManager.setActiveTopic(context.sessionId, {
+                    type: "vendor",
+                    category_id: null,
+                    category_label: null,
+                    vendor: vendor.tag || vendor.business_name,
+                    product_id: null,
+                    product_name: null,
+                    attributes: null
+                });
+            }
 
             return {
                 message: `Here’s information about **${vendor.business_name || vendor.tag || 'this vendor'}**.`,

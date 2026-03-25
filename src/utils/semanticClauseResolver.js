@@ -199,6 +199,10 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
                 const clauseDef = CLAUSES[sm.id];
                 if (!clauseDef) continue;
 
+                // Guard: TF-IDF semantic matching is too noisy for brands.
+                // Brands should only come from deterministic matches (exact) or other explicit mechanisms.
+                if (clauseDef.attribute === 'brand') continue;
+
                 // Find which word triggered the match using bench variations + clause words
                 const clauseWords = [clauseDef.label, ...(clauseDef.matches || [])];
                 const benchVariations = matcher.benchData?.[sm.id]?.variations || [];

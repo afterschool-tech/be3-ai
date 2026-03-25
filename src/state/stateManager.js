@@ -4,7 +4,10 @@
  * Handles conversation context, product tracking, reference resolution, and multi-turn flows
  */
 
+const fs = require('fs');
+const path = require('path');
 const redisClient = require('./redis');
+const { logDebug } = require('../utils/debugLogger');
 
 // Default state template
 const DEFAULT_STATE = {
@@ -79,6 +82,7 @@ const DEFAULT_STATE = {
     },
 
     last_tools: [], // Array of { tool, params }
+    active_topic: null, // Ambient Context: { type, category_id, vendor, product_id, set_at_message, ... }
 
     paused_context: null, // Stores context when user wants to chat mid-transaction
 
@@ -686,6 +690,95 @@ class StateManager {
             state.search_context = null;
         }
         await this.setState(userId, state);
+    }
+
+    // ═══════════════════════════════════════════════
+    // AMBIENT TOPIC MANAGEMENT
+    // ═══════════════════════════════════════════════
+
+    /**
+     * Set active topic (browsing context).
+     * Called by tool handlers after successful execution.
+     */
+    async setActiveTopic(userId, topic) {
+        const state = await this.getState(userId);
+        // Ensure message counts are tagged
+        const enrichedTopic = {
+            ...topic,
+            set_at_message: state.session.message_count,
+            reinforced_at_message: state.session.message_count
+        };
+        state.active_topic = enrichedTopic;
+        console.log(`[StateManager] 📡 Active topic SET: "${topic.type}" (${userId})`);
+        
+        logDebug('STATE:AMBIENT_TOPIC_SET', {
+            _desc: 'Ambient Context topic updated',
+            userId,
+            topicType: topic.type,
+            category: topic.category_label || topic.category_id,
+            product: topic.product_name || topic.product_id,
+            product_ids: topic.product_ids || null,
+            vendor: topic.vendor,
+            attributes: topic.attributes || null
+        });
+
+        await this.setState(userId, state);
+    }
+
+    /**
+     * Get active topic. 
+     * Returns null if stale (> 6 messages since reinforcement).
+     */
+    async getActiveTopic(userId) {
+        const state = await this.getState(userId);
+        const topic = state.active_topic;
+        if (!topic) return null;
+
+        const messagesSinceTopic = state.session.message_count - topic.reinforced_at_message;
+        const threshold = parseInt(process.env.AMBIENT_TOPIC_STALE_THRESHOLD || '6');
+
+        if (messagesSinceTopic > threshold) {
+            console.log(`[StateManager] 📡 Topic EXPIRED (stale by ${messagesSinceTopic} messages, threshold ${threshold}) for ${userId}: "${topic.type}"`);
+            await this.clearActiveTopic(userId);
+            return null;
+        }
+
+        console.log(`[StateManager] 📡 Topic ACTIVE for ${userId}: "${topic.type}" (Age: ${messagesSinceTopic} messages)`);
+
+        logDebug('STATE:AMBIENT_TOPIC_RETRIEVED', {
+            _desc: 'Ambient Context topic found and active',
+            userId,
+            topicType: topic.type,
+            age: messagesSinceTopic,
+            threshold
+        });
+
+        return topic;
+    }
+
+    /**
+     * Reinforce active topic.
+     * Updates reinforced_at_message without changing content.
+     */
+    async reinforceActiveTopic(userId) {
+        const state = await this.getState(userId);
+        if (state.active_topic) {
+            state.active_topic.reinforced_at_message = state.session.message_count;
+            console.log(`[StateManager] 📡 Topic REINFORCED at message ${state.session.message_count} (${userId})`);
+            await this.setState(userId, state);
+        }
+    }
+
+    /**
+     * Clear active topic.
+     */
+    async clearActiveTopic(userId) {
+        const state = await this.getState(userId);
+        if (state.active_topic) {
+            state.active_topic = null;
+            console.log(`[StateManager] 📡 Topic CLEARED for ${userId}`);
+            await this.setState(userId, state);
+        }
     }
 
     // ============ PRODUCT CONTEXT MANAGEMENT ============

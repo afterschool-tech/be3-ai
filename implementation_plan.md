@@ -1,302 +1,145 @@
-# Implementation Plan: Product Name Context Matcher (≤20k products)
+# Pipeline Entity Extraction Bug Fixes
 
-## Goal
-Add a deterministic **Product Name Context** subsystem that:
-- Extracts a clean **`product_mention`** span from user text (unlumps “for my sister”, etc.).
-- Optionally resolves to **`product_canonical`** and **`product_id`** (UUID) with a confidence score.
-- Integrates with the existing intentResolver pipeline (entity extraction + residual/chunk logic + parameter extraction).
-- Enables **API optimization** by skipping remote product-search calls when local match is confident.
-
-## Non-Goals
-- No intent discovery changes.
-- No embedding/LLM calls.
-- No requirement that user knows UUID.
-- No full-text search engine dependency (in-memory is fine for <20k).
-
----
-
-## Data Contract (Product Name Context)
-Maintain an in-memory array refreshed at intervals:
-
-```ts
-type ProductContextItem = {
-  id?: string;              // uuid (optional)
-  canonical: string;        // display name, e.g. "Riggs Perfume"
-  aliases?: string[];       // optional, e.g. ["riggs perfume 50ml", "riggs eau de parfum"]
-};
-```
-
-Store/source can be:
-- A JSON file built offline and loaded at boot.
-- DB fetch at startup + periodic refresh.
-- Cache warmed from API, then persisted.
-
----
-
-## Core Output Contract (Matcher Result)
-
-```ts
-type ProductMatchResult = {
-  product_mention?: string;      // span from user query, cleaned
-  product_canonical?: string;    // canonical catalog name
-  product_id?: string;           // uuid if available
-  confidence: number;            // 0..1
-  method: "none" | "index_overlap" | "index_overlap_span";
-  candidates?: Array<{
-    product_id?: string;
-    product_canonical: string;
-    confidence: number;
-  }>;
-};
-```
-
----
-
-## Where It Fits in the Pipeline
-Recommended placement:
-
-1. `preprocessor` (existing): normalized text / statements
-2. `entityExtractor` (existing): vendor/category/brand/action/price + `residualWords`
-3. **(new)** `productCatalogMatcher`:
-   - Input: original statement text + residual span (or full text)
-   - Output: `ProductMatchResult`
-4. `schemaResolver` (existing): intent choice (unchanged)
-5. `parameterExtractor` (existing): use `ProductMatchResult` to fill params
-6. Downstream: tool mapping / microstates
-
-**Key decision**: store matcher output inside extraction result, e.g. `extractionResult.productMatch`.
-
----
-
-## Component Breakdown
-
-### 1) Normalization Utilities
-Implement a single normalization function used for both catalog and query:
-- lowercase
-- replace punctuation with spaces
-- collapse whitespace
-- normalize common patterns (optional rules):
-  - “air pods” -> “airpods”
-  - strip apostrophes
-- keep numbers (12, 256gb)
-- tokenize into words
-
-Maintain a stopword list for candidate generation:
-- `for`, `my`, `the`, `a`, `an`, `with`, `to`, `from`, `please`, etc.
-
-### 2) Index Builder (In-Memory)
-Build once per refresh interval:
-
-- **Token inverted index**
-  - `token -> Set(productKey)`
-- **Product entries**
-  - For each `productKey`, store:
-    - `canonical`
-    - `id`
-    - `tokensCanonical`
-    - `tokensAliases` (flattened)
-- **Token weights (IDF-like)**
-  - `idf[token] = log( (N + 1) / (df[token] + 1) ) + 1`
-  - Compute `df[token]` across all product names + aliases.
-
-This is fast at 20k.
-
-### 3) Candidate Generation
-Inputs:
-- `queryText`
-- `residualSpanText` (preferred) or full statement
-- optional gating signals (vendor/category/brand if later added)
-
-Process:
-- `queryTokens = tokenize(residualSpanText || queryText)`
-- filter stopwords and very short tokens (len < 2/3)
-- for each remaining token:
-  - get `candidateSet = index[token]`
-- rank candidates by:
-  - count of matched tokens (or sum of token IDFs matched)
-- keep top K candidates (e.g. `K=200`)
-
-### 4) Candidate Scoring (Deterministic)
-For each candidate, compute a confidence score from:
-
-- **IDF-weighted token coverage**
-  - `coverage = sum(idf[t] for t in matchedTokens) / sum(idf[t] for t in productTokens)`
-- **Length guard**
-  - penalize candidates where only 1 weak token matched (e.g. “pro”)
-- **Gap / dispersion penalty** (optional but helpful)
-  - measure distance between first and last matched token positions in query
-  - more dispersion => more penalty
-
-Return the top candidate + top-N list if close.
-
-### 5) Span Extraction (Unlumping)
-This step produces `product_mention`.
-
-Given:
-- original `residualSpanText` (or full statement)
-- positions of matched tokens in the query tokens
-
-Compute:
-- minimal window in token indices that covers the matched tokens
-- map that back to a substring of the original text (best-effort)
-- output substring as `product_mention`
-
-Notes:
-- If query order is reversed (“perfume from riggs”), window may become "perfume from riggs" which is acceptable as a `mention`.
-- You can still set `product_canonical` = "Riggs Perfume".
-
-### 6) Confidence Bands & Ambiguity
-Define thresholds (tune later):
-
-- **High confidence** (e.g. `>= 0.75`)
-  - set `product_id` (if known), `product_canonical`, `product_mention`
-- **Medium** (e.g. `0.45–0.75`)
-  - set `product_mention` + `candidates` top 3
-  - allow microstate disambiguation if intent requires exact product
-- **Low** (`< 0.45`)
-  - don’t claim a product; return `method: "none"` (or weak mention only if desired)
-
----
-
-## Integration Details
-
-### Entity Extraction Integration
-Add a new field on extraction result (do not confuse with intent entities):
-- `extractionResult.productMatch = ProductMatchResult`
-
-Optionally also add an entity-style entry:
-- `{ type: "product_match", ... }`
-
-### Parameter Extraction Integration
-When an intent expects `product_name` / `product_id`:
-- prefer `productMatch.product_id` if high confidence and present
-- else use `productMatch.product_canonical` if high confidence
-- else use `productMatch.product_mention`
-- else fallback to existing residual-lump behavior
-
-**Important invariant**: never overwrite an already-solid structured extraction (e.g. if structural template already extracted `product_name`).
-
-### Microstate (Optional)
-If:
-- intent requires product specificity AND
-- `productMatch.candidates` exist AND are close in score
-
-Trigger microstate:
-- “Which one did you mean?”
-- show canonical names
-
----
-
-# Fixing Suggestion Button Logic and Image Suppression
-
-The user wants product suggestions to remain as a text list with "See product details" and "See more" buttons (no cards, no images). 
-However, when "See product details" is clicked, it should trigger a re-search using the fallback parameters, and THIS re-search should return product cards and images.
-
-Currently, the re-search fails to show cards because:
-1. The `engineered_see_results` flag (triggered by the button) isn't reaching the `product.search` tool.
-2. `product.search` suppresses cards if `products.length` is 0, and fallback results are currently kept in `suggestedProducts`.
+Three bugs in the entity pipeline cause category detection to fail or resolve incorrectly.
 
 ## Proposed Changes
 
-### Core Orchestrator
+---
 
-#### [MODIFY] [orchestrator.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/core/orchestrator.js)
+### Bug 1: Multi-word `resolved_product` only shields first word index
 
-- Update `executeTools` to pass `pipelineContext` (which contains `engineered_*` flags like `engineered_see_results`) into the `context` object passed to tool handlers.
+#### [MODIFY] [index.js](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/index.js)
+
+Lines ~878-886: Add explicit `wordIndices` alongside existing fields:
+
+```diff
+ statementPreEntities.push({
+     type: 'resolved_product',
+     value: p.name,
+     adjectives: p.adjectives || [],
+     source: 'INTELLISENSE_OVERRIDE',
+     quality: 1.0,
+     localWordIndex: indices.length > 0 ? Math.min(...indices) : undefined,
++    wordIndices: indices.length > 0 ? indices : undefined,
+     wordCount: nameTokens.length > 0 ? nameTokens.length : 1
+ });
+```
+
+#### [MODIFY] [entityExtractor.js](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/pipeline/entityExtractor.js)
+
+Lines ~172-185: Prefer pre-computed `wordIndices` when available:
+
+```diff
+ for (const preEnt of preDetectedEntities) {
+     let localIdx = preEnt.localWordIndex;
+     if (localIdx === undefined) localIdx = preEnt.globalWordIndex;
+-    const wordCount = preEnt.wordCount || 1;
+-    if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
+-    const indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
++    let indices;
++    if (Array.isArray(preEnt.wordIndices) && preEnt.wordIndices.length > 0) {
++        indices = preEnt.wordIndices.filter(idx => idx >= 0 && idx < words.length);
++    } else {
++        const wordCount = preEnt.wordCount || 1;
++        if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
++        indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
++    }
++    if (indices.length === 0) continue;
++    if (localIdx === undefined) localIdx = Math.min(...indices);
+     if (consumed.has(localIdx)) continue;
+```
 
 ---
 
-### Product Search Tool
+### Bug 2+3: Semantic kickstart when no residuals exist
 
-#### [MODIFY] [product.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/tools/product.js)
+After N-gram finds nothing AND all non-filler words are consumed, directly resolve transformer's top category slug from `storeContext.CATEGORIES`.
 
-- Update `product.search` handler to check for `context.engineered_see_results`.
-- **Primary Change**: If `engineered_see_results` is present, the tool should intentionally "promote" fallback results to primary products.
-- In `buildSearchCall`, if `engineered_see_results` is true, the re-searched products should be returned as `products` (not `suggestedProducts`).
-- Ensure `suppress_images` is set on suggestions (list mode) but **not** on replayed results (card mode).
+#### [MODIFY] [entityExtractor.js](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/pipeline/entityExtractor.js)
 
----
+After line ~407, add semantic kickstart fallback:
 
-### Image Injection
+```js
+// ── 3b. Semantic Category Kickstart ──
+if (!entities.some(e => e.type === 'category') && semanticContext?.available && semanticContext.entities?.category?.length > 0) {
+    const hasUnconsumedNonFiller = words.some((w, i) => !consumed.has(i) && !FILLERS.has(w) && w.length > 1);
 
-#### [MODIFY] [imageInjector.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/utils/imageInjector.js) (Verify)
+    if (!hasUnconsumedNonFiller) {
+        const semCategories = semanticContext.entities.category
+            .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
+            .sort((a, b) => b.confidence - a.confidence);
 
-- Confirm `extractImages` and `injectImages` respect the `suppress_images` flag.
-
-## Verification Plan
-
-### Automated Tests
-- Modify `test_see_results.js` to simulate the `engineered_see_results` flag and verify `whatsapp_product_cards` is present.
-
-### Manual Verification
-1. Search for a non-existent item (e.g. "iPhone 99").
-2. Verify:
-   - AI response is a text list of suggestions.
-   - NO product cards or images are visible.
-   - "See product details" button is at the bottom.
-3. Click "See product details".
-4. Verify:
-   - The bot returns product cards for the suggested items.
-   - Images are shown on these cards.
-
----
-
-## API Optimization Plan
-Since local context is refreshed periodically:
-
-### 1) Skip search when confident local match exists
-If `productMatch.confidence >= HIGH` and you have `product_id`:
-- Skip remote product search calls.
-- Use local match to proceed (or fetch product detail by id only if required).
-
-### 2) Avoid empty/low-signal searches
-If `productMatch.confidence` is very low and residual contains no meaningful tokens:
-- Ask clarification rather than calling search API.
-
-### 3) Do NOT block remote search if local context is incomplete
-If local context might be stale:
-- treat local “no match” as weak signal
-- still allow remote search, but consider adjusting query to the extracted `product_mention` span.
+        const topSlug = semCategories[0]?.slug;
+        if (topSlug) {
+            const catEntry = Object.entries(storeContext.CATEGORIES).find(([key, c]) =>
+                key === topSlug || c.slug === topSlug || c.label?.toLowerCase() === topSlug
+            );
+            if (catEntry) {
+                const [, cat] = catEntry;
+                entities.push({
+                    type: 'category',
+                    value: topSlug,
+                    id: cat.id,
+                    source: 'SEMANTIC_KICKSTART',
+                    quality: 0.35,
+                    wordIndices: [-1],
+                    consumedWordIndices: []
+                });
+                logDebug('ENTITY:SEMANTIC_CATEGORY_KICKSTART', {
+                    _desc: 'Semantic kickstart — determinism had no free words, transformer directly resolved category',
+                    slug: topSlug,
+                    confidence: semCategories[0].confidence,
+                    resolvedId: cat.id,
+                    resolvedLabel: cat.label
+                });
+            }
+        }
+    }
+}
+```
 
 ---
 
-## Refresh / Update Strategy (Intervals)
-- Build index at boot from stored list.
-- Refresh every X minutes/hours:
-  - replace index atomically (build new, then swap reference)
-- Keep build cost bounded:
-  - for 20k products, rebuild is typically fine.
+### Bug 4: Premature N-gram termination from semantic-only matches
+
+**The real problem**: The 1-gram inner loop goes `i=0, 1, 2...`. When `i=0` lands on a non-category word like `"nice"`, [normalizeCategory("nice")](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/utils/normalization.js#10-647) returns null without semantic. But WITH semantic loaded, the transformer's category scores produce `semanticBoost > 0` with zero `wordMatches` → line 491 in [normalizeCategory](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/utils/normalization.js#10-647) doesn't skip it → a category is returned. The N-gram loop `break`s, and the actual category word at a later index (like `"smartphone"` at `i=2`) is never scanned.
+
+**Concrete trace** — `"nice affordable smartphone"` with `affordable` consumed as clause:
+
+| 1-gram `i` | Word | What happens |
+|---|---|---|
+| 0 | `nice` | [normalizeCategory("nice")](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/utils/normalization.js#10-647) → lexScore=0, semanticBoost=46.5 → **returns match** → loop breaks ❌ |
+| 1 | `affordable` | consumed → skip |
+| 2 | `smartphone` | **Never reached** — would have been a direct key hit ✅ |
+
+**Fix**: In the N-gram loop, reject layer2 matches that have zero lexical contribution. Semantic stays loaded in every call — when determinism DOES find a real word match at a later iteration, semantic boosts it naturally.
+
+#### [MODIFY] [entityExtractor.js](file:///C:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/pipeline/entityExtractor.js)
+
+Line ~366, inside the `if (catId)` block:
+
+```diff
+ if (catId) {
++    // Reject semantic-only layer2 matches — no lexical evidence means
++    // this N-gram phrase doesn't actually contain a category word.
++    // Let the loop continue to find one that does.
++    if (catMeta && catMeta.layer === 'layer2' && (catMeta.lexScore === 0 || catMeta.lexScore === undefined)) {
++        continue;
++    }
+     let categoryQuality = 1.0;
+```
+
+> [!NOTE]
+> Key/layer1 matches are unaffected — they always have real evidence. And `"nice smartphone"` as a 2-gram still works because `"smartphone"` produces `wordMatches` → `lexScore > 0`.
 
 ---
 
-## Testing Plan (Minimal but Effective)
-Create a small deterministic test set (unit tests or a script):
+## Verification
 
-- **Span extraction**
-  - “riggs perfume for my sister” => mention “riggs perfume”
-  - “perfume from riggs for my sister” => mention “perfume from riggs”
-- **Variant/discontinuous**
-  - “airpods, i want the pro version” => canonical “AirPods Pro” (if exists)
-- **False positive guards**
-  - “a perfume for my sister” => no product match
-- **Ambiguity**
-  - “iphone 12” with multiple SKUs => candidates returned
-
-Log:
-- confidence
-- candidate count
-- chosen mention span
-
----
-
-## Deliverables Checklist (When You Implement)
-- Module: `ProductCatalogMatcher` (buildIndex + match)
-- Data loader: loads product context list + periodic refresh
-- Pipeline wiring:
-  - call matcher after residual/chunk decision
-  - attach result to extraction output
-- Parameter extractor update:
-  - uses match result to fill `product_name`/`product_id`
-- API gate:
-  - skip/search decisions based on confidence + availability of UUID
-- Tests: basic coverage for the categories above
+| # | Message | Expected |
+|---|---|---|
+| 1 | `show me smartphone` | Category via semantic kickstart |
+| 2 | `show me a bucksaving smartphones` | Category via N-gram (regression) |
+| 3 | `nice affordable smartphone` (`affordable` consumed) | Category via 1-gram on `smartphone`, NOT on `nice` |
+| 4 | `show me phone accessories` | Multi-word category works |
+| 5 | `show me iphone 15` | Stays `resolved_product` |

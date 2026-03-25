@@ -500,10 +500,18 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                 }
             }
 
+            const hasAmbientContext = extractionResult.entities.some(e => e.source === 'AMBIENT_CONTEXT');
+
             if (intentName === 'product_search') {
                 // Only boost if this is NOT a keyword for another intent AND no product is resolved from context
-                if (!isKeywordForOtherIntent && !residualSupportsOtherIntent && !hasResolvedProduct) {
+                // GATED: Also skip if we already have AMBIENT_CONTEXT entities (prevents misfires)
+                if (!isKeywordForOtherIntent && !residualSupportsOtherIntent && !hasResolvedProduct && !hasAmbientContext) {
                     applyModifier(2.0, 'Orphan Product boost');
+                } else if (hasAmbientContext) {
+                    logDebug('SCORING:ORPHAN_GATED_BY_AMBIENT', {
+                        _desc: 'Orphan Product boost GATED — Ambient Context is already managing this intent',
+                        intent: intentName
+                    });
                 }
             }
             if (intentName === 'vendor_identity') applyModifier(-1.0, 'Orphan Product identity penalty');

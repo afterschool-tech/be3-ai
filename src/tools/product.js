@@ -313,7 +313,7 @@ const productTools = {
             product_id: { type: 'string', description: 'The UUID of the product' }
         },
         handler: async (params, context) => {
-            const { product_id } = params;
+            const { product_id, _suppress_ambient } = params;
             const resolvedId = await resolveProduct(product_id, context);
 
             if (!resolvedId) {
@@ -410,8 +410,20 @@ const productTools = {
                 leanProduct.attributes = leanProduct.metadata.attributes;
             }
 
-            if (context.sessionId && result.data.product) {
+            if (context.sessionId && result.data.product && !_suppress_ambient) {
                 await stateManager.setCurrentlyViewing(context.sessionId, resolvedId);
+                
+                // --- AMBIENT CONTEXT: Record active product topic ---
+                await stateManager.setActiveTopic(context.sessionId, {
+                    type: "single_product",
+                    category_id: rawProduct.metadata?.category_ids?.[0] || null,
+                    category_label: rawProduct.metadata?.category_names?.[0] || null,
+                    vendor: rawProduct.metadata?.attributes?.vendor || vendorTag || null,
+                    product_id: leanProduct.id || resolvedId,
+                    product_name: leanProduct.name || rawProduct.name,
+                    attributes: null
+                });
+
                 await stateManager.learnFromBehavior(context.sessionId, 'view_product', {
                     brand: result.data.product.metadata?.attributes?.v || 'Be3 Store'
                 });
@@ -462,7 +474,7 @@ const productTools = {
 
                     const resolvedId = seg._resolved_product_id || await resolveProduct(identifier, context, constraints);
                     if (resolvedId) {
-                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId, _suppress_ambient: true }, context);
                         if (!res.error) products.push(res.product);
                     }
                 }
@@ -472,7 +484,7 @@ const productTools = {
                 for (const id of product_ids) {
                     const resolvedId = await resolveProduct(id, context);
                     if (resolvedId) {
-                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId, _suppress_ambient: true }, context);
                         if (!res.error) products.push(res.product);
                     }
                 }
@@ -495,6 +507,18 @@ const productTools = {
                     );
                     const firstId = products[0]?.id || products[0]?.handle || products[0]?.product_id;
                     if (firstId) await stateManager.setCurrentlyViewing(context.sessionId, firstId);
+                    
+                    // --- AMBIENT CONTEXT: Record comparison topic ---
+                    await stateManager.setActiveTopic(context.sessionId, {
+                        type: "comparison",
+                        category_id: products[0]?.metadata?.category_ids?.[0] || null,
+                        category_label: products[0]?.metadata?.category_names?.[0] || null,
+                        vendor: null,
+                        product_id: null,
+                        product_name: null,
+                        product_ids: products.map(p => p.id || p.handle).filter(Boolean),
+                        attributes: null
+                    });
                 }
             } catch (_) { }
 
@@ -1037,6 +1061,30 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         const firstId = products[0].handle || products[0].id || products[0].product_id;
         await stateManager.setCurrentlyViewing(context.sessionId, firstId);
         
+        // --- AMBIENT CONTEXT: Record active browsing topic ---
+        let finalCatId = catId;
+        let finalCatLabel = cat?.label;
+
+        // If no explicit category was passed to the tool, infer from results
+        if (!finalCatId && rawProducts.length > 0) {
+            const firstProduct = rawProducts[0];
+            const meta = firstProduct.metadata || {};
+            if (Array.isArray(meta.category_ids) && meta.category_ids.length > 0) {
+                finalCatId = meta.category_ids[0];
+                finalCatLabel = Array.isArray(meta.category_names) ? meta.category_names[0] : null;
+            }
+        }
+
+        await stateManager.setActiveTopic(context.sessionId, {
+            type: "product",
+            category_id: finalCatId || null,
+            category_label: finalCatLabel || null,
+            vendor: params.tag || params.attributes?.vendor || null,
+            product_id: null,
+            product_name: null,
+            attributes: params.attributes || null
+        });
+
         const currentState = await stateManager.getState(context.sessionId);
         await stateManager.updateState(context.sessionId, {
             session: { ...currentState.session, search_refinement_count: (currentState.session.search_refinement_count || 0) + 1 }
