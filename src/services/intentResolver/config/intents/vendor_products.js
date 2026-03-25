@@ -80,11 +80,11 @@ module.exports = {
             termination: {
                 maxMessages: 2,
                 onFulfilled: ['vendor'],
-                escalation: null
+                escalation: 'conversation'
             },
-            breakthrough: {
-                // Now uses global default (3.5) for safer stability
-            }
+            features: [
+                { type: 'suggest_from_store', datasource: 'vendors', limit: 5 }
+            ]
         }
     }
 };

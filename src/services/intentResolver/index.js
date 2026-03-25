@@ -39,6 +39,7 @@ const contextReconciler = require('./pipeline/contextReconciler');
 const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
 const { createPositionTracker } = require('./pipeline/extractionPositionTracker');
 const { runResidualChunkAnalysis } = require('./pipeline/residualChunkAnalyzer');
+const microstateFeatureProvider = require('./pipeline/microstateFeatureProvider');
 const { logDebug } = require('../../utils/debugLogger');
 const { getParent, getSiblings, getPath, isRoot, findById } = require('../../context/categoryHelpers');
 const intentRegistry = require('./config/intentRegistry');
@@ -1987,7 +1988,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 } catch (_) { }
             }
 
-            await stateManager.setMicrostate(userId, msObj);
+            // [MOVED DOWN to include injected features]
+            // await stateManager.setMicrostate(userId, msObj);
 
             logDebug('PIPELINE:STAGE10_MICROSTATE_OPENED', {
                 _desc: 'Microstate trigger — intent matched trigger, open microstate instead of tool',
@@ -2035,6 +2037,34 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     }
                 }
             }
+
+            // --- ATOMIC UX FEATURE INJECTION ---
+            const injections = await microstateFeatureProvider.getFeatureInjections(msObj, storeContext);
+            // Force tool promotion to disambiguate if suggestions exist
+            // This is NECESSARY because many frontends only render the button carousel for microstate.disambiguate.
+            if (injections.options.length > 0) {
+                openedPrompt.tool = 'microstate.disambiguate';
+                // Persist the options into the state so the runner can map numeric selections (1, 2) later
+                msObj.options = injections.options;
+            }
+
+            if (injections.options.length > 0 || injections.promptSuffix) {
+                console.log(`[Pipeline] 🚀 Microstate "${msObj.type}" opened. Tool: ${openedPrompt.tool}. Suggestions: ${injections.options.length}`);
+                openedPrompt.params = {
+                    ...(openedPrompt.params || {}),
+                    message: (openedPrompt.params?.message || '') + injections.promptSuffix,
+                    options: injections.options.length > 0 ? injections.options : (openedPrompt.params?.options || [])
+                };
+                if (injections.controls) {
+                    openedPrompt.params.controls = {
+                        ...(openedPrompt.params?.controls || {}),
+                        ...injections.controls
+                    };
+                }
+            }
+
+            // Save the final microstate (with potentially injected features/options)
+            await stateManager.setMicrostate(userId, msObj);
 
             return {
                 intents,

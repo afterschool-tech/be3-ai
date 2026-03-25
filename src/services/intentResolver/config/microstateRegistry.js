@@ -99,6 +99,7 @@ function checkTriggers(intentName, params, entities = [], toolResult = null) {
                         normalizers: triggerDef.normalizers || {},
                         breakthrough: triggerDef.breakthrough || null,
                         fields: triggerDef.fields || null,
+                        features: triggerDef.features || [],
                         currentFieldIndex: 0,
                         contract: {
                             maxMessages: triggerDef.termination?.maxMessages || 3,

@@ -78,7 +78,11 @@ module.exports = {
                 maxMessages: 3,
                 onFulfilled: ['products'],
                 escalation: null
-            }
+            },
+            features: [
+                'show_captured',
+                { type: 'suggest_related_products' }
+            ]
         }
     }
 };

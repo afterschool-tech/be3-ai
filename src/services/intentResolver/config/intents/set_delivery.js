@@ -73,6 +73,9 @@ module.exports = {
                 onFulfilled: ['address', 'delivery_type'],
                 escalation: null
             },
+            features: [
+                'show_captured'
+            ],
             // Simple validation: require non-trivial address text
             validators: {
                 address: (value) => {

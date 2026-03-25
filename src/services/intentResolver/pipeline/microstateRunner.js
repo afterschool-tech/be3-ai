@@ -29,6 +29,7 @@ const stack = require('./stack');
 const { cleanText } = require('./nlpCleaner');
 const { callBackendAPI } = require('../../../utils/apiClient');
 const { processProductList } = require('../../../utils/productUtility');
+const featureProvider = require('./microstateFeatureProvider');
 
 // IDF map for entity extraction (loaded once)
 let idfMap = null;
@@ -108,144 +109,166 @@ async function run(userMessage, microstate, state, storeContext) {
         };
     }
 
-    // Explicit engineered pagination tokens.
-    // For product_compare.missing_products, treat "More" as a recommendation cycle (category traversal),
-    // otherwise fall back to generic option pagination.
-    if (engineeredToken && engineeredToken.namespace === 'nav' && (engineeredToken.command === 'more' || engineeredToken.command === 'prev')) {
-        if (microstate && microstate.intent === 'product_compare' && microstate.type === 'missing_products') {
-            const next = await advanceCompareRecommendations({
-                userId,
-                microstate,
-                storeContext,
-                delta: engineeredToken.command === 'prev' ? -1 : 1
-            });
+    // ── Handle navigation tokens (Unified Paging & Navigation) ──
+    if (engineeredToken && (engineeredToken.namespace === 'nav' || engineeredToken.namespace === 'paging')) {
+        const cmd = engineeredToken.command;
+        if (cmd === 'more' || cmd === 'prev' || cmd === 'back' || cmd === 'next') {
+            logDebug('MICROSTATE:NAV_DETECTED', { token: engineeredToken.raw, type: microstate.type });
+            console.log(`[MicrostateRunner] 🧭 Navigation detected: ${engineeredToken.raw} | Microstate: ${microstate.type}`);
 
-            if (next) {
+            // A. Feature-driven pagination (Democratized: suggest_from_store)
+            const storeFeature = microstate.features?.find(f => f.type === 'suggest_from_store');
+            if (storeFeature) {
+                const datasource = storeFeature.datasource;
+                const limit = storeFeature.limit || 5;
+                const currentOffset = microstate.params?._page_offset || 0;
+                const delta = (cmd === 'more' || cmd === 'next') ? limit : -limit;
+                
+                const items = await featureProvider.getItemsFromStore(datasource, storeContext);
+                if (items.length > 0) {
+                    let nextOffset = currentOffset + delta;
+                    if (nextOffset >= items.length) nextOffset = 0;
+                    if (nextOffset < 0) nextOffset = Math.max(0, items.length - (items.length % limit || limit));
+
+                    console.log(`[MicrostateRunner]    ↳ Store rotation (${datasource}): items=${items.length}, offset=${currentOffset} -> ${nextOffset}`);
+                    
+                    const updatedMs = await stateManager.advanceMicrostate(userId, { _page_offset: nextOffset }, false, true);
+                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
+                    const injections = await featureProvider.getFeatureInjections(updatedMs, storeContext);
+
+                    return {
+                        handled: true,
+                        result: {
+                            intents: [{ intentName: updatedMs.intent, score: updatedMs.boostScore, parameters: updatedMs.params }],
+                            tools: [{
+                                tool: updatedMs.tool || 'microstate.disambiguate',
+                                params: {
+                                    reason: 'nav_rotation',
+                                    message: repromptMessage,
+                                    parentIntent: updatedMs.intent,
+                                    options: injections.options,
+                                    baseIndex: nextOffset,
+                                    controls: injections.controls,
+                                    missingParam: pendingParam
+                                },
+                                reason: 'Microstate navigation (store suggestion)'
+                            }],
+                            isMultiIntent: false,
+                            corrections: { original: userMessage },
+                            microstate_reprompt: true
+                        }
+                    };
+                }
+            }
+
+            // B. Feature-driven pagination (Democratized: suggest_related_products)
+            const suggestProductsFeature = microstate.features?.find(f => f.type === 'suggest_related_products');
+            if (suggestProductsFeature) {
+                const delta = (cmd === 'more' || cmd === 'next') ? 1 : -1;
+                const next = await featureProvider.getDynamicProductRecommendations(microstate, storeContext, delta);
+                if (next) {
+                    console.log(`[MicrostateRunner]    ↳ Product rotation: shifted to ${next.categorySlug}`);
+                    const updatedMs = await stateManager.advanceMicrostate(userId, next.params, false, true);
+                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
+                    const injections = await featureProvider.getFeatureInjections(updatedMs, storeContext);
+
+                    return {
+                        handled: true,
+                        result: {
+                            intents: [{ intentName: updatedMs.intent, score: updatedMs.boostScore, parameters: updatedMs.params }],
+                            tools: [{
+                                tool: updatedMs.tool || 'microstate.disambiguate',
+                                params: {
+                                    reason: 'nav_rotation',
+                                    message: repromptMessage,
+                                    parentIntent: updatedMs.intent,
+                                    options: injections.options,
+                                    baseIndex: 0,
+                                    controls: injections.controls,
+                                    missingParam: pendingParam
+                                },
+                                reason: 'Microstate navigation (product suggestion)'
+                            }],
+                            isMultiIntent: false,
+                            corrections: { original: userMessage },
+                            microstate_reprompt: true
+                        }
+                    };
+                }
+            }
+
+            // C. Tool-driven pagination
+            if (microstate.type === 'tool_pagination' && microstate.params?.tool) {
+                const tool = String(microstate.params.tool);
+                const currentPage = Number.isFinite(microstate.params.page) ? Number(microstate.params.page) : 1;
+                const delta = (cmd === 'more' || cmd === 'next') ? 1 : -1;
+                const nextPage = Math.max(1, currentPage + delta);
+
+                console.log(`[MicrostateRunner]    ↳ Tool pagination (${tool}): page=${currentPage} -> ${nextPage}`);
+                const updatedMs = await stateManager.advanceMicrostate(userId, { page: nextPage }, false);
                 return {
                     handled: true,
                     result: {
-                        intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: next.params }],
+                        intents: [{ intentName: updatedMs.intent, score: updatedMs.boostScore, parameters: updatedMs.params }],
                         tools: [{
-                            tool: 'microstate.disambiguate',
+                            tool,
                             params: {
-                                reason: 'compare_recommendations',
-                                message: next.message,
-                                parentIntent: microstate.intent,
-                                options: next.window,
-                                baseIndex: 0,
-                                controls: { more: next.hasMore, recommendedIndex: 0, ...(microstate.controls || {}), cancel: true },
-                                missingParam: 'products'
+                                ...((updatedMs.params && updatedMs.params.baseParams) || {}),
+                                page: nextPage
                             },
-                            reason: 'Compare recommendations: next'
+                            reason: 'Tool pagination'
                         }],
                         isMultiIntent: false,
                         corrections: { original: userMessage },
-                        microstate_reprompt: true,
-                        microstate_compare_recommendations: true
+                        microstate_tool_pagination: true
+                    }
+                };
+            }
+
+            // D. Generic Option List Paging (Legacy Fallback)
+            const allOptions = Array.isArray(microstate.params?._all_options) ? microstate.params._all_options : (Array.isArray(microstate.options) ? microstate.options : []);
+            if (allOptions.length > 0) {
+                const pageSize = Number.isFinite(microstate.params?._page_size) ? microstate.params._page_size : 10;
+                const currentOffset = Number.isFinite(microstate.params?._page_offset) ? microstate.params._page_offset : 0;
+                const delta = (cmd === 'more' || cmd === 'next') ? pageSize : -pageSize;
+                
+                let nextOffset = currentOffset + delta;
+                if (nextOffset < 0) nextOffset = Math.max(0, allOptions.length - (allOptions.length % pageSize || pageSize));
+                if (nextOffset >= allOptions.length) nextOffset = 0;
+
+                console.log(`[MicrostateRunner]    ↳ Legacy list paging: offset=${currentOffset} -> ${nextOffset}`);
+                const nextWindow = allOptions.slice(nextOffset, nextOffset + pageSize);
+                const hasMore = allOptions.length > nextOffset + pageSize;
+                const updatedMs = await stateManager.advanceMicrostate(userId, { 
+                    _page_offset: nextOffset,
+                    options: nextWindow
+                }, false);
+
+                const { message: repromptMessage } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
+
+                return {
+                    handled: true,
+                    result: {
+                        intents: [{ intentName: updatedMs.intent, score: updatedMs.boostScore, parameters: updatedMs.params }],
+                        tools: [{
+                            tool: 'microstate.disambiguate',
+                            params: {
+                                reason: 'reprompt',
+                                message: repromptMessage,
+                                parentIntent: updatedMs.intent,
+                                options: nextWindow,
+                                baseIndex: nextOffset,
+                                controls: { more: hasMore, recommendedIndex: 0, ...(updatedMs.controls || {}), cancel: true }
+                            },
+                            reason: 'Microstate pagination'
+                        }],
+                        isMultiIntent: false,
+                        corrections: { original: userMessage },
+                        microstate_reprompt: true
                     }
                 };
             }
         }
-
-        // Tool-driven pagination microstate: re-run underlying tool with updated paging params.
-        if (microstate && microstate.type === 'tool_pagination' && microstate.params && microstate.params.tool) {
-            const tool = String(microstate.params.tool);
-            const baseParams = (microstate.params.baseParams && typeof microstate.params.baseParams === 'object')
-                ? microstate.params.baseParams
-                : {};
-
-            const currentPage = Number.isFinite(microstate.params.page) ? Number(microstate.params.page) : 1;
-            const delta = engineeredToken.command === 'prev' ? -1 : 1;
-            const nextPage = Math.max(1, currentPage + delta);
-
-            const fullState = await stateManager.getState(userId);
-            if (fullState && fullState.microstate && fullState.microstate.id === microstate.id) {
-                fullState.microstate.params = {
-                    ...(fullState.microstate.params || {}),
-                    page: nextPage
-                };
-                await stateManager.setState(userId, fullState);
-            }
-
-            return {
-                handled: true,
-                result: {
-                    intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: microstate.params }],
-                    tools: [{
-                        tool,
-                        params: {
-                            ...baseParams,
-                            page: nextPage
-                        },
-                        reason: 'Tool pagination'
-                    }],
-                    isMultiIntent: false,
-                    corrections: { original: userMessage },
-                    microstate_tool_pagination: true
-                }
-            };
-        }
-
-        const allOptions = Array.isArray(microstate.params?._all_options) && microstate.params._all_options.length > 0
-            ? microstate.params._all_options
-            : (Array.isArray(microstate.options) ? microstate.options : []);
-
-        const pageSize = Number.isFinite(microstate.params?._page_size) ? microstate.params._page_size : 10;
-        const currentOffset = Number.isFinite(microstate.params?._page_offset) ? microstate.params._page_offset : 0;
-
-        const delta = engineeredToken.command === 'prev' ? -pageSize : pageSize;
-        let nextOffset = currentOffset + delta;
-        if (nextOffset < 0) nextOffset = Math.max(0, allOptions.length - (allOptions.length % pageSize || pageSize));
-        if (nextOffset >= allOptions.length) nextOffset = 0;
-
-        const nextWindow = allOptions.slice(nextOffset, nextOffset + pageSize);
-        const hasMore = allOptions.length > nextOffset + pageSize;
-
-        // Persist updated microstate options + paging params.
-        const fullState = await stateManager.getState(userId);
-        if (fullState && fullState.microstate && fullState.microstate.id === microstate.id) {
-            fullState.microstate.params = {
-                ...(fullState.microstate.params || {}),
-                _all_options: allOptions,
-                _page_size: pageSize,
-                _page_offset: nextOffset
-            };
-            fullState.microstate.options = nextWindow;
-            await stateManager.setState(userId, fullState);
-        }
-
-        const repromptMessage = buildReprompt({
-            ...microstate,
-            options: nextWindow,
-            params: {
-                ...microstate.params,
-                _all_options: allOptions,
-                _page_size: pageSize,
-                _page_offset: nextOffset
-            }
-        }, {}, { engineeredToken, rawText: cleanedText });
-
-        return {
-            handled: true,
-            result: {
-                intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: microstate.params }],
-                tools: [{
-                    tool: 'microstate.disambiguate',
-                    params: {
-                        reason: 'reprompt',
-                        message: repromptMessage,
-                        parentIntent: microstate.intent,
-                        options: nextWindow,
-                        baseIndex: nextOffset,
-                        controls: { more: hasMore, recommendedIndex: 0, ...(microstate.controls || {}), cancel: true }
-                    },
-                    reason: 'Microstate pagination'
-                }],
-                isMultiIntent: false,
-                corrections: { original: userMessage },
-                microstate_reprompt: true
-            }
-        };
     }
 
     if (isTerminationKeyword(cleanedText, microstate.contract.onKeyword)) {
@@ -285,6 +308,8 @@ async function run(userMessage, microstate, state, storeContext) {
 
     // ── Step 2: Run response utilities based on microstate type ──
     const responseAnalysis = analyzeResponse(cleanedText, microstate);
+    const { yesNo, ordinal, selection, multiSelection } = responseAnalysis;
+    // Note: engineeredToken is already declared at the top of the function
     logDebug('MICROSTATE:RESPONSE_ANALYSIS', {
         _desc: 'Microstate response analysis — yes/no, ordinal, selection resolution',
         _example: '"2" → { type: ordinal, value: 2 }',
@@ -495,240 +520,61 @@ async function run(userMessage, microstate, state, storeContext) {
         };
     }
 
-
-
     // ── Re-prompt the user ──
     const msForReprompt = updated || microstate;
-    const repromptMessage = buildReprompt(msForReprompt, newParams, responseAnalysis);
+    const { message: repromptMessage, pendingParam } = await buildReprompt(msForReprompt, newParams, responseAnalysis, storeContext);
+    const injections = await featureProvider.getFeatureInjections(msForReprompt, storeContext);
+
+    // Sync injected options to state so ordinals (1, 2) can be matched on next turn
+    if (injections.options.length > 0) {
+        msForReprompt.options = injections.options;
+    }
+
+    logDebug('MICROSTATE:REPROMPT_BUILD', {
+        microstate: msForReprompt.name,
+        pendingParam,
+        hasInjections: !!(injections.promptSuffix || injections.options.length > 0 || injections.controls.more)
+    });
+
     logDebug('MICROSTATE:REPROMPT', {
         _desc: 'Microstate reprompt — not fulfilled, ask for more info',
         _example: '"Which address?" when address missing',
         message: repromptMessage
     });
 
+    if (injections.options.length > 0 || injections.promptSuffix) {
+        // Force disambiguate for suggestions (frontend requirement for buttons)
+        const tool = injections.options.length > 0 ? 'microstate.disambiguate' : (msForReprompt.tool || 'microstate.disambiguate');
+        const msName = msForReprompt.type || msForReprompt.intent || 'unidentified';
+        console.log(`[MicrostateRunner] 🔄 Reprompting "${msName}". Tool: ${tool}. Suggestions: ${injections.options.length}`);
+    }
+
+    const finalTools = [{
+        // Force disambiguate if we have dynamic options/buttons to show
+        tool: injections.options.length > 0 ? 'microstate.disambiguate' : (msForReprompt.tool || 'microstate.disambiguate'),
+        params: {
+            reason: 'reprompt',
+            message: `${injections.promptPrefix || ''}${repromptMessage}${injections.promptSuffix || ''}`,
+            parentIntent: microstate.intent,
+            options: injections.options.length > 0 ? injections.options : msForReprompt.options,
+            controls: injections.controls,
+            missingParam: pendingParam
+        },
+        reason: 'Microstate re-prompt'
+    }];
+
+    logDebug('MICROSTATE:FINAL_TOOLS', { tools: finalTools });
+
     return {
         handled: true,
         result: {
             intents: [{ intentName: microstate.intent, score: microstate.boostScore, parameters: mergedParams }],
-            tools: [{
-                tool: msForReprompt.tool || 'microstate.disambiguate',
-                params: {
-                    reason: 'reprompt',
-                    message: repromptMessage,
-                    parentIntent: microstate.intent,
-                    options: msForReprompt.options,
-                    controls: { more: true, recommendedIndex: 0, ...(msForReprompt.controls || {}), cancel: true },
-                    missingParam: 'products'
-                },
-                reason: 'Microstate re-prompt'
-            }],
-            isMultiIntent: false,
+            tools: finalTools,
             corrections: { original: userMessage },
             microstate_reprompt: true
         }
     };
 }
-
-async function fetchCompareRecommendations({ storeContext, categorySlug, page = 1, limit = 5 }) {
-    if (!categorySlug) return null;
-
-    const searchParams = new URLSearchParams({
-        category: String(categorySlug),
-        per_page: String(limit),
-        page: String(page)
-    });
-
-    const result = await callBackendAPI(`/search/products?${searchParams.toString()}`);
-    if (!result?.success) return null;
-
-    const rawProducts = result?.data?.products || result?.data?.results || [];
-    const products = await processProductList(rawProducts);
-
-    const total = Number(result?.data?.pagination?.total || result?.data?.total || 0);
-    const hasNext = Number.isFinite(total) && total > 0
-        ? (page * limit) < total
-        : (Array.isArray(products) && products.length >= limit);
-
-    const options = (products || [])
-        .map(p => {
-            const id = p?.id || p?.handle || p?.product_id;
-            const label = p?.name || p?.title;
-            if (!id || !label) return null;
-            return { label: String(label), value: String(id), price: p?.price || p?.price_display || undefined };
-        })
-        .filter(Boolean);
-
-    return { options, hasNext, products };
-}
-
-function pickRandomActiveCategorySlug(storeContext) {
-    const cats = Object.values(storeContext?.CATEGORIES || {});
-    const active = cats.filter(c => (c?.total_count || 0) > 0 && c?.slug);
-    if (active.length === 0) return null;
-    return active[Math.floor(Math.random() * active.length)].slug;
-}
-
-function getSiblingCategorySlugs(storeContext, categoryId) {
-    if (!storeContext?.CATEGORIES || !categoryId) return [];
-    const catEntry = Object.values(storeContext.CATEGORIES).find(c => c?.id === categoryId);
-    if (!catEntry?.parent_id) return [];
-    return Object.values(storeContext.CATEGORIES)
-        .filter(c => c?.parent_id === catEntry.parent_id && c?.id !== categoryId && c?.slug)
-        .map(c => c.slug);
-}
-
-function findCategorySlugById(storeContext, categoryId) {
-    if (!storeContext?.CATEGORIES || !categoryId) return null;
-    const cat = Object.values(storeContext.CATEGORIES).find(c => c?.id === categoryId);
-    return cat?.slug || null;
-}
-
-async function advanceCompareRecommendations({ userId, microstate, storeContext, delta = 1 }) {
-    const ms = microstate || {};
-    const params = (ms.params && typeof ms.params === 'object') ? { ...ms.params } : {};
-
-    const currentProducts = Array.isArray(params.products) ? params.products : [];
-    const hasFirstProduct = currentProducts.length >= 1;
-    const firstProduct = hasFirstProduct ? currentProducts[0] : null;
-
-    // Keep recommendation state in microstate params.
-    const rec = (params._compare_rec && typeof params._compare_rec === 'object') ? { ...params._compare_rec } : {};
-    const limit = 5;
-
-    // Phase A: no products picked yet → random categories rotation
-    if (!hasFirstProduct) {
-        const seed = Array.isArray(rec.seedCategories) ? rec.seedCategories : [];
-        const idx = Number.isFinite(rec.seedIndex) ? rec.seedIndex : 0;
-
-        let seedCategories = seed;
-        if (seedCategories.length === 0) {
-            const cats = Object.values(storeContext?.CATEGORIES || {})
-                .filter(c => (c?.total_count || 0) > 0 && c?.slug)
-                .map(c => c.slug);
-            // Small random sample to rotate through.
-            seedCategories = cats.sort(() => Math.random() - 0.5).slice(0, 6);
-        }
-
-        const nextIndex = seedCategories.length > 0
-            ? (idx + (delta >= 0 ? 1 : -1) + seedCategories.length) % seedCategories.length
-            : 0;
-
-        const categorySlug = seedCategories[nextIndex] || pickRandomActiveCategorySlug(storeContext);
-        if (!categorySlug) return null;
-
-        const page = 1;
-        const fetched = await fetchCompareRecommendations({ storeContext, categorySlug, page, limit });
-        if (!fetched || !Array.isArray(fetched.options) || fetched.options.length === 0) return null;
-
-        rec.phase = 'seed';
-        rec.seedCategories = seedCategories;
-        rec.seedIndex = nextIndex;
-        rec.categorySlug = categorySlug;
-        rec.page = page;
-
-        params._compare_rec = rec;
-
-        // Persist options directly on microstate so ordinal selection works.
-        const fullState = await stateManager.getState(userId);
-        if (fullState?.microstate && fullState.microstate.id === ms.id) {
-            fullState.microstate.params = { ...(fullState.microstate.params || {}), _compare_rec: rec };
-            fullState.microstate.options = fetched.options;
-            await stateManager.setState(userId, fullState);
-        }
-
-        return {
-            message: `Here are some suggestions from **${categorySlug}**. You can also type any product name to compare:`,
-            window: fetched.options,
-            hasMore: fetched.hasNext || seedCategories.length > 1,
-            params
-        };
-    }
-
-    // Phase B: first product picked → recommend from its category then siblings.
-    if (!rec.phase || rec.phase === 'seed') {
-        rec.phase = 'by_category';
-        rec.baseCategoryId = rec.baseCategoryId || null;
-        rec.baseCategorySlug = rec.baseCategorySlug || null;
-        rec.siblingSlugs = Array.isArray(rec.siblingSlugs) ? rec.siblingSlugs : [];
-        rec.siblingIndex = Number.isFinite(rec.siblingIndex) ? rec.siblingIndex : 0;
-        rec.page = Number.isFinite(rec.page) ? rec.page : 1;
-    }
-
-    // Determine base category from first product if needed.
-    if (!rec.baseCategoryId && firstProduct) {
-        try {
-            const details = await callBackendAPI(`/products/storefront/products/${firstProduct}`);
-            const catIds = details?.data?.product?.metadata?.category_ids || [];
-            if (Array.isArray(catIds) && catIds.length > 0) {
-                rec.baseCategoryId = catIds[0];
-            }
-        } catch (_) {}
-    }
-
-    if (!rec.baseCategorySlug && rec.baseCategoryId) {
-        rec.baseCategorySlug = findCategorySlugById(storeContext, rec.baseCategoryId);
-    }
-
-    if (rec.siblingSlugs.length === 0 && rec.baseCategoryId) {
-        rec.siblingSlugs = getSiblingCategorySlugs(storeContext, rec.baseCategoryId);
-        rec.siblingIndex = 0;
-    }
-
-    const traversal = [rec.baseCategorySlug, ...(rec.siblingSlugs || [])].filter(Boolean);
-    if (traversal.length === 0) return null;
-
-    // Paging within current category first; if no next page, move to next category.
-    let currentCatIndex = Number.isFinite(rec.siblingIndex) ? rec.siblingIndex : 0;
-    let currentCatSlug = traversal[Math.min(currentCatIndex, traversal.length - 1)];
-    let page = Number.isFinite(rec.page) ? rec.page : 1;
-
-    if (delta >= 0) {
-        // Try next page; if exhausted, advance category.
-        const probe = await fetchCompareRecommendations({ storeContext, categorySlug: currentCatSlug, page, limit });
-        if (probe && probe.hasNext) {
-            page = page + 1;
-        } else {
-            currentCatIndex = (currentCatIndex + 1) % traversal.length;
-            currentCatSlug = traversal[currentCatIndex];
-            page = 1;
-        }
-    } else {
-        // Prev page; if at start, go to previous category.
-        if (page > 1) {
-            page = Math.max(1, page - 1);
-        } else {
-            currentCatIndex = (currentCatIndex - 1 + traversal.length) % traversal.length;
-            currentCatSlug = traversal[currentCatIndex];
-            page = 1;
-        }
-    }
-
-    const fetched = await fetchCompareRecommendations({ storeContext, categorySlug: currentCatSlug, page, limit });
-    if (!fetched || !Array.isArray(fetched.options) || fetched.options.length === 0) {
-        return null;
-    }
-
-    rec.siblingIndex = currentCatIndex;
-    rec.categorySlug = currentCatSlug;
-    rec.page = page;
-    params._compare_rec = rec;
-
-    const fullState = await stateManager.getState(userId);
-    if (fullState?.microstate && fullState.microstate.id === ms.id) {
-        fullState.microstate.params = { ...(fullState.microstate.params || {}), _compare_rec: rec };
-        fullState.microstate.options = fetched.options;
-        await stateManager.setState(userId, fullState);
-    }
-
-    const firstLabel = String(firstProduct || '').trim();
-    return {
-        message: `Pick the second product to compare with **${firstLabel}** (recommended from **${currentCatSlug}**):`,
-        window: fetched.options,
-        hasMore: fetched.hasNext || traversal.length > 1,
-        params
-    };
-}
-
 
 // ═══════════════════════════════════════════════
 // Internal Helper Functions
@@ -773,6 +619,16 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
     if (responseAnalysis.selection && onFulfilled.length > 0 && !newParams.attributes) {
         const targetParam = onFulfilled[0]; // Primary param we're waiting for
 
+        // Universally capture labels for self-sufficient UX breadcrumbs
+        const idx = Number.isFinite(responseAnalysis.selection.index) ? responseAnalysis.selection.index : null;
+        const opt = (idx != null && Array.isArray(microstate.options)) ? microstate.options[idx] : null;
+        const label = opt && typeof opt === 'object' ? opt.label : null;
+        const picked = responseAnalysis.selection.match;
+        if (label && picked) {
+            const prevLabels = microstate?.params?._labels || {};
+            newParams._labels = { ...prevLabels, [String(picked).trim()]: String(label) };
+        }
+
         // Special-case: product_compare collects a LIST; option picks should append to products.
         if (microstate.intent === 'product_compare' && targetParam === 'products') {
             const picked = responseAnalysis.selection.match;
@@ -791,11 +647,9 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
             newParams.products = deduped;
             newParams.product_name = null;
 
-            const idx = Number.isFinite(responseAnalysis.selection.index) ? responseAnalysis.selection.index : null;
-            const opt = (idx != null && Array.isArray(microstate.options)) ? microstate.options[idx] : null;
-            const label = opt && typeof opt === 'object' ? opt.label : null;
             const key = (picked ?? '').toString().trim();
             if (label && key) {
+                // Keep legacy _compare_labels for backward compatibility
                 const prev = (microstate?.params?._compare_labels && typeof microstate.params._compare_labels === 'object')
                     ? microstate.params._compare_labels
                     : {};
@@ -812,9 +666,17 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
         const oneBased = responseAnalysis.ordinal === -1 ? ids.length : responseAnalysis.ordinal;
         const index = oneBased - 1;
         if (index >= 0 && index < ids.length && onFulfilled.includes('products')) {
-            newParams.products = [ids[index]];
+            const pickedId = ids[index];
+            newParams.products = [pickedId];
             // Clear product_name so toolMapper uses products (resolved ID), not the original phrase (e.g. "seventh one")
             newParams.product_name = null;
+            
+            // Capture generic label if it was stored in the options
+            const opt = Array.isArray(microstate.options) ? microstate.options[index] : null;
+            if (opt && opt.label) {
+                const prevLabels = microstate?.params?._labels || {};
+                newParams._labels = { ...prevLabels, [String(pickedId)]: String(opt.label) };
+            }
         }
     }
 
@@ -1096,7 +958,9 @@ function checkBreakthrough(text, microstate, storeContext) {
 /**
  * Build a contextual re-prompt message
  */
-function buildReprompt(microstate, newParams, responseAnalysis) {
+async function buildReprompt(microstate, newParams, responseAnalysis, storeContext) {
+    const injections = await featureProvider.getFeatureInjections(microstate, storeContext);
+    
     const hasNewInfo = Object.keys(newParams).length > 0;
     const onFulfilled = microstate.contract.onFulfilled || [];
     const remaining = microstate.contract.maxMessages - microstate.contract.messagesUsed - 1;
@@ -1115,9 +979,15 @@ function buildReprompt(microstate, newParams, responseAnalysis) {
                     ? mergedPreview._compare_labels
                     : null;
                 const display = labelMap && labelMap[first] ? String(labelMap[first]) : first;
-                return `Got it — you want to compare **${display}**. What’s the second product? (You can type any product name.)`;
+                return { 
+                    message: `Got it — you want to compare **${display}**. What’s the second product? (You can type any product name.)`, 
+                    pendingParam: 'products' 
+                };
             }
-            return `Got it. What’s the second product you want to compare? (You can type any product name.)`;
+            return { 
+                message: `Got it. What’s the second product you want to compare? (You can type any product name.)`,
+                pendingParam: 'products'
+            };
         }
     }
     const pendingParam = onFulfilled.find(p => {
@@ -1128,21 +998,24 @@ function buildReprompt(microstate, newParams, responseAnalysis) {
         return false;
     }) || onFulfilled[0];
 
+    let message = '';
     if (responseAnalysis.yesNo !== 'ambiguous') {
         // User said yes/no but we need something else
-        return `I understand, but I still need to know: ${getParamQuestion(pendingParam)}`;
+        message = `I understand, but I still need to know: ${getParamQuestion(pendingParam)}`;
+    } else if (hasNewInfo) {
+        message = `Got it. I still need: ${getParamQuestion(pendingParam)}`;
+    } else if (remaining <= 1) {
+        message = `I didn't quite get that. Last try — ${getParamQuestion(pendingParam)}`;
+    } else {
+        message = `Could you specify ${getParamQuestion(pendingParam)}`;
     }
 
-    if (hasNewInfo) {
-        return `Got it. I still need: ${getParamQuestion(pendingParam)}`;
+    // Append feature injections
+    if (injections.promptSuffix) {
+        message += injections.promptSuffix;
     }
 
-    // Generic re-prompt
-    if (remaining <= 1) {
-        return `I didn't quite get that. Last try — ${getParamQuestion(pendingParam)}`;
-    }
-
-    return `Could you specify ${getParamQuestion(pendingParam)}`;
+    return { message, pendingParam };
 }
 
 /**

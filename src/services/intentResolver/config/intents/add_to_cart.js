@@ -1,72 +1,58 @@
+const { normalizeCategory } = require('../../../../utils/normalization');
+
 /**
  * Intent: add_to_cart
- * Triggered when the user wants to add a product to their shopping cart.
+ * Triggered when the user wants to add one or more products to their shopping cart.
  */
-
-const { normalizeCategory } = require('../../../../utils/normalization');
 
 module.exports = {
     name: 'add_to_cart',
 
     keywords: [
-        'add', 'cart', 'basket', 'bag', 'select'
+        'add', 'buy', 'get', 'purchase', 'put', 'cart', 'order', 'basket', 'want', 'need'
     ],
 
     synonyms: [
-        'throw in', 'put in', 'grab', 'cop',
-        "i'll take", 'gimme', 'hook me up with', 'i would like',
-        'add to cart', 'add to basket', 'add to bag',
-        'put in cart', 'put in basket', 'put in bag',
-        'add it to cart', 'add this to cart', 'add that to cart',
-        'add it to my cart', 'add this to my cart', 'add that to my cart',
-        'buy it', 'purchase it', 'order it',
-        'let me get', 'let me buy', 'grab', 'cop',
-        'pick this', 'want this', 'need this', 'add to my selection',
-        'put this in', 'get this', 'buy this', 'secure this',
-        'save this to cart', 'move to cart', 'include this'
+        'add to cart', 'add to basket', 'buy now', 'purchase',
+        'put in cart', 'put in basket', 'i want to buy',
+        'add [product] to cart', 'order [product]', 'get [product]',
+        'i need [product]', 'put [product] in my basket'
     ],
 
     parameters: {
-        products: { type: 'list', required: false, description: 'List of product names ONLY (e.g. ["iphone 12"]). Do NOT include cart verbs or sentences.' },
+        products: { type: 'list', required: true, description: 'List of product names to add.' },
         product_name: { type: 'string', required: false, description: 'Single product name (fallback)' },
-        category: { type: 'string', required: false, description: 'Category filter' },
-        quantity: { type: 'int', required: false, default: 1, description: 'Quantity to add' },
-        attributes: { type: 'dict', required: false, description: 'Product attributes like color, size' },
-        clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' }
+        quantity: { type: 'number', required: false, description: 'Number of items to add' },
+        _require_confirmation: { type: 'boolean', required: false, description: 'Internal flag for ported confirmation' }
     },
 
-    slotTags: ['[action]', '[product]', '[quantity]', '[clause]', '[category]'],
+    slotTags: ['[product]', '[quantity]'],
 
     toolName: 'cart.add',
 
     paramMap: {
         products: { target: 'product_id', expand: true },
         product_name: 'product_id',
-        quantity: 'quantity',
-        category: 'category'
+        quantity: 'quantity'
     },
 
     minProducts: 1,
-    maxProducts: null,
-    invertTo: 'remove_from_cart',
+    maxProducts: 10,
+    invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding', 'gratitude'],
+        segments: ['core', 'formatting', 'grounding', 'vendor_rules', 'suggestions'],
         storeContext: 'none',
-        historyDepth: 3,
+        historyDepth: 4,
         includeSummary: false,
-        maxResponseTokens: 512
+        maxResponseTokens: 1024
     },
+
     /**
-     * Microstate trigger declarations.
-     * Auto-collected by microstateRegistry at boot time.
-     * 
-     * Each trigger has:
-     *   trigger(params, entities) → boolean
-     *   sandbox: 'soft' | 'hard'
-     *   boostScore: number
-     *   prompt: { tool, params } — what tool to execute when triggered
-     *   termination: { maxMessages, onFulfilled, onKeyword, escalation }
+     * Microstates:
+     *  - confirm_add_ported: Handles the "Do you want to add X?" confirmation after porting from a search.
+     *  - product_is_category: Catches broad category requests (e.g. "add smartphones") and asks for specifics.
+     *  - missing_product: Re-prompts for a product name if the initial request was too vague.
      */
     microstates: {
         confirm_add_ported: {
@@ -89,13 +75,15 @@ module.exports = {
                 onFulfilled: ['confirmation'],
                 onKeyword: ['no', 'nah', 'nope', 'cancel', 'nevermind', 'stop', 'ms_no'],
                 escalation: null
-            }
+            },
+            features: [
+                'show_captured'
+            ]
         },
 
         product_is_category: {
             trigger: (params, entities) => {
                 // If context reconciler already resolved specific products, skip
-                // NOTE: Pipeline sets _resolved_product_id (not product_id) — must check both
                 if (params.product_id || params._resolved_product_id || (params.products && params.products.length > 0 && params.products[0] !== params.product_name)) {
                     return false;
                 }
@@ -108,19 +96,12 @@ module.exports = {
                 const name = params.product_name || (params.products && params.products[0]);
                 if (!name || isGeneric(name)) return false;
 
-                // If entities already identified this as a resolved_product (e.g. via IntelliSense),
-                // it's a specific product — don't treat it as a category.
+                // If entities already identified this as a resolved_product, skip
                 if (Array.isArray(entities) && entities.some(e => e.type === 'resolved_product')) {
                     return false;
                 }
 
-                // If the name contains digits (model numbers like "iphone 15", "samsung s24"),
-                // it's a specific product, not a category. Only exact category matches should trigger.
                 const hasModelNumber = /\d/.test(name);
-
-                // Only trigger when the product name itself clearly resolves to a category
-                // (e.g. "add iphones to cart" where "iphones" is a category),
-                // not just because some unrelated category entity exists.
                 const resolvedCatId = normalizeCategory(name, null, hasModelNumber, { debug: true, initiator: 'add_to_cart' });
                 return !!resolvedCatId;
             },
@@ -147,13 +128,10 @@ module.exports = {
                 const genericWords = ['something', 'product', 'item', 'stuff'];
                 const isGeneric = (name) => name && genericWords.includes(name.toLowerCase());
 
-                // If pipeline already resolved a product, don't ask again
-                if (params._resolved_product_id || params.product_id) return false;
+                const hasValidName = params.product_name && !isGeneric(params.product_name);
+                const hasValidProducts = Array.isArray(params.products) && params.products.length > 0 && !isGeneric(params.products[0]);
 
-                const hasNoParams = !params.product_name && !params.products && (!params.query || params.query.length < 2);
-                const hasGenericParam = isGeneric(params.product_name) || (params.products && isGeneric(params.products[0]));
-
-                return hasNoParams || hasGenericParam;
+                return !hasValidName && !hasValidProducts;
             },
             sandbox: 'soft',
             boostScore: 10.0,
@@ -162,14 +140,17 @@ module.exports = {
                 params: {
                     paramName: 'product_name',
                     message: 'What product would you like to add to your cart?',
-                    hint: 'e.g., "iPhone 16" or "Samsung Galaxy S24"'
+                    hint: 'e.g., "iPhone 15 Pro Max"'
                 }
             },
             termination: {
-                maxMessages: 2,
                 onFulfilled: ['product_name'],
-                escalation: null
-            }
+                escalation: 'product_search'
+            },
+            features: [
+                'show_captured',
+                { type: 'suggest_related_products' }
+            ]
         }
     }
 };

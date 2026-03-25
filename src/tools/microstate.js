@@ -44,30 +44,41 @@ const microstateTools = {
 
             let whatsapp = null;
             if (Array.isArray(options) && options.length > 0) {
-                if (options.length <= 3 && !ctrl) {
-                    whatsapp = {
-                        type: 'button',
-                        buttons: options.slice(0, 3).map((opt, i) => {
-                            const label = typeof opt === 'string' ? opt : opt.label;
-                            return { id: String(offset + i + 1), title: label };
-                        })
-                    };
-                } else if (ctrl) {
-                    const buttons = [];
-                    const recIndex = Number.isFinite(ctrl.recommendedIndex) ? ctrl.recommendedIndex : 0;
-                    const rec = options[recIndex];
-                    if (rec) {
-                        const label = typeof rec === 'string' ? rec : rec.label;
-                        buttons.push({ id: String(offset + recIndex + 1), title: label });
+                const buttons = [];
+                const firstOpt = options[0];
+                const firstLabel = typeof firstOpt === 'string' ? firstOpt : (firstOpt.label || firstOpt.name);
+                buttons.push({ id: String(offset + 1), title: firstLabel });
+
+                if (ctrl) {
+                    // Slot 2: More button OR second suggestion
+                    if (ctrl.more) {
+                        buttons.push({ id: '__nav:more__', title: 'More' });
+                    } else if (options.length >= 2) {
+                        const secondOpt = options[1];
+                        const secondLabel = typeof secondOpt === 'string' ? secondOpt : (secondOpt.label || secondOpt.name);
+                        buttons.push({ id: String(offset + 2), title: secondLabel });
                     }
-                    if (ctrl.more) buttons.push({ id: '__nav:more__', title: 'More' });
-                    if (ctrl.cancel) buttons.push({ id: '__flow:cancel__', title: 'Cancel' });
-                    if (ctrl.skip) buttons.push({ id: '__flow:skip__', title: 'Skip' });
-                    whatsapp = {
-                        type: 'button',
-                        buttons: buttons.slice(0, 3)
-                    };
+
+                    // Slot 3: Mandatory Control (Cancel / Skip) OR third suggestion
+                    if (ctrl.cancel) {
+                        buttons.push({ id: '__flow:cancel__', title: 'Cancel' });
+                    } else if (ctrl.skip) {
+                        buttons.push({ id: '__flow:skip__', title: 'Skip' });
+                    } else if (options.length >= 3) {
+                        const thirdOpt = options[2];
+                        const thirdLabel = typeof thirdOpt === 'string' ? thirdOpt : (thirdOpt.label || thirdOpt.name);
+                        buttons.push({ id: String(offset + 3), title: thirdLabel });
+                    }
+                } else {
+                    // Legacy simple fallback for 3 items
+                    if (options.length >= 2) buttons.push({ id: String(offset + 2), title: options[1].label || options[1] });
+                    if (options.length >= 3) buttons.push({ id: String(offset + 3), title: options[2].label || options[2] });
                 }
+
+                whatsapp = {
+                    type: 'button',
+                    buttons: buttons.slice(0, 3)
+                };
             }
 
             return {

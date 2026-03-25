@@ -431,6 +431,8 @@ class StateManager {
             params: microstateObj.params || {},
             entities: microstateObj.entities || [],
             options: microstateObj.options || [],
+            features: microstateObj.features || [],
+            controls: microstateObj.controls || {},
             contract: {
                 maxMessages: microstateObj.contract?.maxMessages || 3,
                 messagesUsed: 0,
@@ -490,9 +492,9 @@ class StateManager {
      * @param {boolean} advanced - Whether the message advanced the microstate (filled a param)
      * @returns {object|null} Updated microstate or null if expired
      */
-    async advanceMicrostate(userId, newParams = {}, advanced = false) {
+    async advanceMicrostate(userId, newParams = {}, advanced = false, isNavigation = false) {
         const state = await this.getState(userId);
-        if (!state.microstate) return null;
+        if (!state.microstate) throw new Error('No active microstate to advance');
 
         // Merge new params
         state.microstate.params = { ...state.microstate.params, ...newParams };
@@ -513,12 +515,15 @@ class StateManager {
             }
         }
 
-        // Increment message counter
-        state.microstate.contract.messagesUsed++;
+        // Apply contract penalties only if this isn't a harmless feature navigation
+        if (!isNavigation) {
+            // Increment message counter
+            state.microstate.contract.messagesUsed++;
 
-        // Decay confidence only if message didn't advance the microstate
-        if (!advanced) {
-            state.microstate.confidence = Math.max(0, state.microstate.confidence - 0.3);
+            // Decay confidence only if message didn't advance the microstate
+            if (!advanced) {
+                state.microstate.confidence = Math.max(0, state.microstate.confidence - 0.3);
+            }
         }
 
         await this.setState(userId, state);

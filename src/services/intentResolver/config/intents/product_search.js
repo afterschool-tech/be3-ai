@@ -76,10 +76,12 @@ module.exports = {
                 }
             },
             termination: {
-                maxMessages: 2,
                 onFulfilled: ['query'],
-                escalation: null
-            }
+                escalation: 'conversation'
+            },
+            features: [
+                { type: 'suggest_from_store', datasource: 'categories', limit: 5 }
+            ]
         }
     }
 };

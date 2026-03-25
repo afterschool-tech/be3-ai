@@ -84,9 +84,13 @@ module.exports = {
                 onFulfilled: ['quantity'],
                 escalation: null
             },
+            features: [
+                'show_captured'
+            ],
             breakthrough: {
                 minScore: 2.5,
-                blockIntents: []
+                blockIntents: [],
+                show_captured: true
             }
         }
     }
