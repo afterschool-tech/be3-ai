@@ -7,7 +7,8 @@ module.exports = {
     name: 'get_help',
 
     keywords: [
-        'help', 'assist', 'support', 'guide', 'explain', 'manual', 'options', 'services'
+        'help', 'assist', 'support', 'guide', 'explain', 'manual', 'options', 'services',
+        'compatibility', 'maintenance', 'installation', 'tips'
     ],
 
     synonyms: [
@@ -16,7 +17,8 @@ module.exports = {
         'what do you offer', 'how does this work', 'instructions',
         'tutorial', 'usage', 'capabilities', 'menu',
         'how to use', 'what can i ask', 'what are my options', 'help with usage',
-        'show commands', 'what is possible', 'bot guide'
+        'show commands', 'what is possible', 'bot guide',
+        'is it compatible', 'how to install', 'maintenance guide', 'tips and tricks'
     ],
 
     parameters: {

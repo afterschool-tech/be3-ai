@@ -310,7 +310,17 @@
       "is it possible to use [product] for [action]?",
       "can i play games on [product]?",
       "is it possible to run [product] on [product]?",
-      "how do i use [product] to play [product]?"
+      "how do i use [product] to play [product]?",
+      "is [product] compatible with [product]?",
+      "what are the requirements for [product]?",
+      "will [product] run on my [product]?",
+      "compatibility info for [product]?",
+      "does [product] support [product]?",
+      "can [product] handle [product]?",
+      "is [product] usable with [product]?",
+      "i want to learn about [product] maintenance",
+      "can you give me some [product] tips and tricks?",
+      "need some assistance with [product] installation"
     ],
     "metadata": {
       "runs": 7,
