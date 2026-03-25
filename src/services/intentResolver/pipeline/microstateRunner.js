@@ -753,19 +753,14 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
         }
 
         if (residualText.length >= 2 && !isJunk) {
-            // If we're waiting for product_name, residuals are likely it
-            if (onFulfilled.includes('product_name') && !newParams.product_name) {
-                newParams.product_name = residualText;
-            }
-            
-            // If we're waiting for query, residuals are definitely it
-            if (onFulfilled.includes('query') && !newParams.query) {
-                newParams.query = residualText;
-            }
+            // Determine the currently missing parameter this microstate is actively asking for
+            const activeParam = onFulfilled.find(p => {
+                const val = (microstate.params || {})[p];
+                return val === null || val === undefined || (typeof val === 'string' && val.trim() === '') || (Array.isArray(val) && val.length === 0);
+            });
 
-            // If we're waiting for products (list), use rawText for splitting
-            // (residualWords may lose separators like "and", commas during cleaning/extraction)
-            if (onFulfilled.includes('products') && !newParams.products) {
+            // If we're waiting for products (list), use rawText for splitting (with special array resolution logic)
+            if (activeParam === 'products' && !newParams.products) {
                 const splitSource = responseAnalysis.rawText || residualText;
                 // Split by: "and", "with", "vs", "versus", "or", "&", ",", "/"
                 const splitRegex = /\s+(?:and|with|vs\.?|versus|or)\s+|\s*[&,\/]\s*/i;
@@ -798,6 +793,12 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
                 }
 
                 newParams.products = deduped;
+            } else if (activeParam && !newParams[activeParam]) {
+                // UNIVERSAL MICROSTATE DEMOCRATIZATION:
+                // If the microstate is actively asking for ANY text-based parameter,
+                // securely funnel the unclassified user text directly into that parameter.
+                // Addresses get rawText to preserve vital punctuation like commas.
+                newParams[activeParam] = activeParam === 'address' ? responseAnalysis.rawText.trim() : residualText;
             }
         }
     }
@@ -959,8 +960,6 @@ function checkBreakthrough(text, microstate, storeContext) {
  * Build a contextual re-prompt message
  */
 async function buildReprompt(microstate, newParams, responseAnalysis, storeContext) {
-    const injections = await featureProvider.getFeatureInjections(microstate, storeContext);
-    
     const hasNewInfo = Object.keys(newParams).length > 0;
     const onFulfilled = microstate.contract.onFulfilled || [];
     const remaining = microstate.contract.maxMessages - microstate.contract.messagesUsed - 1;
@@ -1008,11 +1007,6 @@ async function buildReprompt(microstate, newParams, responseAnalysis, storeConte
         message = `I didn't quite get that. Last try — ${getParamQuestion(pendingParam)}`;
     } else {
         message = `Could you specify ${getParamQuestion(pendingParam)}`;
-    }
-
-    // Append feature injections
-    if (injections.promptSuffix) {
-        message += injections.promptSuffix;
     }
 
     return { message, pendingParam };

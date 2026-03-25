@@ -26,6 +26,7 @@ async function getFeatureInjections(microstate, storeContext) {
 
     const injections = {
         promptSuffix: '',
+        promptPrefix: '',
         options: [...(microstate.options || [])],
         controls: { ...(microstate.controls || {}), cancel: true } // Cancel is always mandatory
     };
@@ -37,7 +38,7 @@ async function getFeatureInjections(microstate, storeContext) {
             console.log(`[FeatureProvider]    ↳ Executing feature: show_captured`);
             const breadcrumbs = getBreadcrumbs(microstate);
             if (breadcrumbs) {
-                injections.promptSuffix += `\n\n**Already Captured:**\n${breadcrumbs}`;
+                injections.promptPrefix += `**Already Captured:**\n${breadcrumbs}\n\n`;
             }
         }
 

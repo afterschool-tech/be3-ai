@@ -52,9 +52,8 @@ const ACTION_TO_INTENTS = {
     'list': ['list_vendors', 'list_orders', 'browse_collection'],
     'availability': ['check_availability'],
     'confirm': ['confirm_order'],
-    'cancel': 'cancel_order',
-    'delivery': 'set_delivery',
-    'delivery': 'set_delivery',
+    'cancel': ['cancel_order'],
+    'delivery': ['set_delivery'],
     'discovery_meta': ['facet_list', 'vendor_facet']
 };
 
