@@ -435,6 +435,22 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     // 0. Fill primitive parameters from pre-detected entities (Stage 4a)
     const baseFromEntities = {};
+
+    // 0a. Ingest resolutions from context layer
+    if (resolutions && resolutions.length > 0) {
+        resolutions.forEach(res => {
+            if (res.productId) {
+                if (!baseFromEntities.products) baseFromEntities.products = [];
+                baseFromEntities.products.push(res.productId);
+
+                if (!baseFromEntities.product_name) {
+                    baseFromEntities.product_name = res.resolved;
+                    baseFromEntities._resolved_product_id = res.productId;
+                }
+            }
+        });
+    }
+
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
             if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id || ent.categoryId || ent.value;
