@@ -13,6 +13,21 @@ const { extractProductIntel } = require('../utils/productIntelExtractor');
 const { logDebug } = require('../../../utils/debugLogger');
 const CATEGORY_ALIASES = require('../../../context/categoryAliases');
 
+// ── Facet Name Rejection Set ──
+// Load facet bench to detect when the transformer returns an attribute NAME
+// (e.g. "material") as a value instead of a real attribute VALUE (e.g. "gold").
+const FACET_BENCH = (() => {
+    try { return require('../semanticLab/facets/facet_bench.json'); }
+    catch { return {}; }
+})();
+const FACET_NAME_SET = new Set();
+for (const [key, entry] of Object.entries(FACET_BENCH)) {
+    FACET_NAME_SET.add(key.toLowerCase());
+    if (Array.isArray(entry.variations)) {
+        entry.variations.forEach(v => FACET_NAME_SET.add(v.toLowerCase()));
+    }
+}
+
 /**
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
@@ -485,6 +500,40 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
                 baseFromEntities.target_facet = ent.attribute; // e.g., "storage" attribute code
             }
 
+            // ── Transformer Attribute Hint Ingestion (Intent-Gated) ──
+            // Only ingest transformer attribute hints when the winning intent is NOT
+            // a facet intent. For facet intents, the attribute name IS the query target,
+            // not a filtering signal.
+            if (ent.type === 'transformer_attribute_hint' && ent.subType && ent.value) {
+                const isFacetIntent = candidates?.[0]?.intentName === 'facet_list' ||
+                                     candidates?.[0]?.intentName === 'vendor_facet';
+                const hasFacetTarget = entities.some(e => e.type === 'facet_target' && e.attribute === ent.subType);
+
+                // ── Facet Name Echo Guard ──
+                // The transformer's facet detection returns attribute NAMES (e.g. "material")
+                // as values when it sees a facet bench keyword in the text. These are NOT
+                // real attribute values — they're echoes of the facet name itself.
+                // Reject: attribute.material = "material"  (name echo)
+                // Accept: attribute.storage  = "256gb"     (real value)
+                const valueLower = String(ent.value).toLowerCase().trim();
+                const isFacetNameEcho = FACET_NAME_SET.has(valueLower);
+
+                if (!isFacetIntent && !hasFacetTarget && !isFacetNameEcho) {
+                    if (!baseFromEntities.attributes) baseFromEntities.attributes = {};
+                    const key = ent.subType;
+                    if (baseFromEntities.attributes[key] === undefined) {
+                        baseFromEntities.attributes[key] = ent.value;
+                    }
+                } else if (isFacetNameEcho) {
+                    logDebug('PARAM:FACET_NAME_ECHO_REJECTED', {
+                        _desc: 'Transformer attribute hint rejected — value is a facet name/synonym, not a real attribute value',
+                        attribute: ent.subType,
+                        rejectedValue: ent.value,
+                        reason: 'Value matches facet_bench key or variation'
+                    });
+                }
+            }
+
             // Shield these pre-detected semantic words from becoming part of the product name fallback
             if (['clause', 'brand', 'category', 'facet_target'].includes(ent.type) && ent.value) {
                 const entWords = String(ent.value).toLowerCase().split(/\s+/);
@@ -503,6 +552,7 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     if (deterministic._blocked_bare_category) {
         baseFromEntities.product_name = null;
         baseFromEntities._resolved_product_id = null;
+        baseFromEntities.products = [];
         delete deterministic._blocked_bare_category;
     }
 
@@ -573,6 +623,126 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     // Stage 3 (Global Pre-pass) is the source of truth for all semantic clauses.
     if (combinedBase.products && Array.isArray(combinedBase.products) && combinedBase.products.length > 0) {
         combinedBase.product_name = combinedBase.products[0];
+    }
+
+    // ── ATTRIBUTE KEY CANONICALIZATION (human → backend code) ──
+    // Transformer-injected attributes often come in "human" facet keys (e.g. "storage")
+    // but the backend/API expects attribute code keys (e.g. storage.code === "j").
+    // We canonicalize params.attributes keys here so downstream tool calls match backend.
+    const mapAttrKeyToBackend = (attrKey) => {
+        if (!attrKey) return attrKey;
+        if (typeof attrKey !== 'string') return attrKey;
+
+        // Composite keys already in backend form (e.g. "p:p") should pass through.
+        if (attrKey.includes(':')) return attrKey;
+
+        const attrsCtx = storeContext?.ATTRIBUTES;
+        if (!attrsCtx) return attrKey;
+
+        // If already a code key, keep it.
+        const isAlreadyCode = Object.values(attrsCtx).some(a => a?.code && a.code === attrKey);
+        if (isAlreadyCode) return attrKey;
+
+        // Direct lookup by key (e.g. "storage")
+        if (attrsCtx[attrKey]?.code) return attrsCtx[attrKey].code;
+
+        // Normalize spacing to snake_case and try again
+        const snakeKey = attrKey.replace(/\s+/g, '_');
+        if (attrsCtx[snakeKey]?.code) return attrsCtx[snakeKey].code;
+
+        // Last resort: label match (e.g. "price tier" matches attribute label)
+        const labelLower = attrKey.toLowerCase().trim();
+        const byLabel = Object.values(attrsCtx).find(a => (a?.label || '').toLowerCase().trim() === labelLower);
+        return byLabel?.code || attrKey;
+    };
+
+    if (combinedBase.attributes && typeof combinedBase.attributes === 'object' && !Array.isArray(combinedBase.attributes)) {
+        const mapped = {};
+        for (const [k, v] of Object.entries(combinedBase.attributes)) {
+            const backendKey = mapAttrKeyToBackend(k);
+            if (mapped[backendKey] === undefined) mapped[backendKey] = v;
+        }
+        combinedBase.attributes = mapped;
+    }
+
+    // ── STRIP DETECTED ATTRIBUTE VALUES FROM PRODUCT NAME ──
+    // If IntelliSense/context collapsed a resolved_product like "256gb smartphone",
+    // we now also extract "storage=256gb". UX expectation: product_name should
+    // be the "base product" without the spec token when an attribute value was found.
+    // GATED: Only runs for non-facet intents (facet queries need the words intact).
+    const isFacetIntent = candidates?.[0]?.intentName === 'facet_list' ||
+                          candidates?.[0]?.intentName === 'vendor_facet';
+
+    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const stripTokenFromText = (text, tokenLower) => {
+        if (!text || !tokenLower) return text;
+        const escaped = escapeRegex(tokenLower);
+        const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'gi');
+        return String(text)
+            .replace(re, (_m, g1, g2) => `${g1}${g2}`)
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    if (!isFacetIntent && combinedBase.attributes && typeof combinedBase.attributes === 'object' && combinedBase.product_name) {
+        const values = new Set(Object.values(combinedBase.attributes).map(v => String(v || '').toLowerCase().trim()).filter(Boolean));
+        const safeTokens = Array.from(values).filter(t => !t.includes(',') && !t.includes(' '));
+
+        if (safeTokens.length > 0) {
+            combinedBase.product_name = safeTokens.reduce(
+                (acc, t) => stripTokenFromText(acc, t),
+                combinedBase.product_name
+            );
+
+            if (Array.isArray(combinedBase.products)) {
+                combinedBase.products = combinedBase.products.map(p => {
+                    if (!p) return p;
+                    return safeTokens.reduce((acc, t) => stripTokenFromText(acc, t), p);
+                }).filter(Boolean);
+            }
+        }
+    }
+
+    // ── SECOND BARE CATEGORY GUARD (post-strip) ──
+    // PIE drops "category label as product" *before* we strip attribute tokens out
+    // of product_name/products. For cases like "256gb smartphone", stripping may
+    // turn the reconstructed product back into the bare category token (e.g. "smartphone"),
+    // so we must re-check AFTER stripping.
+    if (!isFacetIntent) {
+        const findCategoryMetaById = (catId) => {
+            if (!catId || !storeContext?.CATEGORIES) return null;
+            return Object.values(storeContext.CATEGORIES).find(c => c?.id && String(c.id) === String(catId)) || null;
+        };
+
+        const catMeta = findCategoryMetaById(combinedBase.category);
+        if (catMeta && storeContext?.CATEGORIES) {
+            const labelLower = String(catMeta.label || '').toLowerCase().trim();
+            const slugLower = String(catMeta.slug || '').toLowerCase().trim();
+
+            const isBareCategoryToken = (s) => {
+                const t = String(s || '').toLowerCase().trim();
+                if (!t) return false;
+                if (t === labelLower || t === slugLower) return true;
+                // Singular/plural tolerance
+                if (labelLower.endsWith('s') && t === labelLower.slice(0, -1)) return true;
+                if (slugLower.endsWith('s') && t === slugLower.slice(0, -1)) return true;
+                return false;
+            };
+
+            const productNameBare = combinedBase.product_name && isBareCategoryToken(combinedBase.product_name);
+            const anyProductsBare = Array.isArray(combinedBase.products) && combinedBase.products.some(p => isBareCategoryToken(p));
+
+            if (productNameBare || anyProductsBare) {
+                combinedBase.product_name = null;
+                combinedBase._resolved_product_id = null;
+                combinedBase.products = [];
+                logDebug('PARAM:POST_STRIP_BARE_CATEGORY', {
+                    _desc: 'Post-strip bare category guard — product_name was just the category after attribute stripping',
+                    droppedName: productNameBare ? combinedBase.product_name : null,
+                    category: catMeta.label
+                });
+            }
+        }
     }
 
     // Check which params still need AI

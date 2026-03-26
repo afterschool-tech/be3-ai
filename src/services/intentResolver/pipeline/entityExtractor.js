@@ -240,6 +240,46 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         });
     }
 
+    // ── 0c. Semantic Attribute Hints (Transformer) — NON-CONSUMING ──
+    // Emit transformer-detected attributes as advisory hints.
+    // CRITICAL: We do NOT consume word indices here. Consuming would block
+    // facet target detection (Stage 2c) for words like "storage", "colors", etc.
+    // These hints are ingested later in parameterExtractor with intent-aware gating.
+    if (semanticContext?.available && semanticContext.entities?.attribute) {
+        for (const [attrType, attrValues] of Object.entries(semanticContext.entities.attribute)) {
+            // Skip if brand already detected as entity (brand is first-class)
+            if (attrType === 'brand' && entities.some(e => e.type === 'brand')) continue;
+            // Skip if this attribute type already detected via clauses (first-class citizens)
+            const alreadyDetected = entities.some(e =>
+                e.type === 'clause' && e.attribute === attrType
+            );
+            if (alreadyDetected) continue;
+
+            for (const attrValue of attrValues) {
+                const attrValueLower = attrValue.toLowerCase();
+                const wordIdx = words.findIndex(w => w === attrValueLower);
+
+                entities.push({
+                    type: 'transformer_attribute_hint',
+                    subType: attrType,
+                    value: attrValue,
+                    source: 'TRANSFORMER_SEMANTIC',
+                    advisory: true,  // Explicitly non-consuming
+                    wordIndices: wordIdx !== -1 ? [wordIdx] : []
+                });
+                // NOTE: No consumed.add() — words stay free for facet detection
+
+                logDebug('ENTITY:SEMANTIC_ATTRIBUTE_HINT', {
+                    _desc: 'Transformer attribute hint — advisory only, word NOT consumed',
+                    attribute: attrType,
+                    value: attrValue,
+                    wordIndex: wordIdx
+                });
+            }
+        }
+    }
+
+
     // ── 1. Vendor Detection (N-gram, longest match first) ──
     if (storeContext.VENDORS) {
         const vendorNames = [];
