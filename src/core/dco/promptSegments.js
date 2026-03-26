@@ -42,13 +42,24 @@ CRITICAL - NEVER EXPOSE INTERNAL PROCESSES:
      * ~120 tokens
      */
     grounding: () => `GROUNDING RULES:
-- TRUTHFULNESS: Only mention products provided in the Tool Results below. NEVER invent or hallucinate products to pad out a list.
+- TRUTHFULNESS: Only mention products provided in the Tool Results below (this includes "products" and "suggested_products"). NEVER invent or hallucinate products to pad out a list.
 - EXACT COUNT: If the tool returns exactly 1 or 2 products, ONLY mention those exact products. Do NOT hallucinate extra items to match a previous conversational pattern.
-- NO HALLUCINATIONS: If no products found for a search, admit it warmly. For general conversation, do NOT mention the lack of products.
+- NO HALLUCINATIONS: If no products found and NO suggestions are provided, admit it warmly. 
+- SUGGESTIONS PRIORITY: If "products" is empty but "suggested_products" is NOT empty, you MUST present the suggested products as relevant alternatives. Do NOT say you found nothing.
 - PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
 - LINKS & BUTTONS: If a "whatsapp_link" or "checkout_url" is provided, you can mention it. If they are missing, do NOT apologize or mention it — the system automatically provides buttons.
 - For Price, Stock, and Specs, use ONLY provided data. NEVER invent.
 - HONESTY: If an action fails, admit it. Do not pretend it succeeded.`,
+
+    /**
+     * Suggested products grounding — injected dynamically when suggestions exist
+     * ~80 tokens
+     */
+    suggested_products_grounding: () => `SUGGESTED PRODUCTS (MANDATORY):
+- The primary search returned 0 results, but we found these similar or related items instead.
+- You MUST acknowledge that you didn't find an exact match, then SHIFT the conversation to show these suggestions.
+- Do NOT say "I couldn't find anything" and stop. Say "I didn't find that exact one, but check these out!"
+- Treat "suggested_products" with the same level of detail as primary products.`,
 
     /**
      * Suggestion XML block instruction

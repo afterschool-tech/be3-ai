@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Product Tools
  * Capabilities related to product search and details.
  */
@@ -11,13 +11,7 @@ const { performVectorSearch, performSimilarSearch } = require('../utils/vectorSe
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
-const { 
-    buildProductCards, 
-    buildFacetRefinerButtons, 
-    deriveClauseNameFromAttributes, 
-    buildDefaultSeeMoreTitle, 
-    pickVendorSeeMoreTitle 
-} = require('../utils/storefrontWhatsAppUx');
+const { buildProductCards } = require('../utils/storefrontWhatsAppUx');
 const crypto = require('crypto');
 
 function encodeBase64Url(str) {
@@ -42,11 +36,10 @@ const productTools = {
             tag: { type: 'string', description: 'The exact vendor tag (e.g. "Taye\'s Home Decor"). Use this when searching for products from a specific vendor.' },
             attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' },
             search_mode: { type: 'string', description: 'The search mode to use. Set to "VECTOR" for pure semantic search.' },
-            similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' },
-            clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' }
+            similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' }
         },
         handler: async (params, context) => {
-            const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, clause_words } = params;
+            const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -73,78 +66,17 @@ const productTools = {
             // --- STAGE 0.2: Pure Vector / Similarity Mode ---
             if (search_mode === 'VECTOR' || similar_to) {
                 const { logDebug } = require('../utils/debugLogger');
+                logDebug('TOOL:VECTOR_MODE_TRIGGERED [product.search]', { search_mode, similar_to, query, limit });
+
                 let vectorResult = null;
-                let resolvedSimilarityId = null; // hoisted so annotation block can access it
-                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
-
                 if (similar_to) {
-                    logDebug('TOOL:SIMILAR_SEARCH_MODE [product.search]', { similar_to, limit, hasFilters: true });
-                    
-                    // NEW: Optimization — if similar_to is already a UUID (e.g. from an engineered token), use it directly.
-                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(similar_to);
-                    resolvedSimilarityId = isUuid ? similar_to : await resolveProduct(similar_to, context, { category: catId });
-                    
-                    if (!resolvedSimilarityId) {
-                        logDebug('TOOL:SIMILAR_SEARCH_FAILED [product.search]', { similar_to, reason: 'unresolved' });
-                    } else {
-                        vectorResult = await performSimilarSearch(resolvedSimilarityId, limit, extraParams);
-                        
-                        // Fallback to unfiltered similarity if filtered returns nothing
-                        if (!vectorResult || vectorResult.products.length === 0) {
-                            logDebug('TOOL:SIMILAR_FALLBACK_UNFILTERED [product.search]', { similar_to: resolvedSimilarityId });
-                            vectorResult = await performSimilarSearch(resolvedSimilarityId, limit);
-                        }
-                    }
+                    vectorResult = await performSimilarSearch(similar_to, limit);
                 } else if (query) {
-                    logDebug('TOOL:VECTOR_SEARCH_MODE [product.search]', { query, limit, hasFilters: true });
-                    vectorResult = await performVectorSearch(query, limit, catId, extraParams);
-
-                    // Fallback to unfiltered vector if filtered returns nothing
-                    if (!vectorResult || vectorResult.products.length === 0) {
-                        logDebug('TOOL:VECTOR_FALLBACK_UNFILTERED [product.search]', { query });
-                        vectorResult = await performVectorSearch(query, limit, catId);
-                    }
+                    vectorResult = await performVectorSearch(query, limit, catId);
                 }
 
                 if (vectorResult && vectorResult.products && vectorResult.products.length > 0) {
-                    const finalResult = await handleSearchResults(vectorResult, params, context, snapshotId, cat, catId);
-
-                    // SIMILARITY CONTEXT: Annotate the result so the personality layer knows
-                    // these are "similar to X" results, not general search results.
-                    // The LLM uses this to say "here are products similar to Iphone 12 Pro" 
-                    // instead of acting confused or dismissive.
-                    if (similar_to) {
-                        finalResult.mode = 'similar';
-                        finalResult.similar_to = resolvedSimilarityId;
-                        // Derive a human-readable reference name:
-                        // If similar_to was a product name (not UUID), use it directly.
-                        // Otherwise, try to find the name from the resolved UUID in the reference map or state.
-                        const isInputUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(similar_to);
-                        if (!isInputUuid) {
-                            finalResult.similar_to_name = similar_to; // it was a name already
-                        } else {
-                            // Try to resolve from state context
-                            try {
-                                const state = await stateManager.getState(context.sessionId);
-                                const lastResults = state?.product_context?.last_search?.results;
-                                const refMap = state?.reference_map || {};
-                                let resolvedName = null;
-                                if (Array.isArray(lastResults)) {
-                                    const found = lastResults.find(p => p.id === similar_to || p.handle === similar_to);
-                                    if (found) resolvedName = found.name || found.title;
-                                }
-                                if (!resolvedName) {
-                                    // Check reference_map in reverse
-                                    for (const [alias, id] of Object.entries(refMap)) {
-                                        if (id === similar_to) { resolvedName = alias; break; }
-                                    }
-                                }
-                                if (resolvedName) finalResult.similar_to_name = resolvedName;
-                            } catch (_) {}
-                        }
-                    }
-
-                    return finalResult;
+                    return await handleSearchResults(vectorResult, params, context, snapshotId, cat, catId);
                 }
             }
 
@@ -182,15 +114,7 @@ const productTools = {
 
             // Fallback 1: Vector Search (Primary Fallback)
             if (query && !search_mode && !similar_to) {
-                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
-                // Try with filters first
-                let vectorFallback = await performVectorSearch(query, limit, catId, extraParams);
-                
-                // If filtered fails, try unfiltered
-                if (!vectorFallback || vectorFallback.products?.length === 0) {
-                    vectorFallback = await performVectorSearch(query, limit, catId);
-                }
-
+                const vectorFallback = await performVectorSearch(query, limit, catId);
                 if (vectorFallback && vectorFallback.products?.length > 0) {
                     logDebug('TOOL:VECTOR_FALLBACK [product.search]', { _desc: 'Precision failed. Result found via Vector Search fallback.', query });
                     return await handleSearchResults(vectorFallback, params, context, snapshotId, cat, catId);
@@ -224,104 +148,30 @@ const productTools = {
             // Attempt 1: Drop query, keep filters
             const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
             if (attempt1 && attempt1.products.length > 0) {
-                const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
-                
-                logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                    _desc: 'No-result fallback — retry without query (keep filters)',
-                    original: { query, category, price_min, price_max, tag, attributes },
-                    fallback: { query: null },
-                    suggestedCount: final.products.length,
-                    total: attempt1.total
-                });
-
-                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId);
                 return {
                     ...final,
                     products: [],
                     suggested_products: final.products,
                     suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                    whatsapp_product_cards: undefined,
-                    whatsapp: {
-                        type: 'button',
-                        buttons: [
-                            { id: '__nav:results__', title: 'See product details' },
-                            seeMoreBtn
-                        ]
-                    }
+                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
                 };
             }
 
             // Attempt 2: Drop everything but category
             const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
             if (attempt2 && attempt2.products.length > 0) {
-                const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
-                
-                logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                    _desc: 'No-result fallback — retry without query and without other filters',
-                    original: { query, category, price_min, price_max, tag, attributes },
-                    fallback: { query: null, price_min: null, price_max: null, tag: null, attributes: {} },
-                    suggestedCount: final.products.length,
-                    total: attempt2.total
-                });
-
-                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId);
                 return {
                     ...final,
                     products: [],
                     suggested_products: final.products,
                     suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                    whatsapp_product_cards: undefined,
-                    whatsapp: {
-                        type: 'button',
-                        buttons: [
-                            { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
-                            seeMoreBtn
-                        ]
-                    }
+                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead."
                 };
             }
 
             return { products: [], total: 0, message: "I couldn't find any products matching your search." };
-        }
-    },
-
-    'product.showCards': {
-        description: 'Internal utility tool to render product cards from an active state snapshot',
-        params: {
-            snapshot_id: { type: 'string', description: 'The snapshot ID for the cached products' }
-        },
-        handler: async (params, context) => {
-            const { snapshot_id } = params;
-            
-            let cachedProducts = [];
-            try {
-                // Try targeted snapshot first
-                const snap = await stateManager.getSearchSnapshot(context.sessionId, snapshot_id);
-                if (snap && Array.isArray(snap.results) && snap.results.length > 0) {
-                    cachedProducts = snap.results;
-                } else {
-                    // Fallback to active state
-                    const state = await stateManager.getState(context.sessionId);
-                    const lastSearch = state?.product_context?.last_search?.results;
-                    if (Array.isArray(lastSearch) && lastSearch.length > 0) {
-                        cachedProducts = lastSearch;
-                    }
-                }
-            } catch (e) {}
-
-            if (cachedProducts.length === 0) {
-                return { error: "Could not retrieve the product cards because the session context expired." };
-            }
-
-            const cardsPayload = buildProductCards(cachedProducts.filter(Boolean));
-            
-            return {
-                directResponse: true,
-                message: "Here are the details for the products:",
-                whatsapp_product_cards: cardsPayload.cards.length > 0 ? { type: 'button', transaction: 'product_card', cards: cardsPayload.cards } : undefined
-            };
         }
     },
 
@@ -331,7 +181,7 @@ const productTools = {
             product_id: { type: 'string', description: 'The UUID of the product' }
         },
         handler: async (params, context) => {
-            const { product_id, _suppress_ambient } = params;
+            const { product_id } = params;
             const resolvedId = await resolveProduct(product_id, context);
 
             if (!resolvedId) {
@@ -428,20 +278,8 @@ const productTools = {
                 leanProduct.attributes = leanProduct.metadata.attributes;
             }
 
-            if (context.sessionId && result.data.product && !_suppress_ambient) {
+            if (context.sessionId && result.data.product) {
                 await stateManager.setCurrentlyViewing(context.sessionId, resolvedId);
-                
-                // --- AMBIENT CONTEXT: Record active product topic ---
-                await stateManager.setActiveTopic(context.sessionId, {
-                    type: "single_product",
-                    category_id: rawProduct.metadata?.category_ids?.[0] || null,
-                    category_label: rawProduct.metadata?.category_names?.[0] || null,
-                    vendor: rawProduct.metadata?.attributes?.vendor || vendorTag || null,
-                    product_id: leanProduct.id || resolvedId,
-                    product_name: leanProduct.name || rawProduct.name,
-                    attributes: null
-                });
-
                 await stateManager.learnFromBehavior(context.sessionId, 'view_product', {
                     brand: result.data.product.metadata?.attributes?.v || 'Be3 Store'
                 });
@@ -459,7 +297,7 @@ const productTools = {
             }
 
             return {
-                message: `Here’s more information about **${leanProduct.name || leanProduct.title || 'this product'}**.`,
+                message: `HereÔÇÖs more information about **${leanProduct.name || leanProduct.title || 'this product'}**.`,
                 product: leanProduct,
                 whatsapp: {
                     type: 'button',
@@ -492,7 +330,7 @@ const productTools = {
 
                     const resolvedId = seg._resolved_product_id || await resolveProduct(identifier, context, constraints);
                     if (resolvedId) {
-                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId, _suppress_ambient: true }, context);
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
                         if (!res.error) products.push(res.product);
                     }
                 }
@@ -502,7 +340,7 @@ const productTools = {
                 for (const id of product_ids) {
                     const resolvedId = await resolveProduct(id, context);
                     if (resolvedId) {
-                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId, _suppress_ambient: true }, context);
+                        const res = await productTools['product.getDetails'].handler({ product_id: resolvedId }, context);
                         if (!res.error) products.push(res.product);
                     }
                 }
@@ -525,18 +363,6 @@ const productTools = {
                     );
                     const firstId = products[0]?.id || products[0]?.handle || products[0]?.product_id;
                     if (firstId) await stateManager.setCurrentlyViewing(context.sessionId, firstId);
-                    
-                    // --- AMBIENT CONTEXT: Record comparison topic ---
-                    await stateManager.setActiveTopic(context.sessionId, {
-                        type: "comparison",
-                        category_id: products[0]?.metadata?.category_ids?.[0] || null,
-                        category_label: products[0]?.metadata?.category_names?.[0] || null,
-                        vendor: null,
-                        product_id: null,
-                        product_name: null,
-                        product_ids: products.map(p => p.id || p.handle).filter(Boolean),
-                        attributes: null
-                    });
                 }
             } catch (_) { }
 
@@ -785,7 +611,7 @@ const productTools = {
             const { facet_target, query, category, vendor, attributes = {}, product_id, _resolved_product_id } = params;
             const targetId = _resolved_product_id || product_id;
 
-            // ── 1. Resolve facet_target (plural → canonical) ──
+            // ÔöÇÔöÇ 1. Resolve facet_target (plural ÔåÆ canonical) ÔöÇÔöÇ
             let canonicalCode = facet_target ? facet_target.toLowerCase().trim() : null;
             if (canonicalCode && !ATTRIBUTES[canonicalCode]) {
                 const singular = canonicalCode.replace(/s$/, '');
@@ -811,7 +637,7 @@ const productTools = {
             const attrCode = attrDef ? attrDef.code : canonicalCode;
             const resolvedLabel = attrDef ? attrDef.label : (canonicalCode || 'attribute');
 
-            // ── 1.2. Short-circuit: Check State Cache first (Bug 2 Fix) ──
+            // ÔöÇÔöÇ 1.2. Short-circuit: Check State Cache first (Bug 2 Fix) ÔöÇÔöÇ
             if (targetId && context?.sessionId) {
                 try {
                     const state = await stateManager.getState(context.sessionId);
@@ -873,7 +699,7 @@ const productTools = {
                 }
             }
 
-            // ── 2. Build search params — category is already resolved by pipeline ──
+            // ÔöÇÔöÇ 2. Build search params ÔÇö category is already resolved by pipeline ÔöÇÔöÇ
             const CATS = context.CATEGORIES || CATEGORIES || {};
             const catKey = category ? Object.keys(CATS).find(k => CATS[k].id === category || CATS[k].slug === category) : null;
             const cat = catKey ? CATS[catKey] : null;
@@ -900,7 +726,7 @@ const productTools = {
                 searchParams.append(`attribute.${key}`, finalVal);
             });
 
-            // ── 3. Call /search (same endpoint product.search uses for facets) ──
+            // ÔöÇÔöÇ 3. Call /search (same endpoint product.search uses for facets) ÔöÇÔöÇ
             let facetData = null;
             try {
                 const result = await callBackendAPI(`/search?${searchParams.toString()}`);
@@ -938,7 +764,7 @@ const productTools = {
                 };
             }
 
-            // ── 4. Find the target attribute in backend facet response ──
+            // ÔöÇÔöÇ 4. Find the target attribute in backend facet response ÔöÇÔöÇ
             // Backend format: attributes: [{ code, label, options: [{value, count}], clauses: [...] }]
             let targetFacet = facetData.attributes.find(
                 a => a.code === attrCode || a.code === canonicalCode || a.label?.toLowerCase() === resolvedLabel
@@ -962,7 +788,7 @@ const productTools = {
                 };
             }
 
-            // ── 5. Build the response with values + counts ──
+            // ÔöÇÔöÇ 5. Build the response with values + counts ÔöÇÔöÇ
             const options = (targetFacet.options || []).filter(o => o.count > 0);
             const clauses = (targetFacet.clauses || []).filter(c => c.count > 0);
             const formattedOptions = options.map(o => `${o.value} (${o.count})`).slice(0, 15);
@@ -1029,7 +855,7 @@ const productTools = {
  * Common handler to process search results (Standard, Semantic, Vector, or Similar)
  * Updates state, reference map, and builds WhatsApp UI components.
  */
-async function handleSearchResults(searchResult, params, context, snapshotId, cat, catId, isSuggestion = false) {
+async function handleSearchResults(searchResult, params, context, snapshotId, cat, catId) {
     const { query, limit = 5, page = 1, sort = 'relevance', attributes = {} } = params;
     const { logDebug } = require('../utils/debugLogger');
 
@@ -1050,30 +876,12 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         if (Object.keys(attrs).length > 0) productAttrsMap[pid] = attrs;
     });
 
-    logDebug('TOOL:PRODUCT_ATTRIBUTES_MAP_BUILD [product.search]', {
-        _desc: 'Product attributes map build — extract attributes from raw products before stripping',
-        _example: 'Phone with color=white, brand=Samsung → { color: white, brand: Samsung }',
-        productCount: Object.keys(productAttrsMap).length,
-        sampleAttrs: Object.keys(productAttrsMap).slice(0, 2).reduce((acc, pid) => {
-            acc[pid] = productAttrsMap[pid];
-            return acc;
-        }, {})
-    });
-
     // 2. Strip products for AI consumption
     const products = await processProductList(rawProducts);
 
     // 3. Update reference map and session state
     if (context.sessionId && products.length > 0) {
         const scope = context && context.microstate_active ? 'microstate' : 'global';
-        
-        logDebug('TOOL:REFERENCE_MAP_UPDATE [product.search]', {
-            _desc: 'Reference map update — add product aliases (name, handle, vendor) to reference_map',
-            _example: 'Product "Rattan 2 Drawers" → keys: rattan_2_drawers, the_drawer, etc.',
-            productCount: products.length,
-            sessionId: context.sessionId
-        });
-
         await stateManager.updateReferenceMap(context.sessionId, products, { scope });
         
         const queryForMap = typeof query === 'string' ? query : (query?.query ?? null);
@@ -1091,44 +899,12 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
             existingCtx.category_id = catId;
             if (cat?.label) existingCtx.category = cat.label;
         }
-
-        logDebug('TOOL:SEARCH_CONTEXT_UPDATE [product.search]', {
-            _desc: 'Search context update — fill product_ids and product_attributes_map',
-            _example: 'product_ids: [uuid1, uuid2], attributes_map: { uuid1: { color: white } }',
-            productIdsCount: existingCtx.product_ids.length,
-            attributesMapSize: Object.keys(productAttrsMap).length
-        });
-
         await stateManager.setSearchContext(context.sessionId, existingCtx);
         await stateManager.updateLastSearch(context.sessionId, query || (cat?.label ?? 'Search'), params, products, totalCount);
 
         const firstId = products[0].handle || products[0].id || products[0].product_id;
         await stateManager.setCurrentlyViewing(context.sessionId, firstId);
         
-        // --- AMBIENT CONTEXT: Record active browsing topic ---
-        let finalCatId = catId;
-        let finalCatLabel = cat?.label;
-
-        // If no explicit category was passed to the tool, infer from results
-        if (!finalCatId && rawProducts.length > 0) {
-            const firstProduct = rawProducts[0];
-            const meta = firstProduct.metadata || {};
-            if (Array.isArray(meta.category_ids) && meta.category_ids.length > 0) {
-                finalCatId = meta.category_ids[0];
-                finalCatLabel = Array.isArray(meta.category_names) ? meta.category_names[0] : null;
-            }
-        }
-
-        await stateManager.setActiveTopic(context.sessionId, {
-            type: "product",
-            category_id: finalCatId || null,
-            category_label: finalCatLabel || null,
-            vendor: params.tag || params.attributes?.vendor || null,
-            product_id: null,
-            product_name: null,
-            attributes: params.attributes || null
-        });
-
         const currentState = await stateManager.getState(context.sessionId);
         await stateManager.updateState(context.sessionId, {
             session: { ...currentState.session, search_refinement_count: (currentState.session.search_refinement_count || 0) + 1 }
@@ -1144,112 +920,30 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
     const totalPages = Number(searchResult.pagination?.totalPages || (limit > 0 ? Math.ceil(totalCount / limit) : 1));
     const hasNextPage = currentPage < totalPages;
 
-    const snapshotIdForFilters = Date.now().toString(36);
-    let facetButtons = [];
+    const facetButtons = [];
     try {
-        if (typeof buildFacetRefinerButtons === 'function') {
-            const attributes = params.attributes || {};
-            const refiners = buildFacetRefinerButtons({ facets, attributes, snapshotId: snapshotIdForFilters });
-            facetButtons = [...(refiners.clauseButtons || []), ...(refiners.valueButtons || [])];
-        } else {
-            const facetsAttrs = Array.isArray(facets.attributes) ? facets.attributes : [];
-            facetsAttrs.slice(0, 2).forEach(attr => {
-                (attr.clauses || []).slice(0, 1).forEach(c => {
-                    if (c.count > 0) facetButtons.push({ id: `__filter:clause:${snapshotId}:${attr.code}:${encodeURIComponent(c.name)}__`, title: c.label || c.name, priority: 10 });
-                });
-                (attr.options || []).slice(0, 1).forEach(o => {
-                    if (o.count > 0) facetButtons.push({ id: `__filter:value:${snapshotId}:${attr.code}:${encodeURIComponent(String(o.value))}__`, title: String(o.value), priority: 10 });
-                });
+        const facetsAttrs = Array.isArray(facets.attributes) ? facets.attributes : [];
+        facetsAttrs.slice(0, 2).forEach(attr => {
+            (attr.clauses || []).slice(0, 1).forEach(c => {
+                if (c.count > 0) facetButtons.push({ id: `__filter:clause:${snapshotId}:${attr.code}:${encodeURIComponent(c.name)}__`, title: c.label || c.name, priority: 10 });
             });
-        }
+            (attr.options || []).slice(0, 1).forEach(o => {
+                if (o.count > 0) facetButtons.push({ id: `__filter:value:${snapshotId}:${attr.code}:${encodeURIComponent(String(o.value))}__`, title: String(o.value), priority: 10 });
+            });
+        });
     } catch (_) {}
 
     const globalButtons = [];
     if (hasNextPage) {
-        let seeMoreTitle = 'See more products';
-
-        // Prefer vendor-specific title if searching by tag
-        const tagFilter = params.tag || params.attributes?.vendor || null;
-        if (tagFilter && typeof pickVendorSeeMoreTitle === 'function') {
-            seeMoreTitle = pickVendorSeeMoreTitle(tagFilter);
-        } else {
-            // General query/category search title
-            const catName = cat?.label || '';
-            const clauseWords = params.clause_words || [];
-            let userClause = null;
-            let systemClause = null;
-
-            if (Array.isArray(clauseWords) && clauseWords.length > 0) {
-                userClause = clauseWords[0].word;
-                systemClause = clauseWords[0].clauseId;
-            } else {
-                const attributes = params.attributes || {};
-                systemClause = typeof deriveClauseNameFromAttributes === 'function' ? deriveClauseNameFromAttributes(attributes) : null;
-                if (systemClause && systemClause.length <= 1) systemClause = null;
-            }
-
-            if (isSuggestion) {
-                // --- SUGGESTION TIERED LABELING ---
-                // Tier 1: Clause + Category suggestions
-                if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName} suggestions`;
-                
-                // Tier 2: Category suggestions (or Clause suggestions)
-                if ((!seeMoreTitle || seeMoreTitle.length > 45) && (userClause || catName)) {
-                    if (catName) seeMoreTitle = `See more ${catName} suggestions`;
-                    else seeMoreTitle = `See more ${userClause} suggestions`;
-                }
-
-                // Tier 3: Generic Fallback
-                if (!seeMoreTitle || seeMoreTitle.length > 45) {
-                    seeMoreTitle = 'See more suggestions';
-                }
-            } else {
-                // --- STANDARD TIERED LABELING ---
-                // Tier 1: User Phrasing + Category
-                if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName}`;
-                else if (userClause) seeMoreTitle = `See more ${userClause}`;
-                else if (catName) seeMoreTitle = `See more ${catName}`;
-                else seeMoreTitle = 'See more products';
-
-                // Escalate if Tier 1 exceeds 45 characters
-                if (seeMoreTitle.length > 45) {
-                    // Tier 2: System Clause + Category
-                    const tier2 = `See more ${systemClause} ${catName}`;
-                    if (systemClause && catName && tier2.length <= 45 && systemClause !== userClause) {
-                        seeMoreTitle = tier2;
-                    } 
-                    // Tier 3: Category only
-                    else if (catName && `See more ${catName}`.length <= 45) {
-                        seeMoreTitle = `See more ${catName}`;
-                    } 
-                    // Tier 4: Generic Fallback
-                    else {
-                        seeMoreTitle = 'See more products';
-                    }
-                }
-            }
-        }
-        
-        globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: seeMoreTitle, priority: 100 });
+        globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: `See more products`, priority: 100 });
     }
-
-    // If exactly one product, allow immediate add to cart
-    if (products.length === 1) {
-        const singleId = products[0].id || products[0].handle || products[0].product_id;
-        if (singleId) {
-            globalButtons.push({ id: `__cart:add:${singleId}__`, title: 'Add to cart', priority: 115 });
-        }
-    }
-
-    globalButtons.unshift({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
-    globalButtons.push(...facetButtons);
+    globalButtons.push(...facetButtons.slice(0, 2));
 
     return {
         ...searchResult,
-        ...(searchResult.results ? { results: searchResult.results.map(p => ({ ...p, suppress_images: true })) } : {}),
-        products: products.map(p => ({ ...p, suppress_images: true })),
+        products,
         total: totalCount,
-        whatsapp_product_cards: undefined, // Decoupled: Cards are now summoned purely via __nav:cards:
+        whatsapp_product_cards: cardsPayload.cards.length > 0 ? { type: 'button', transaction: 'product_card', cards: cardsPayload.cards } : undefined,
         whatsapp: globalButtons.length > 0 ? { type: 'button', buttons: globalButtons.slice(0, 3) } : undefined
     };
 }

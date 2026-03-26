@@ -160,6 +160,13 @@ function assemblePrompt(intentNames, toolResultsSummary, options = {}) {
         }
     }
 
+    // --- DYNAMIC SUGGESTIONS GROUNDING ---
+    // If toolResultsSummary contains suggested_products, inject mandatory display rules
+    if (toolResultsSummary.includes('"suggested_products"') && !dco.segments.includes('suggested_products_grounding')) {
+        const sg = SEGMENTS['suggested_products_grounding'];
+        if (sg) promptParts.push(sg());
+    }
+
     // 2. Inject store context if needed
     if (dco.storeContext !== 'none') {
         try {
