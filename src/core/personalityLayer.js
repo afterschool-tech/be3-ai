@@ -166,14 +166,24 @@ function summarizeToolResultsForLLM(results) {
             const isCartView = tool === 'cart.view' || tool === 'cart.get' || tool === 'cart';
             const max = isCartView ? productArray.length : MAX_PRODUCTS_FOR_LLM;
 
-            base.products = productArray.slice(0, max).map(p => ({
-                id: p?.id || p?.handle || p?.product_id || null,
-                name: p?.name || p?.title || null,
-                price: p?.price ?? null,
-                vendor: p?.vendor || p?.metadata?.vendor || null,
-                whatsapp_link: p?.whatsapp_link || null,
-                checkout_url: p?.checkout_url || null
-            }));
+            base.products = productArray.slice(0, max).map(p => {
+                const attrs = (p?.attributes || p?.metadata?.attributes);
+                return {
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    description: typeof p?.description === 'string'
+                        ? (p.description.length > 160 ? `${p.description.substring(0, 160)}...` : p.description)
+                        : null,
+                    attributes: (attrs && typeof attrs === 'object' && !Array.isArray(attrs))
+                        ? Object.keys(attrs).slice(0, 12).reduce((acc, k) => {
+                            acc[k] = attrs[k];
+                            return acc;
+                        }, {})
+                        : null
+                };
+            });
             base.products_truncated = !isCartView && productArray.length > MAX_PRODUCTS_FOR_LLM;
             base.total_products = productArray.length;
 
@@ -257,11 +267,7 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
     const intentNames = dcoContext.intentNames || 'conversation';
     const conversationSummary = dcoContext.conversationSummary || null;
 
-    logDebug('PERSONALITY:TOOL_RESULT_OPTIMIZATION', {
-        _desc: 'Tool result optimization — trim product fields for prompt size',
-        _example: 'Drop long HTML descriptions, keep name/price/vendor',
-        inputToolCount: toolResults.length
-    });
+
 
     const optimizedResults = toolResults.map(tr => {
         if (tr.result && (tr.result.products || tr.result.results || tr.result.items || tr.result.suggested_products)) {
@@ -277,19 +283,33 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 ...tr,
                 result: {
                     ...tr.result,
-                    products: (Array.isArray(limitedProducts) ? limitedProducts : []).map(p => (isCartView ? ({
-                        id: p?.id || null,
-                        name: p?.product_name || p?.name || p?.title || null,
-                        quantity: p?.quantity ?? null,
-                        price: p?.price ?? null,
-                        subtotal: p?.subtotal ?? null
-                    }) : ({
-                        id: p.id,
-                        name: p.name || p.title,
-                        price: p.price,
-                        whatsapp_link: p.whatsapp_link,
-                        checkout_url: p.checkout_url
-                    }))),
+                    products: (Array.isArray(limitedProducts) ? limitedProducts : []).map(p => {
+                        if (isCartView) {
+                            return {
+                                id: p?.id || null,
+                                name: p?.product_name || p?.name || p?.title || null,
+                                quantity: p?.quantity ?? null,
+                                price: p?.price ?? null,
+                                subtotal: p?.subtotal ?? null
+                            };
+                        } else {
+                            const attrs = (p.attributes || p.metadata?.attributes);
+                            return {
+                                id: p.id || p.handle || null,
+                                name: p.name || p.title || null,
+                                price: p.price || null,
+                                description: typeof p.description === 'string'
+                                    ? (p.description.length > 160 ? `${p.description.substring(0, 160)}...` : p.description)
+                                    : null,
+                                attributes: (attrs && typeof attrs === 'object' && !Array.isArray(attrs))
+                                    ? Object.keys(attrs).slice(0, 12).reduce((acc, k) => {
+                                        acc[k] = attrs[k];
+                                        return acc;
+                                    }, {})
+                                    : null
+                            };
+                        }
+                    }),
                     suggested_products: (Array.isArray(limitedSuggested) ? limitedSuggested : []).map(p => ({
                         id: p?.id || null,
                         name: p?.name || p?.title || null,
@@ -317,6 +337,14 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
 
     // Detect similarity data for DCO options
     const summarizedResultsForLLM = summarizeToolResultsForLLM(optimizedResults);
+
+    logDebug('PERSONALITY:TOOL_RESULT_OPTIMIZATION', {
+        _desc: 'Tool result optimization — trim product fields for prompt size',
+        _example: 'Drop long HTML descriptions, keep name/price/vendor',
+        inputToolCount: toolResults.length,
+        optimizedResultsForLLM: summarizedResultsForLLM
+    });
+
     const resultsSummary = JSON.stringify(summarizedResultsForLLM);
 
     const hasSimilarityData = Array.isArray(summarizedResultsForLLM) && summarizedResultsForLLM.some(x =>
