@@ -489,6 +489,13 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         if (bestCandidate) {
             const { catId, catMeta, phrase, tier, matchedWordIndices } = bestCandidate;
 
+            // Merge intra-phrase tier rejects bubbled up from normalizeCategory
+            if (catMeta && Array.isArray(catMeta._tierRejects)) {
+                for (const r of catMeta._tierRejects) {
+                    tierRejects.push(r);
+                }
+            }
+
             let categoryQuality = 1.0;
             if (catMeta && catMeta.layer === 'layer2') {
                 if (tier >= 4) categoryQuality = 0.35;

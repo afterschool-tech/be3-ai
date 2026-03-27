@@ -131,6 +131,18 @@ function calculatePipelineConfidence(pd) {
             const quality = Number(categoryEntity.quality);
             const source = categoryEntity.source;
             const catMeta = categoryEntity.matchMeta;
+            
+            // Helper to get true backend category name
+            const getCatLabel = (id, fallback) => {
+                let trueName = fallback?.toLowerCase() || '';
+                if (id && storeContext?.CATEGORIES) {
+                    const catObj = storeContext.CATEGORIES[id] || Object.values(storeContext.CATEGORIES).find(c => c.id === id);
+                    if (catObj) trueName = (catObj.label || catObj.slug || trueName).toLowerCase();
+                }
+                return trueName;
+            };
+
+            const winnerLabel = getCatLabel(categoryEntity.id, categoryEntity.value);
 
             if (source === 'SEMANTIC_KICKSTART') {
                 // Category came entirely from transformer — no deterministic confirmation
@@ -154,7 +166,8 @@ function calculatePipelineConfidence(pd) {
             // B2c. High-scoring category lost to tier
             if (Array.isArray(categoryEntity._tierRejects) && categoryEntity._tierRejects.length > 0) {
                 const worst = categoryEntity._tierRejects.reduce((a, b) => b.score > a.score ? b : a);
-                record('Category Tier', -8, `"${worst.phrase}" had score ${worst.score.toFixed(2)} (tier ${worst.tier}) but lost to "${categoryEntity.value}" (tier ${categoryEntity.matchMeta?.lexTier || '?'}) — tier dominated`);
+                const worstLabel = getCatLabel(worst.catId, worst.phrase);
+                record('Category Tier', -8, `"${worstLabel}" had score ${worst.score.toFixed(2)} (tier ${worst.tier}) but lost to "${winnerLabel}" (tier ${categoryEntity.matchMeta?.lexTier || '?'}) — tier dominated`);
             }
         }
 
@@ -282,6 +295,7 @@ function calculatePipelineConfidence(pd) {
             const extractorCatId = categoryEntity.id;
             
             // Resolve the true canonical category name from the store context (in-memory lookup, no API call)
+            // Helper defined in B2, but just safely doing inline lookup if categoryEntity exists
             let trueCategoryName = categoryEntity.value?.toLowerCase() || '';
             if (extractorCatId && storeContext?.CATEGORIES) {
                 const catObj = storeContext.CATEGORIES[extractorCatId] || Object.values(storeContext.CATEGORIES).find(c => c.id === extractorCatId);

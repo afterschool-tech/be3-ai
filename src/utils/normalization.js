@@ -664,6 +664,23 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         });
     }
 
+    const tierRejects = [];
+    if (scored.length > 1) {
+        const winner = scored[0];
+        for (let i = 1; i < scored.length; i++) {
+            const candidate = scored[i];
+            if (candidate.score > winner.score) {
+                tierRejects.push({
+                    catId: candidate.id,
+                    score: candidate.score,
+                    tier: candidate.lexTier,
+                    phrase: cat,
+                    lostTo: { label: winner.label, tier: winner.lexTier, score: winner.score }
+                });
+            }
+        }
+    }
+
     return result(scored[0].id, {
         layer: 'layer2',
         score: scored[0].score,
@@ -672,7 +689,8 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         depth: scored[0].depth,
         match: scored[0].match,
         bonuses: scored[0].bonuses,
-        usedWords: scored[0].wordMatches.map(m => m.word)
+        usedWords: scored[0].wordMatches.map(m => m.word),
+        _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
     });
 }
 
