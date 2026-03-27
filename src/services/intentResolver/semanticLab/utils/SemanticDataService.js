@@ -61,16 +61,24 @@ class SemanticDataService {
         const contextHint = Array.from(existingVariations).slice(-10).join(', ');
 
         const isClause = config.type === 'Attribute Clause';
+        const isFacet = config.type === 'Attribute Facet';
+
         const taskDescription = isClause
             ? `Generate ${targetCount} NEW, UNIQUE, and HIGHLY DIVERSE short descriptors (1-2 words, adjectives, or slang terms) that a user might use to imply this attribute.`
-            : `Generate ${targetCount} NEW, UNIQUE, and HIGHLY DIVERSE ways a user might express this ${config.type || 'intent/query'}.`;
+            : isFacet
+                ? `Generate ${targetCount} NEW, UNIQUE, and HIGHLY DIVERSE nouns, labels, or technical terms that a user might use to refer to this attribute name.`
+                : `Generate ${targetCount} NEW, UNIQUE, and HIGHLY DIVERSE ways a user might express this ${config.type || 'intent/query'}.`;
 
         const guidelines = isClause
             ? `1. Focus purely on the ADJECTIVE or DESCRIPTOR (e.g. if the attribute is "affordable", generate "budget", "cheap", "wallet-friendly").
 2. DO NOT include category names (no "cheap laptop", just "cheap").
 3. Include diverse slang and formal synonyms.
 4. DO NOT repeat existing examples.`
-            : `1. Include diverse slang, highly formal language, social noise, and implied needs.
+            : isFacet
+                ? `1. Focus on NOUN SYNONYMS and TECHNICAL TERMS (e.g. if the attribute is "storage", generate "capacity", "memory", "disk space", "ROM").
+2. Include both formal industry terms and common user slang.
+3. DO NOT repeat existing examples.`
+                : `1. Include diverse slang, highly formal language, social noise, and implied needs.
 2. VARY the sentence structure significantly (e.g. questions, commands, fragments).
 3. DO NOT repeat any existing examples.
 4. DO NOT include actual product names, use [product] as a placeholder.`;

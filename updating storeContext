@@ -1,0 +1,37 @@
+# Standardized Semantic Sync Tools
+
+I've refactored the Clause sync tool and created a new Facet sync tool. Both now use a standardized command-line interface.
+
+## 🛠️ Clause Bench Sync
+Manage semantic variations for attributes/clauses (e.g., "affordable" → "cheap", "wallet-friendly").
+
+**Commands:**
+- `node src/services/intentResolver/semanticLab/clauses/sync.js update`
+  - *Checks [clauses.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/clauses.js) for any new categories/attributes and generates initial AI variations for them.*
+- `node src/services/intentResolver/semanticLab/clauses/sync.js add-variations [count]`
+  - *Adds [count] more semantic runs to every single clause in the bench (default: 1).*
+- `node src/services/intentResolver/semanticLab/clauses/sync.js parity`
+  - *Brings all clauses up to the current average run count (useful if some are lagging).*
+- `node src/services/intentResolver/semanticLab/clauses/sync.js prune`
+  - *Hunts down and removes highly similar variations to keep the data clean.*
+
+## 💎 Facet Bench Sync [NEW]
+Manage synonyms for attribute names themselves (e.g., "storage" → "capacity", "memory", "ROM").
+
+**Commands:**
+- `node src/services/intentResolver/semanticLab/facets/sync.js update`
+  - *Checks `storeContext.ATTRIBUTES` for any new attribute codes and generates initial technical synonyms.*
+- `node src/services/intentResolver/semanticLab/facets/sync.js add-variations [count]`
+  - *Adds [count] more technical synonym runs to all facets.*
+- `node src/services/intentResolver/semanticLab/facets/sync.js prune`
+  - *Performs a strict deduplication on facet synonyms.*
+
+## 🧠 Brain Improvement
+The [SemanticDataService](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/semanticLab/utils/SemanticDataService.js#5-202) was also updated to understand the difference between **Clauses** (adjectives) and **Facets** (nouns/technical terms), ensuring the AI generated better synonyms for each mode.
+
+---
+
+### **Usage Example (New Store Category Added)**
+1. `node src/context/builder.js` (Rebuild Context)
+2. `node src/services/intentResolver/semanticLab/clauses/sync.js update` (Detect new attribute filters)
+3. `node src/services/intentResolver/semanticLab/facets/sync.js update` (Detect new attribute names)
