@@ -415,6 +415,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         });
 
         let bestCandidate = null;
+        const tierRejects = []; // Track candidates that had higher scores but lost due to lower tier
 
         for (let size = 3; size >= 1; size--) {
             for (let i = 0; i <= words.length - size; i++) {
@@ -451,6 +452,16 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                         (currentTier === bestCandidate.tier && currentScore === bestCandidate.score && size > bestCandidate.size);
 
                     if (isBetter) {
+                        // Track if the old best had a higher score but lost to tier
+                        if (bestCandidate && currentTier > bestCandidate.tier && currentScore < bestCandidate.score) {
+                            tierRejects.push({
+                                phrase: bestCandidate.phrase,
+                                catId: bestCandidate.catId,
+                                score: bestCandidate.score,
+                                tier: bestCandidate.tier,
+                                lostTo: { phrase, tier: currentTier, score: currentScore }
+                            });
+                        }
                         bestCandidate = { 
                             catId, 
                             catMeta, 
@@ -460,6 +471,15 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                             score: currentScore,
                             matchedWordIndices: Array.from({ length: size }, (_, j) => i + j) 
                         };
+                    } else if (bestCandidate && currentScore > bestCandidate.score && currentTier < bestCandidate.tier) {
+                        // Current candidate has higher score but lost due to lower tier
+                        tierRejects.push({
+                            phrase,
+                            catId,
+                            score: currentScore,
+                            tier: currentTier,
+                            lostTo: { phrase: bestCandidate.phrase, tier: bestCandidate.tier, score: bestCandidate.score }
+                        });
                     }
                 }
             }
@@ -496,7 +516,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 matchMeta: catMeta,
                 quality: categoryQuality,
                 wordIndices: matchedWordIndices,
-                consumedWordIndices
+                consumedWordIndices,
+                _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
             });
 
             for (const idx of consumedWordIndices) {

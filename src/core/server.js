@@ -364,6 +364,8 @@ app.post('/chat', async (req, res) => {
                 toolsSelected: toolsSelected
             });
 
+            // Pipeline confidence moved to index.js to support multi-intent statements natively
+
             logDebug('SERVER:STATEMANAGER_PRUNE', {
                 _desc: 'Prune state — clear stale context on new search or category shift',
                 _example: 'product_search → prune old reference_map if category changed',

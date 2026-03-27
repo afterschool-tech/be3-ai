@@ -39,6 +39,7 @@ const contextReconciler = require('./pipeline/contextReconciler');
 const { cleanText, stripSocialNoise } = require('./pipeline/nlpCleaner');
 const { createPositionTracker } = require('./pipeline/extractionPositionTracker');
 const { runResidualChunkAnalysis } = require('./pipeline/residualChunkAnalyzer');
+const { calculatePipelineConfidence } = require('./pipeline/pipelineConfidence');
 const microstateFeatureProvider = require('./pipeline/microstateFeatureProvider');
 const { logDebug } = require('../../utils/debugLogger');
 const { getParent, getSiblings, getPath, isRoot, findById } = require('../../context/categoryHelpers');
@@ -2082,6 +2083,33 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
+    // ═══════════════════════════════════════════════
+    // PIPELINE CONFIDENCE — Single end-of-pipeline calculation
+    // No per-stage instrumentation. Reads all pipeline artifacts in one shot.
+    // ═══════════════════════════════════════════════
+    const confidenceResult = calculatePipelineConfidence({
+        userMessage,
+        afterFuzzy,
+        senseResult,
+        batchedSemanticContext,
+        resolvedStatements,
+        normalizedStatements,
+        portedStatements,
+        bledStatements,
+        storeContext,
+        isEngineered: false
+    });
+
+    logDebug('PIPELINE:CONFIDENCE_SCORE', {
+        _desc: 'Pipeline confidence score — multi-directional aggregate across all stages',
+        _icon: confidenceResult.verdict === 'CONFIDENT' ? '🟢' : '🔴',
+        score: confidenceResult.score,
+        verdict: confidenceResult.verdict,
+        signalCount: confidenceResult.signalCount,
+        signals: confidenceResult.signals
+    });
+
+
     return {
         intents: intentsToProcess,
         tools,
@@ -2094,7 +2122,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         resolutions: allResolutions,
         statementResolutions: resolvedStatements,
         stack_active: stackResult.stack_active || false,
-        stack_remaining: stackResult.stack_active ? stackResult.total_intents - 1 : 0
+        stack_remaining: stackResult.stack_active ? stackResult.total_intents - 1 : 0,
+        confidenceScore: confidenceResult.score,
+        confidenceSummary: confidenceResult
     };
 }
 

@@ -49,7 +49,9 @@ async function resolveDeterministic(userMessage, state) {
         tools: result.tools || [],
         intent: result.intents?.[0]?.intentName || 'unknown',
         confidence: result.intents?.[0]?.score || 0,
-        result: result
+        result: result,
+        pipelineConfidence: result.confidenceScore ?? 100,
+        confidenceSummary: result.confidenceSummary ?? null
     };
 
     logDebug('DETERMINISTIC_RESOLVER:OUTPUT', {

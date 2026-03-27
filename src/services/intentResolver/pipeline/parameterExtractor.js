@@ -556,6 +556,12 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         delete deterministic._blocked_bare_category;
     }
 
+    // ── CAPTURE PIE's INDEPENDENT DISCOVERY (before IntelliSense override) ──
+    // PIE discovers its own product_name from residual words/text analysis.
+    // IntelliSense's resolved_product (in baseFromEntities) will overwrite it.
+    // We preserve the pre-override value for confidence cross-check.
+    const _pie_product_name = deterministic.product_name || null;
+
     // Merge base results (entities + deterministic) with array awareness
     // NOTE: extractStructural has been deprecated (StructuralMatcher retired).
     // Merge base results (entities + deterministic) with array awareness
@@ -805,6 +811,9 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     // The backend search module gracefully ignores non-matching params anyway.
 
     // (applyGuard logic removed)
+
+    // Attach PIE's independent product discovery for confidence cross-checking
+    merged._pie_product_name = _pie_product_name;
 
     return merged;
 }
