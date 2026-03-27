@@ -575,13 +575,15 @@ app.post('/chat', async (req, res) => {
                 // ═══════════════════════════════════════════════
                 // PRODUCT SENTINEL — Pre-personality relevance gate
                 // Evaluates whether returned products match the user's intent.
-                // If irrelevant, re-executes product.search via the tool pipeline
-                // so results get first-class treatment (cards, buttons, facets, state).
+                // Bypassed for engineered UI tokens (e.g. __nav:more__, __filter__)
                 // ═══════════════════════════════════════════════
-                const searchResultIndex = consolidatedToolResults.findIndex(tr =>
+                const ENABLE_SENTINEL = true;
+                const isEngineeredMessage = message && message.trim().startsWith('__');
+
+                const searchResultIndex = (!isEngineeredMessage && ENABLE_SENTINEL) ? consolidatedToolResults.findIndex(tr =>
                     tr && (tr.tool === 'product.search' || tr.tool === 'product_search') &&
                     tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0
-                );
+                ) : -1;
 
                 if (searchResultIndex >= 0) {
                     const searchResult = consolidatedToolResults[searchResultIndex];
@@ -619,11 +621,27 @@ app.post('/chat', async (req, res) => {
 
                         if (newSearchResult && newSearchResult.result) {
                             // Move new products to suggested_products (prevents sentinel loop)
-                            const newProducts = newSearchResult.result.products || [];
-                            newSearchResult.result.suggested_products = newProducts;
-                            newSearchResult.result.suggested_total = newProducts.length;
-                            newSearchResult.result.products = [];
-                            newSearchResult.result.suggestion_message = "I couldn't find an exact match for your request. Here are some suggestions you might like instead.";
+                            const final = newSearchResult.result;
+                            const newProducts = final.products || [];
+                            const originalWhatsappButtons = final.whatsapp?.buttons || [];
+                            const snapshotId = Date.now().toString(36);
+                            const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more suggestions' };
+
+                            newSearchResult.result = {
+                                ...final,
+                                products: [],
+                                suggested_products: newProducts,
+                                suggested_total: final.total || newProducts.length,
+                                suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                                whatsapp_product_cards: undefined, // clear inline cards so UI uses suggestion flow
+                                whatsapp: {
+                                    type: 'button',
+                                    buttons: [
+                                        { id: '__nav:results__', title: 'See product details' },
+                                        seeMoreBtn
+                                    ].filter(Boolean)
+                                }
+                            };
 
                             logDebug('SERVER:SENTINEL_RESEARCH_COMPLETE', {
                                 _desc: 'Sentinel re-search complete — new results placed in suggested_products (products=[])',
