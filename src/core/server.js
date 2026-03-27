@@ -20,6 +20,7 @@ const { selectTools } = require('./toolSelector');
 const { resolveDeterministic } = require('./deterministicResolver');
 const { executeTools } = require('./orchestrator');
 const stack = require('../services/intentResolver/pipeline/stack');
+const { evaluateProductRelevance } = require('./productSentinel');
 const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
 const { logDebug, startRun } = require('../utils/debugLogger');
 const fs = require('fs');
@@ -565,6 +566,86 @@ app.post('/chat', async (req, res) => {
                     for (const ei of latestStack.executed_intents) {
                         if (ei.intentName && !allIntentNames.includes(ei.intentName)) {
                             allIntentNames.push(ei.intentName);
+                        }
+                    }
+                }
+
+                // ═══════════════════════════════════════════════
+                // PRODUCT SENTINEL — Pre-personality relevance gate
+                // Evaluates whether returned products match the user's intent.
+                // If irrelevant, re-executes product.search via the tool pipeline
+                // so results get first-class treatment (cards, buttons, facets, state).
+                // ═══════════════════════════════════════════════
+                const searchResultIndex = consolidatedToolResults.findIndex(tr =>
+                    tr && (tr.tool === 'product.search' || tr.tool === 'product_search') &&
+                    tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0
+                );
+
+                if (searchResultIndex >= 0) {
+                    const searchResult = consolidatedToolResults[searchResultIndex];
+                    const sentinelVerdict = await evaluateProductRelevance(message, searchResult.result.products);
+
+                    if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
+                        logDebug('SERVER:SENTINEL_REJECTED', {
+                            _desc: 'Sentinel rejected products as irrelevant — re-executing product.search with vector query',
+                            _icon: '🔄',
+                            vector_query: sentinelVerdict.vector_query,
+                            rejected_product_count: searchResult.result.products.length,
+                            rejected_products: searchResult.result.products.slice(0, 8).map(p => ({
+                                name: p?.name || p?.title || 'unknown',
+                                price: p?.price ?? null
+                            }))
+                        });
+
+                        // Re-execute product.search through the tool pipeline (first-class results)
+                        const sentinelTools = [{
+                            tool: 'product.search',
+                            params: {
+                                query: sentinelVerdict.vector_query,
+                                search_mode: 'VECTOR',
+                                limit: 10
+                            },
+                            reason: `Sentinel re-search: original products rejected as irrelevant`
+                        }];
+
+                        const sentinelResults = await executeTools(sentinelTools, session_id);
+                        await injectImages(sentinelResults, stateManager);
+
+                        const newSearchResult = sentinelResults.find(tr =>
+                            tr && tr.tool === 'product.search' && tr.result
+                        );
+
+                        if (newSearchResult && newSearchResult.result) {
+                            // Move new products to suggested_products (prevents sentinel loop)
+                            const newProducts = newSearchResult.result.products || [];
+                            newSearchResult.result.suggested_products = newProducts;
+                            newSearchResult.result.suggested_total = newProducts.length;
+                            newSearchResult.result.products = [];
+                            newSearchResult.result.suggestion_message = "I couldn't find an exact match for your request. Here are some suggestions you might like instead.";
+
+                            logDebug('SERVER:SENTINEL_RESEARCH_COMPLETE', {
+                                _desc: 'Sentinel re-search complete — new results placed in suggested_products (products=[])',
+                                _icon: '📦',
+                                vector_query: sentinelVerdict.vector_query,
+                                suggested_product_count: newProducts.length,
+                                suggested_products: newProducts.slice(0, 8).map(p => ({
+                                    name: p?.name || p?.title || 'unknown',
+                                    price: p?.price ?? null
+                                }))
+                            });
+
+                            // Replace the old product.search result entirely
+                            consolidatedToolResults.splice(searchResultIndex, 1, newSearchResult);
+
+                            // Also update the toolResults array so buttons/cards extraction uses the new data
+                            const oldToolIdx = toolResults.findIndex(tr =>
+                                tr && (tr.tool === 'product.search' || tr.tool === 'product_search')
+                            );
+                            if (oldToolIdx >= 0) {
+                                toolResults.splice(oldToolIdx, 1, newSearchResult);
+                            } else {
+                                toolResults.push(newSearchResult);
+                            }
                         }
                     }
                 }
