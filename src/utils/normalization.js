@@ -7,27 +7,57 @@ const { CATEGORIES, VENDORS } = require('../context/storeContext');
 const { logDebug } = require('./debugLogger');
 const CATEGORY_ALIASES = require('../context/categoryAliases');
 
+// ── Normalization Cache (Memoization) ──
+// Prevents redundant processing of identical strings across the pipeline and tools.
+// Caches: String -> Resolved_ID (or ID+Meta if returnMeta is true)
+const normalizationCache = new Map();
+
 /**
  * Normalizes a category string (label, slug, or breadcrumb) to a valid Category ID.
  * @param {string} cat - The input category string.
  * @param {Object} [context] - Optional categories context.
  * @param {boolean} [exactMatchOnly=false] - If true, only returns IDs for exact label/slug matches.
+ * @param {Object} [options] - Resolution options (hints, transformer, etc.)
  * @returns {string|null} - The Category UUID or null.
  */
 function normalizeCategory(cat, context = null, exactMatchOnly = false, options = {}) {
     if (!cat) return null;
-    const cats = context || CATEGORIES;
-    let catLower = String(cat || '').trim().toLowerCase();
 
-    const debug = !!options?.debug;
     const initiator = options?.initiator || 'unknown';
-    const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
     const returnMeta = !!options?.returnMeta;
+    const catLower = String(cat || '').trim().toLowerCase();
+
+    // ── Cache Key Generation ──
+    // Consider input, exactMatch mode, and hints for cache uniqueness.
+    const hintHash = Array.isArray(options.categoryHints) ? options.categoryHints.join(',') : '';
+    const cacheKey = `${catLower}|exact:${exactMatchOnly}|meta:${returnMeta}|hints:${hintHash}`;
+
+    if (normalizationCache.has(cacheKey)) {
+        const cached = normalizationCache.get(cacheKey);
+        if (options.debug !== false) { // Don't log if explicitly silenced (e.g. n-gram loop)
+            logDebug('NORMALIZE_CATEGORY:CACHE_HIT', {
+                _icon: '⚡',
+                _desc: `normalizeCategory [${initiator}]: CACHE_HIT`,
+                input: cat,
+                winner: returnMeta ? (cached?.meta?.label || cached?.id) : cached,
+                initiator
+            });
+        }
+        return cached;
+    }
+
+    const cats = context || CATEGORIES;
+    const debug = !!options?.debug;
+    const topK = Number.isFinite(options?.topK) ? Math.max(1, Math.min(25, options.topK)) : 5;
     const semanticContext = options?.semanticContext || null;
 
     const result = (id, meta) => {
         if (!id) return null;
-        return returnMeta ? { id, meta: meta || null } : id;
+        const res = returnMeta ? { id, meta: meta || null } : id;
+        
+        // Populate cache before returning
+        normalizationCache.set(cacheKey, res);
+        return res;
     };
 
     // Guard: avoid partial-matching extremely short tokens (e.g., "in", "on", "at")
@@ -47,7 +77,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 _type: 'CATEGORY_RESOLUTION_SIMPLE',
                 _icon: '🔑',
                 _color: '#3b82f6',
-                _desc: 'normalizeCategory — direct key/slug match',
+                _desc: `normalizeCategory [${initiator}] — direct key/slug match`,
                 initiator,
                 input: cat,
                 targetId: cats[catLower].id,
@@ -138,7 +168,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         if (debug) {
             logDebug('NORMALIZE_CATEGORY:ALIAS_STATUS', {
                 _icon: '🔄',
-                _desc: 'Alias matching ACTIVATED — transformer unavailable, aliasing is primary fallback',
+                _desc: `normalizeCategory [${initiator}] — Alias matching ACTIVATED — transformer unavailable`,
                 initiator,
                 input: cat,
                 reason: 'TRANSFORMER_DOWN'
@@ -156,12 +186,11 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                     if (tokenVariants.has(alias) || (inputLoose && inputLoose === alias)) {
                         if (debug) {
                             const resolved = Object.values(cats).find(c => c && c.id === targetId);
-                            logDebug('NORMALIZE_CATEGORY:ALIAS_HIT', {
-                                _type: 'CATEGORY_RESOLUTION_SIMPLE',
-                                _icon: '🎭',
-                                _color: '#10b981',
-                                _desc: 'normalizeCategory — alias inventory override (transformer down)',
+                            logDebug('NORMALIZE_CATEGORY:ALIAS_STATUS', {
+                                _icon: '💥',
+                                _desc: `normalizeCategory [${initiator}] — alias inventory override (transformer down)`,
                                 initiator,
+                                alias: a,
                                 input: cat,
                                 matchedAlias: a,
                                 aliasStatus: 'ACTIVATED_TRANSFORMER_DOWN',
@@ -197,7 +226,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         if (debug) {
             logDebug('NORMALIZE_CATEGORY:ALIAS_STATUS', {
                 _icon: '⏭️',
-                _desc: 'Alias matching SKIPPED — transformer available, semantic coverage active',
+                _desc: `normalizeCategory [${initiator}] — Alias matching SKIPPED — transformer available`,
                 initiator,
                 input: cat,
                 reason: 'SKIPPED_TRANSFORMER_AVAILABLE'
@@ -313,9 +342,9 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                 const resolved = idToCat[winner.id];
                 logDebug('NORMALIZE_CATEGORY:LAYER1', {
                     _type: 'CATEGORY_RESOLUTION_SIMPLE',
-                    _icon: '⚡',
-                    _color: '#f59e0b',
-                    _desc: 'normalizeCategory — layer1 exact/plural match',
+                    _icon: '🏁',
+                    _color: '#10b981',
+                    _desc: `normalizeCategory [${initiator}] — layer1 exact/plural match`,
                     initiator,
                     input: cat,
                     winner: {
@@ -510,6 +539,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         // Explicit Logging for Semantic Promotion
         if (semanticTier > lexTier && debug) {
             logDebug('NORMALIZE_CATEGORY:SEMANTIC_PROMOTION', {
+                initiator,
                 category: c.label,
                 slug: c.slug,
                 fromTier: lexTier,
@@ -523,8 +553,9 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
 
         const finalScore = lexScore + depthBonus + hintBoost + semanticBoost;
 
-        if (finalScore > 0) {
+        if (finalScore > 0 && debug) {
             logDebug('NORMALIZE_CATEGORY:SCORE_BREAKDOWN', {
+                initiator,
                 category: c.label,
                 slug: c.slug,
                 lexScore: lexScore.toFixed(2),
@@ -582,7 +613,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
             _type: 'INTENT_AMPLIFIER_DETAIL', // Specialized rendering in Telemetry UI
             _icon: '🎯',
             _color: '#6366f1', // Indigo premium color
-            _desc: 'Intent Amplifier Scoring Fallback',
+            _desc: `normalizeCategory [${initiator}] — Final Result Summary`,
             _physics: '🧪 Purity (Density) x 🚀 Amplification (Coverage) + 🏁 Kicker + 💡 Hints',
             initiator,
             input: cat,

@@ -16,7 +16,7 @@ const categoryTools = {
             category: { type: 'string', description: 'Category name or slug' }
         },
         handler: async (params, context) => {
-            const catId = normalizeCategory(params.category);
+            const catId = normalizeCategory(params.category, null, false, { initiator: 'category_tool_arrivals', debug: true });
             if (!catId) return { error: `Category "${params.category}" not found.` };
             const cat = context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)];
 
@@ -39,7 +39,7 @@ const categoryTools = {
             category: { type: 'string', description: 'Parent category name or slug' }
         },
         handler: async (params, context) => {
-            const catId = normalizeCategory(params.category);
+            const catId = normalizeCategory(params.category, null, false, { initiator: 'category_tool_popular', debug: true });
             if (!catId) return { error: `Parent category "${params.category}" not found.` };
             const parent = context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)];
 
@@ -63,7 +63,7 @@ const categoryTools = {
             category: { type: 'string', description: 'Category name or slug' }
         },
         handler: async (params, context) => {
-            const catId = normalizeCategory(params.category);
+            const catId = normalizeCategory(params.category, null, false, { initiator: 'category_tool_trending', debug: true });
             if (!catId) return { error: `Category "${params.category}" not found.` };
             const cat = context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)];
 
@@ -88,7 +88,7 @@ const categoryTools = {
             category: { type: 'string', description: 'Category name or slug' }
         },
         handler: async (params, context) => {
-            const catId = normalizeCategory(params.category);
+            const catId = normalizeCategory(params.category, null, false, { initiator: 'category_tool_deals', debug: true });
             if (!catId) return { error: `Category "${params.category}" not found.` };
             const cat = context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)];
 

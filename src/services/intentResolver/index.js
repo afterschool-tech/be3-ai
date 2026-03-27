@@ -1261,6 +1261,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             bledParams: stmt.bledParams || [],
             reconciledFromContext: stmt.reconciledFromContext || false,
             extractedParams: stmt.extractedParams || {},
+            pipelineEntities: stmt.pipelineEntities,
             _ported_from: stmt._ported_from
         };
     });
@@ -1934,7 +1935,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     if (winner && userId) {
         // Use pipeline entities (includes IntelliSense/PIE resolved_product signals)
         // instead of re-extracting from scratch, so triggers can trust the full pipeline.
-        const entities = winner.pipelineEntities || extractEntities(cleanText(userMessage), storeContext, idfMap).entities;
+        const entities = winner.pipelineEntities || [];
         const triggered = microstateRegistry.checkTriggers(
             winner.intentName,
             winner.parameters,

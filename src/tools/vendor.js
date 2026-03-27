@@ -148,7 +148,7 @@ const vendorTools = {
             searchQuery.append('attribute.vendor', vendorTag);
             searchQuery.append('type', 'product');
 
-            let catId = normalizeCategory(category);
+            let catId = normalizeCategory(category, null, false, { initiator: 'vendor_tool', debug: true });
             const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
             const cat = catKey ? context.CATEGORIES[catKey] : null;
 

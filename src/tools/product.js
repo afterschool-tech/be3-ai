@@ -56,7 +56,7 @@ const productTools = {
                 }
             } catch (_) { }
 
-            let catId = normalizeCategory(category);
+            let catId = normalizeCategory(category, null, false, { initiator: 'product_tool_search', debug: true });
             const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
             const cat = catKey ? context.CATEGORIES[catKey] : null;
 
@@ -645,7 +645,7 @@ const productTools = {
         },
         handler: async (params, context) => {
             const { category, need } = params;
-            const catId = normalizeCategory(category);
+            const catId = normalizeCategory(category, null, false, { initiator: 'product_tool_detail', debug: true });
             const cat = catId ? context.CATEGORIES[Object.keys(context.CATEGORIES).find(k => context.CATEGORIES[k].id === catId)] : null;
 
             if (!cat) return {

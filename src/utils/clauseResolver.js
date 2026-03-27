@@ -11,7 +11,7 @@ async function resolveClauses(userMessage, category, conversationHistory = []) {
     if (!category) return { clauses: [], display_words: [] };
 
     // Normalize category to its UUID first
-    const categoryId = normalizeCategory(category);
+    const categoryId = normalizeCategory(category, null, false, { initiator: 'clause_resolver', debug: true });
     if (!categoryId) {
         console.warn(`[Resolver] Category "${category}" could not be normalized.`);
         return { clauses: [], display_words: [] };

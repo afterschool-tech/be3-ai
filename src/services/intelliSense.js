@@ -80,7 +80,7 @@ function significantTokens(str) {
     return str
         .toLowerCase()
         .split(/\s+/)
-        .filter(t => t.length > 2 && !STOP_WORDS.has(t));
+        .filter(t => t.length >= 2 && !STOP_WORDS.has(t));
 }
 
 /**
@@ -117,17 +117,23 @@ function vetResults(sourceText, parsed) {
         }
 
         // ── Pass 2: vet text grounding ────────────────────────────────────────
-        // stmt.text must share at least one significant token with the source.
+        // stmt.text must share significant tokens with the source.
         // Catches example-leakage (LLM returning its own few-shot example verbatim).
-        // Replace with stmtOriginal rather than discard — keeps pipeline running.
+        // For a statement to be grounded, at least 50% of its significant tokens 
+        // must exist in the source text.
         let stmtText = (stmt.text || '').toLowerCase();
         const textTokens = significantTokens(stmtText);
-        const textIsGrounded = textTokens.length === 0 || textTokens.some(t => sourceLower.includes(t));
+        const matchedTokens = textTokens.filter(t => sourceLower.includes(t));
+
+        // Grounding rule: if tokens exist, at least one must match, 
+        // AND more than 50% of tokens must match (strict majority).
+        const textIsGrounded = textTokens.length === 0 ||
+            (matchedTokens.length > 0 && matchedTokens.length >= textTokens.length * 0.5);
 
         if (!textIsGrounded) {
             logs.push(
                 `stmt.text "${stmtText.substring(0, 40)}..." not grounded in source ` +
-                `(likely example leakage) — replacing with original`
+                `(likely example leakage: ${matchedTokens.length}/${textTokens.length} tokens matched) — replacing with original`
             );
             stmtText = stmtOriginal.toLowerCase();
         }
@@ -135,9 +141,6 @@ function vetResults(sourceText, parsed) {
         // ── Pass 2.5: discard fully ungrounded statements ─────────────────────
         // If both text AND original share no significant tokens with the source,
         // there is nothing real left to work with — discard the statement entirely.
-        // This handles the case where original fallback landed on stmt.text which
-        // was itself ungrounded (circular collapse), producing a fabricated statement
-        // that would otherwise fire real tools against invented data.
         const originalGroundedAfterFallback = significantTokens(stmtOriginal).some(t => sourceLower.includes(t));
         const textGroundedAfterReplacement = significantTokens(stmtText).some(t => sourceLower.includes(t));
 
@@ -146,10 +149,9 @@ function vetResults(sourceText, parsed) {
             continue;
         }
 
-        // Combined search space for product/adjective vetting
-        const searchSpace = `${stmtText} ${stmtOriginal.toLowerCase()}`;
-
         // ── Pass 3: vet products ──────────────────────────────────────────────
+        // Products MUST exist in the source text (the raw user message), 
+        // NOT just the normalized stmtText, to prevent circular hallucination.
         const vettedProducts = [];
         if (Array.isArray(stmt.products)) {
             for (const p of stmt.products) {
@@ -162,19 +164,19 @@ function vetResults(sourceText, parsed) {
                     continue;
                 }
 
-                // At least one significant token must exist in search space
+                // At least one significant token must exist in the ORIGINAL source text
                 const nameTokens = name
                     .split(/\s+/)
                     .filter(t => t.length > 2 && !STOP_WORDS.has(t) && !['called', 'named'].includes(t));
 
-                if (nameTokens.length > 0 && !nameTokens.some(t => searchSpace.includes(t))) {
-                    logs.push(`Dropped hallucinated product: "${name}"`);
+                if (nameTokens.length > 0 && !nameTokens.some(t => sourceLower.includes(t))) {
+                    logs.push(`Dropped hallucinated product: "${name}" (not in source message)`);
                     continue;
                 }
 
                 const vettedAdjs = adjs.filter(adj => {
-                    const found = searchSpace.includes(adj.toLowerCase());
-                    if (!found) logs.push(`Dropped hallucinated adjective: "${adj}" for "${name}"`);
+                    const found = sourceLower.includes(adj.toLowerCase());
+                    if (!found) logs.push(`Dropped hallucinated adjective: "${adj}" for "${name}" (not in source message)`);
                     return found;
                 });
 
@@ -224,7 +226,10 @@ async function analyze(text, aiQueryFn) {
         const response = await aiQueryFn(prompt, 800, 0.1, 2, 'json_object', 'llama-3.1-8b-instant');
         const parsed = JSON.parse(response);
 
-        const { vettedStatements, logs } = vetResults(text, parsed);
+        const vetting = vetResults(text, parsed);
+        if (!vetting) return null;
+
+        const { vettedStatements, logs } = vetting;
         const duration = Date.now() - startTime;
 
         logDebug('PIPELINE:STAGE0B_INTELLISENSE', {

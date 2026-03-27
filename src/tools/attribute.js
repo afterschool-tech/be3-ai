@@ -12,7 +12,7 @@ const { normalizeCategory } = require('../utils/normalization');
 function getAttributesForCategory(categoryInput) {
     if (!categoryInput) return [];
 
-    const catId = normalizeCategory(categoryInput);
+    const catId = normalizeCategory(categoryInput, null, false, { initiator: 'attribute_tool', debug: true });
     const cat = catId ? CATEGORIES[Object.keys(CATEGORIES).find(k => CATEGORIES[k].id === catId)] : null;
     if (!cat) return [];
 

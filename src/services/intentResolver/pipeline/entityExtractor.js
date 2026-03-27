@@ -414,7 +414,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             return pos;
         });
 
-        let semanticOnlyFallback = null; // Saved semantic-only match — used if N-gram exhausts without lexical match
+        let bestCandidate = null;
 
         for (let size = 3; size >= 1; size--) {
             for (let i = 0; i <= words.length - size; i++) {
@@ -426,86 +426,96 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     }
                 }
                 if (overlaps) continue;
+
                 const phraseWords = words.slice(i, i + size);
                 if (phraseWords.every(w => FILLERS.has(w))) continue;
                 if (FILLERS.has(phraseWords[0]) || FILLERS.has(phraseWords[phraseWords.length - 1])) continue;
+
                 const phrase = phraseWords.join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
-                const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, topK: 5, returnMeta: true, initiator: 'entityExtractor', semanticContext, categoryHints });
+
+                const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: false, topK: 5, returnMeta: true, initiator: 'entityExtractor', semanticContext, categoryHints });
                 const catId = catRes && typeof catRes === 'object' ? catRes.id : catRes;
                 const catMeta = catRes && typeof catRes === 'object' ? (catRes.meta || null) : null;
+
                 if (catId) {
-                    // Semantic-only layer2 match (no lexical evidence) — save as fallback
-                    // but don't terminate the loop. Let the N-gram scan exhaust to give
-                    // determinism a chance to find a real word match at a later position.
-                    if (catMeta && catMeta.layer === 'layer2' && (catMeta.lexScore === 0 || catMeta.lexScore === undefined)) {
-                        if (!semanticOnlyFallback || (catMeta.score || 0) > (semanticOnlyFallback.catMeta?.score || 0)) {
-                            semanticOnlyFallback = { catId, catMeta, phrase, matchedWordIndices: Array.from({ length: size }, (_, j) => i + j) };
-                        }
-                        continue;
-                    }
-                    let categoryQuality = 1.0;
-                    if (catMeta && catMeta.layer === 'layer2') {
-                        const tier = Number(catMeta.lexTier || 0);
-                        if (tier >= 4) categoryQuality = 0.35;
-                        else if (tier === 3) categoryQuality = 0.25;
-                        else if (tier === 2) categoryQuality = 0.10;
-                        else categoryQuality = 0.10;
-                    }
-                    const matchedWordIndices = Array.from({ length: size }, (_, j) => i + j);
+                    // --- Winner Selection Logic (Full Scan) ---
+                    // Instead of immediate break, we track the best candidate across the full sentence.
+                    const currentScore = catMeta?.score || 0;
+                    const currentTier = Number(catMeta?.lexTier || 0);
 
-                    // ACCOUNTABILITY: Only consume words that normalizeCategory explicitly highlights as "used"
-                    let consumedWordIndices = [];
-                    if (catMeta && Array.isArray(catMeta.usedWords)) {
-                        const usedWordsSet = new Set(catMeta.usedWords.map(w => w.toLowerCase()));
-                        consumedWordIndices = matchedWordIndices.filter(idx => {
-                            const word = words[idx].toLowerCase();
-                            // Check if the word itself or any of its sub-tokens (split by dash/slash) are in usedWords
-                            const subTokens = word.split(/[\s\-_\/]+/g).filter(Boolean);
-                            return subTokens.some(st => usedWordsSet.has(st));
-                        });
-                    }
+                    const isBetter = !bestCandidate || 
+                        currentTier > bestCandidate.tier || 
+                        (currentTier === bestCandidate.tier && currentScore > bestCandidate.score) ||
+                        (currentTier === bestCandidate.tier && currentScore === bestCandidate.score && size > bestCandidate.size);
 
-                    entities.push({
-                        type: 'category',
-                        value: phrase,
-                        id: catId,
-                        source: 'storeContext.CATEGORIES',
-                        matchMeta: catMeta,
-                        quality: categoryQuality,
-                        wordIndices: matchedWordIndices,
-                        consumedWordIndices
-                    });
-
-                    for (const idx of consumedWordIndices) {
-                        consumed.add(idx);
+                    if (isBetter) {
+                        bestCandidate = { 
+                            catId, 
+                            catMeta, 
+                            phrase, 
+                            size,
+                            tier: currentTier, 
+                            score: currentScore,
+                            matchedWordIndices: Array.from({ length: size }, (_, j) => i + j) 
+                        };
                     }
-                    break; // Only one category per statement
                 }
             }
-            if (entities.some(e => e.type === 'category')) break;
         }
 
-        // If N-gram loop exhausted without a lexical match, accept the semantic-only fallback
-        if (!entities.some(e => e.type === 'category') && semanticOnlyFallback) {
+        // If we found a winner after the full scan, commit it
+        if (bestCandidate) {
+            const { catId, catMeta, phrase, tier, matchedWordIndices } = bestCandidate;
+
+            let categoryQuality = 1.0;
+            if (catMeta && catMeta.layer === 'layer2') {
+                if (tier >= 4) categoryQuality = 0.35;
+                else if (tier === 3) categoryQuality = 0.25;
+                else if (tier === 2) categoryQuality = 0.10;
+                else categoryQuality = 0.10;
+            }
+
+            // ACCOUNTABILITY: Only consume words that normalizeCategory explicitly highlights as "used"
+            let consumedWordIndices = [];
+            if (catMeta && Array.isArray(catMeta.usedWords)) {
+                const usedWordsSet = new Set(catMeta.usedWords.map(w => w.toLowerCase()));
+                consumedWordIndices = matchedWordIndices.filter(idx => {
+                    const word = words[idx].toLowerCase();
+                    const subTokens = word.split(/[\s\-_\/]+/g).filter(Boolean);
+                    return subTokens.some(st => usedWordsSet.has(st));
+                });
+            }
+
             entities.push({
                 type: 'category',
-                value: semanticOnlyFallback.phrase,
-                id: semanticOnlyFallback.catId,
+                value: phrase,
+                id: catId,
                 source: 'storeContext.CATEGORIES',
-                matchMeta: semanticOnlyFallback.catMeta,
-                quality: 0.10,
-                wordIndices: semanticOnlyFallback.matchedWordIndices,
-                consumedWordIndices: []
+                matchMeta: catMeta,
+                quality: categoryQuality,
+                wordIndices: matchedWordIndices,
+                consumedWordIndices
             });
 
-            logDebug('ENTITY:SEMANTIC_ONLY_FALLBACK', {
-                _desc: 'N-gram exhausted without lexical match — accepting semantic-only category as fallback',
-                phrase: semanticOnlyFallback.phrase,
-                catId: semanticOnlyFallback.catId,
-                lexScore: semanticOnlyFallback.catMeta?.lexScore || 0
+            for (const idx of consumedWordIndices) {
+                consumed.add(idx);
+            }
+
+            logDebug('ENTITY:WINNER_SELECTION', {
+                _desc: 'Category scan complete — highest scoring candidate selected from full phrase',
+                winner: phrase,
+                id: catId,
+                tier,
+                score: bestCandidate.score.toFixed(2),
+                lexScore: catMeta?.lexScore || 0
             });
+
+            // ── Winner Detail Trace ──
+            // Re-run the winner through normalizeCategory with debug: true
+            // to populate the logs with its specific breakdown without n-gram spam.
+            normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: true, initiator: 'entityExtractor_winner_trace', semanticContext, categoryHints });
         }
 
 

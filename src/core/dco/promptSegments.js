@@ -43,9 +43,9 @@ CRITICAL - NEVER EXPOSE INTERNAL PROCESSES:
      */
     grounding: () => `GROUNDING RULES:
 - TRUTHFULNESS: Only mention products provided in the Tool Results below (this includes "products" and "suggested_products"). NEVER invent or hallucinate products to pad out a list.
-- EXACT COUNT: If the tool returns exactly 1 or 2 products, ONLY mention those exact products. Do NOT hallucinate extra items to match a previous conversational pattern.
+- EXACT COUNT: If the tool returns exact matches, ONLY mention those products. Do NOT hallucinate extra items to match a previous conversational pattern.
 - NO HALLUCINATIONS: If no products found and NO suggestions are provided, admit it warmly. 
-- SUGGESTIONS PRIORITY: If "products" is empty but "suggested_products" is NOT empty, you MUST present the suggested products as relevant alternatives. Do NOT say you found nothing.
+- SUGGESTIONS EVALUATION (SELECTIVE): If "products" is empty but "suggested_products" is NOT empty, evaluate the list and present only high-quality, relevant alternatives. Filter out any junk or unrelated items. It is better to show only perfect matches than multiple unrelated ones.
 - PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
 - LINKS & BUTTONS: If a "whatsapp_link" or "checkout_url" is provided, you can mention it. If they are missing, do NOT apologize or mention it — the system automatically provides buttons.
 - For Price, Stock, and Specs, use ONLY provided data. NEVER invent.
@@ -55,18 +55,21 @@ CRITICAL - NEVER EXPOSE INTERNAL PROCESSES:
      * Suggested products grounding — injected dynamically when suggestions exist
      * ~80 tokens
      */
-    suggested_products_grounding: () => `SUGGESTED PRODUCTS (MANDATORY):
-- The primary search returned 0 results, but we found these similar or related items instead.
-- You MUST acknowledge that you didn't find an exact match, then SHIFT the conversation to show these suggestions.
-- Do NOT say "I couldn't find anything" and stop. Say "I didn't find that exact one, but check these out!"
-- Treat "suggested_products" with the same level of detail as primary products.`,
+    suggested_products_grounding: () => `SUGGESTED PRODUCTS (CURATION REQUIRED):
+- The primary search returned 0 results. You are provided with a list of potential alternatives.
+- ACT AS A SELECTIVE CURATOR: You are NOT required to show everything in this list. 
+- EVALUATE EACH ITEM: Only present products that have a logical, artistic, or practical connection to the user's intent. 
+- FILTER THE NOISE: If some suggestions are junk but some are good, show ONLY the good ones. 
+- QUALITY OVER QUANTITY: It is better to show a small selection of great suggestions than a long list of random ones.
+- If ALL suggestions are unrelated noise, admit you found nothing rather than pushing unrelated data.
+- Treat your hand-picked selections with the same level of detail as primary products.`,
 
     /**
      * Suggestion XML block instruction
      * ~100 tokens
      */
-    suggestions: () => `SUGGESTIONS (MANDATORY SYSTEM REQUIREMENT):
-If you end your message by asking the user if they want you to do something, YOU MUST append:
+    suggestions: () => `SUGGESTIONS (SYSTEM GUIDELINE):
+If you end your message by asking the user if they want you to do something, provide a structured suggestion ONLY if it feels like a natural next step:
 <suggestion>
 {
   "is_suggestion": true,
