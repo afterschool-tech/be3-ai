@@ -290,8 +290,19 @@ function calculatePipelineConfidence(pd) {
         }
 
         // C3. Transformer ↔ Entity Extractor category agreement
-        const transformerCategories = batchedSemanticContext?.results?.[0]?.entities?.category || [];
+        const transformerCategories = [...(batchedSemanticContext?.results?.[0]?.entities?.category || [])];
+        const transformerConf = batchedSemanticContext?.results?.[0]?.confidence || {};
+
         if (categoryEntity && transformerCategories.length > 0) {
+            // Sort categories by semantic confidence to ensure we compare against the true winner
+            if (transformerCategories.length > 1) {
+                transformerCategories.sort((a, b) => {
+                    const scoreA = transformerConf[`category:${a}`] || 0;
+                    const scoreB = transformerConf[`category:${b}`] || 0;
+                    return scoreB - scoreA;
+                });
+            }
+
             const extractorCatId = categoryEntity.id;
             
             // Resolve the true canonical category name from the store context (in-memory lookup, no API call)
@@ -304,16 +315,20 @@ function calculatePipelineConfidence(pd) {
                 }
             }
 
-            const transformerCat = transformerCategories[0]?.toLowerCase();
+            const topScore = transformerConf[`category:${transformerCategories[0]}`] || 0;
+            const topCategories = transformerCategories.filter(cat => (transformerConf[`category:${cat}`] || 0) === topScore);
 
-            if (trueCategoryName && transformerCat) {
-                const catMatches = trueCategoryName.includes(transformerCat) || transformerCat.includes(trueCategoryName) || 
-                                   (trueCategoryName.replace(/s$/, '') === transformerCat.replace(/s$/, ''));
-                if (catMatches) {
-                    record('Category Agreement', +5, `Entity Extractor and Transformer agree on category: "${trueCategoryName}"`);
-                } else {
-                    record('Category Agreement', -5, `Category disagreement — Extractor matched "${trueCategoryName}" (via phrase "${categoryEntity.value}"), Transformer guessed "${transformerCat}"`);
-                }
+            const catMatches = topCategories.some(tCat => {
+                const transformerCat = tCat.toLowerCase();
+                return trueCategoryName.includes(transformerCat) || transformerCat.includes(trueCategoryName) || 
+                       (trueCategoryName.replace(/s$/, '') === transformerCat.replace(/s$/, ''));
+            });
+
+            if (catMatches) {
+                record('Category Agreement', +5, `Entity Extractor and Transformer agree on category: "${trueCategoryName}"`);
+            } else {
+                const transformerCat = transformerCategories[0]?.toLowerCase();
+                record('Category Agreement', -5, `Category disagreement — Extractor matched "${trueCategoryName}" (via phrase "${categoryEntity.value}"), Transformer guessed "${transformerCat}"`);
             }
         }
     } else {
@@ -373,9 +388,13 @@ function calculatePipelineConfidence(pd) {
 
     // ─── FINAL ───
     const finalScore = Math.round(score);
+    let verdict = 'LOW_CONFIDENCE';
+    if (finalScore >= 15) verdict = 'CONFIDENT';
+    else if (finalScore >= 0) verdict = 'TENTATIVE';
+
     return {
         score: finalScore,
-        verdict: finalScore >= 0 ? 'CONFIDENT' : 'LOW_CONFIDENCE',
+        verdict,
         signalCount: signals.length,
         signals: signals
             .filter(s => s.reason)
