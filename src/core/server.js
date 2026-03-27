@@ -735,14 +735,14 @@ app.post('/chat', async (req, res) => {
             });
             await stateManager.extendTTL(session_id);
 
-            // DCO: Trigger summarizer every 4 messages (not every 10 tools)
-            const historyLen = state.conversation_history?.length || 0;
-            if (historyLen > 0 && historyLen % 4 === 0) {
+            // DCO: Trigger summarizer every 5 individual user messages
+            const userMessagesCount = (state.conversation_history || []).filter(m => m.role === 'user').length + 1; // +1 for the message that just came in
+            if (userMessagesCount > 0 && userMessagesCount % 5 === 0) {
                 logDebug('SERVER:CONVERSATION_SUMMARIZATION', {
                     _desc: 'Conversation summarization — shopping-journey-aware summary for DCO history compression',
-                    _example: 'Every 4 messages → "User browsed phones, added Samsung A55, prefers mid-range"',
-                    historyLength: historyLen,
-                    trigger: 'every_4_messages'
+                    _example: 'Every 5 user messages → "User browsed phones, added Samsung A55, prefers mid-range"',
+                    userMessagesCount: userMessagesCount,
+                    trigger: 'every_5_user_messages'
                 });
                 summarizeConversation(session_id).catch(err => console.error(err));
             }
@@ -995,13 +995,13 @@ async function summarizeConversation(sessionId) {
     if (history.length < 3) return;
 
     const SUMMARIZER_PROMPT = `You are summarizing a shopping conversation for an AI assistant's memory.
-Capture ONLY:
-- Products discussed (names, not IDs)
-- Categories browsed
-- Cart actions (added/removed what)
-- User preferences (budget, color, brand, size)
-- Current shopping stage (just browsing / comparing / ready to buy)
-Keep it under 80 words. No fluff. No greetings. Facts only.`;
+Capture only actionable details for future context:
+- PRODUCTS & CATEGORIES: Names and types discussed.
+- CART ACTIONS: Items added, removed, or pending checkout.
+- SPECIFIC PREFERENCES: Attributes the user explicitly likes or dislikes (budget, brand, size, color).
+- USER SENTIMENT: Is the user satisfied, frustrated, or confused?
+- SERVICE SUCCESS: How well did the assistant resolve the user's intent? (e.g. 'Found exact model', 'Struggled with brand filtering', 'Corrected by user').
+Keep it under 100 words. Facts only. No fluff.`;
 
     const messages = [
         { role: "system", content: SUMMARIZER_PROMPT },
