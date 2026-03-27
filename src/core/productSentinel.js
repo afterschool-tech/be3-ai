@@ -21,28 +21,42 @@ const { logDebug } = require('../utils/debugLogger');
 // Future: replace with confidence-based activation.
 const ENABLE_SENTINEL = true;
 
-const SENTINEL_PROMPT = `You are a product relevance evaluator. You will receive:
-1. The user's message
-2. A list of products returned by search
+const SENTINEL_PROMPT = `You are a product relevance evaluator for an eCommerce store. You will receive:
+1. The user's query
+2. A list of products returned by our search engine
 
-Your ONLY job: decide if the products are relevant to what the user is asking for.
+Your ONLY job: determine if the search result contains items that genuinely match the intent of the query.
 
-Rules:
-- If NONE of the products match the TYPE the user wants, respond: {"relevant": false, "vector_query": "<better search phrase>"}
-- If at least SOME products match what the user wants, respond: {"relevant": true}
-- Example: User says "gaming phones", products are gaming chairs/headsets → {"relevant": false, "vector_query": "gaming smartphones"}
-- Example: User says "headphones", products include headphones → {"relevant": true}
+RELEVANCE RULES (MARK {"relevant": true}):
+- BROAD MATCH: If the user asks for a category (e.g., "phone") and results contain that category, it is relevant.
+- MODEL VARIATIONS: Minor variations in model numbers, sizes, or spec-suffixes ARE relevant. If the product is a functional match for the user's intent, it is relevant.
+- SUBSIDIARIES: If they ask for a brand (e.g., "Samsung"), any product by that brand is relevant.
+- PARTIAL ENTITY: If at least 1 or 2 items in the list correctly match the requested item type, it is relevant. 
 
-Respond with ONLY valid JSON. No other text.`;
+IRRELEVANCE RULES (MARK {"relevant": false}):
+- CATEGORY MISMATCH: User wants "gaming phones", results are ONLY "gaming chairs".
+- ZERO MATCH: None of the words in the product names/categories share any meaning with the user's intent.
+- NOISE: The list is generic placeholder data or completely different product types (e.g., user wants "wipes", results are "laptops").
+
+VETTING RULE (ABSOLUTE):
+- If the products returned already contain the correct BRAND and MODEL mentioned in the query, you MUST mark {"relevant": true}. 
+- Do NOT suggest the exact same query as a vector_query. If you don't have a genuinely different/better search phrase to try, mark it as {"relevant": true}.
+
+RESPONSE FORMAT:
+- If products are relevant: {"relevant": true}
+- If products are NOT relevant: {"relevant": false, "vector_query": "a smarter search phrase"}
+
+IMPORTANT: Respond with ONLY valid JSON. No other text.`;
 
 /**
  * Evaluate whether returned products are relevant to the user's query.
  * 
  * @param {string} userMessage - The user's original message
  * @param {Array} products - Array of product objects from product.search
+ * @param {string} conversationSummary - Optional summary of the conversation history
  * @returns {Promise<{relevant: boolean, vector_query?: string}>}
  */
-async function evaluateProductRelevance(userMessage, products) {
+async function evaluateProductRelevance(userMessage, products, conversationSummary = null) {
     if (!ENABLE_SENTINEL) return { relevant: true };
     if (!Array.isArray(products) || products.length === 0) return { relevant: true };
 
@@ -54,9 +68,13 @@ async function evaluateProductRelevance(userMessage, products) {
             : null
     }));
 
+    const userContext = conversationSummary 
+        ? `Conversation Summary: "${conversationSummary}"\n\nCurrent User message: "${userMessage}"`
+        : `User message: "${userMessage}"`;
+
     const messages = [
         { role: 'system', content: SENTINEL_PROMPT },
-        { role: 'user', content: `User message: "${userMessage}"\n\nProducts returned:\n${JSON.stringify(productSummary)}` }
+        { role: 'user', content: `${userContext}\n\nProducts returned:\n${JSON.stringify(productSummary)}` }
     ];
 
     try {

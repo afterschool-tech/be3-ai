@@ -587,7 +587,7 @@ app.post('/chat', async (req, res) => {
 
                 if (searchResultIndex >= 0) {
                     const searchResult = consolidatedToolResults[searchResultIndex];
-                    const sentinelVerdict = await evaluateProductRelevance(message, searchResult.result.products);
+                    const sentinelVerdict = await evaluateProductRelevance(message, searchResult.result.products, state.conversation_summary);
 
                     if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
                         logDebug('SERVER:SENTINEL_REJECTED', {
