@@ -1,9 +1,58 @@
 
 /**
  * AUTO-GENERATED Semantic Clauses
- * Generated: 2026-03-10T06:53:16.952Z
+ * Generated: 2026-03-27T18:02:35.647Z
  */
 const CLAUSES = {
+    "color_for_ladies": {
+        "label": "color for ladies",
+        "attribute": "color",
+        "matches": [
+            "red",
+            "green",
+            "blue",
+            "yellow",
+            "pink",
+            "grey",
+            "white"
+        ],
+        "display": {
+            "prefix": "vibrant",
+            "suffix": "for ladies"
+        },
+        "categories": [
+            "gadgets",
+            "food",
+            "sound_gadget",
+            "iphones",
+            "kitchen_appliances",
+            "ultrabooks",
+            "gaming"
+        ],
+        "excluded_categories": []
+    },
+    "color_for_men": {
+        "label": "color for men",
+        "attribute": "color",
+        "matches": [
+            "black",
+            "brown"
+        ],
+        "display": {
+            "prefix": "",
+            "suffix": "for men"
+        },
+        "categories": [
+            "gadgets",
+            "food",
+            "sound_gadget",
+            "iphones",
+            "kitchen_appliances",
+            "ultrabooks",
+            "gaming"
+        ],
+        "excluded_categories": []
+    },
     "apple_product": {
         "label": "apple product",
         "attribute": "brand",
@@ -15,6 +64,7 @@ const CLAUSES = {
             "suffix": "by apple"
         },
         "categories": [
+            "fashion",
             "android_phones",
             "business_laptops",
             "smartphones_&_tablets",
@@ -39,6 +89,7 @@ const CLAUSES = {
             "suffix": "by infinix"
         },
         "categories": [
+            "fashion",
             "android_phones",
             "business_laptops",
             "smartphones_&_tablets",
@@ -63,6 +114,7 @@ const CLAUSES = {
             "suffix": ""
         },
         "categories": [
+            "fashion",
             "android_phones",
             "business_laptops",
             "smartphones_&_tablets",
@@ -88,60 +140,11 @@ const CLAUSES = {
         },
         "categories": [
             "android_phones",
-            "gadgets",
             "sound_gadget",
             "iphones",
             "kitchen_appliances",
-            "smartphones_&_tablets"
-        ],
-        "excluded_categories": []
-    },
-    "color_for_ladies": {
-        "label": "color for ladies",
-        "attribute": "color",
-        "matches": [
-            "red",
-            "green",
-            "blue",
-            "yellow",
-            "pink",
-            "grey",
-            "white"
-        ],
-        "display": {
-            "prefix": "vibrant",
-            "suffix": "for ladies"
-        },
-        "categories": [
-            "food",
-            "gadgets",
-            "sound_gadget",
-            "iphones",
-            "kitchen_appliances",
-            "ultrabooks",
-            "gaming"
-        ],
-        "excluded_categories": []
-    },
-    "color_for_men": {
-        "label": "color for men",
-        "attribute": "color",
-        "matches": [
-            "black",
-            "brown"
-        ],
-        "display": {
-            "prefix": "",
-            "suffix": "for men"
-        },
-        "categories": [
-            "food",
-            "gadgets",
-            "sound_gadget",
-            "iphones",
-            "kitchen_appliances",
-            "ultrabooks",
-            "gaming"
+            "smartphones_&_tablets",
+            "gadgets"
         ],
         "excluded_categories": []
     },

@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Comprehensive Store Context
- * Generated: 2026-03-10T06:53:16.950Z
+ * Generated: 2026-03-27T18:02:35.646Z
  * 
  * This context powers the AI with:
  * - Hierarchical categories (parent→child)
@@ -87,6 +87,21 @@ const CATEGORIES = {
         ],
         "product_count": 0,
         "total_count": 0
+    },
+    "clothing": {
+        "id": "7a8f8f3e-1221-4409-a223-e3b09b3f8f1b",
+        "label": "clothing",
+        "slug": "clothing",
+        "description": "quality clothes for everyone",
+        "image_url": "https://media.istockphoto.com/id/653003428/photo/fashionable-clothes-in-a-boutique-store-in-london.jpg?s=612x612&w=0&k=20&c=UafU4a4xSbepJow4kvNu0q-LD4hFUoli7q3fvwkp79s=",
+        "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "children": [],
+        "attributes": [
+            "vendor"
+        ],
+        "allowed_clauses": [],
+        "product_count": 2,
+        "total_count": 2
     },
     "components": {
         "id": "d64b240e-3146-4386-a98a-418057f66614",
@@ -209,6 +224,30 @@ const CATEGORIES = {
         "product_count": 2,
         "total_count": 3
     },
+    "fashion": {
+        "id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "label": "Fashion",
+        "slug": "fashion",
+        "description": "Get all kinds of clothes and wears",
+        "image_url": "https://burst.shopifycdn.com/photos/model-in-gold-fashion.jpg?width=1000&format=pjpg&exif=0&iptc=0",
+        "parent_id": null,
+        "children": [
+            "clothing",
+            "shoes"
+        ],
+        "attributes": [
+            "vendor",
+            "brand",
+            "size"
+        ],
+        "allowed_clauses": [
+            "apple_product",
+            "infinix_product",
+            "microsoft_product"
+        ],
+        "product_count": 0,
+        "total_count": 4
+    },
     "flight_stick": {
         "id": "383d8882-9177-48ec-a21f-d560d1f5b6f5",
         "label": "Flight Stick",
@@ -249,7 +288,7 @@ const CATEGORIES = {
         "label": "Gadgets",
         "slug": "gadgets",
         "description": "very good cat sha",
-        "image_url": null,
+        "image_url": "https://www.ul.com/sites/default/files/styles/hero_boxed_width/public/2019-05/Image18_Quadcopter-drone_Caban_022819-Hero-1000x715.jpg?itok=6WSk4wNj",
         "parent_id": null,
         "children": [
             "electronics",
@@ -257,14 +296,14 @@ const CATEGORIES = {
         ],
         "attributes": [
             "vendor",
+            "color",
             "material",
-            "storage",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "small_storage"
         ],
         "product_count": 7,
         "total_count": 11
@@ -406,6 +445,21 @@ const CATEGORIES = {
         "product_count": 0,
         "total_count": 0
     },
+    "home_decor": {
+        "id": "577c0281-bccb-4a16-9692-b73714c77299",
+        "label": "Home Decor",
+        "slug": "home-decor",
+        "description": "",
+        "image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSCFa3WkM-CRwBTHErXi8VIjttQoQv3zToAVw&s",
+        "parent_id": null,
+        "children": [],
+        "attributes": [
+            "vendor"
+        ],
+        "allowed_clauses": [],
+        "product_count": 7,
+        "total_count": 7
+    },
     "ipad": {
         "id": "62327f48-39a3-49b8-8182-295b87342a21",
         "label": "Ipad",
@@ -498,21 +552,6 @@ const CATEGORIES = {
         "product_count": 6,
         "total_count": 7
     },
-    "new_cat": {
-        "id": "577c0281-bccb-4a16-9692-b73714c77299",
-        "label": "New Cat",
-        "slug": "new-cat",
-        "description": "",
-        "image_url": null,
-        "parent_id": null,
-        "children": [],
-        "attributes": [
-            "vendor"
-        ],
-        "allowed_clauses": [],
-        "product_count": 7,
-        "total_count": 7
-    },
     "nintendo_switch": {
         "id": "d3ef8b79-d7a8-4925-9f94-677a74e400e5",
         "label": "Nintendo Switch",
@@ -595,6 +634,21 @@ const CATEGORIES = {
         ],
         "product_count": 0,
         "total_count": 0
+    },
+    "shoes": {
+        "id": "bfa02d36-7c1e-45f4-aa9a-8ea38ca689a8",
+        "label": "Shoes",
+        "slug": "shoes",
+        "description": "Quality footwear for everyone",
+        "image_url": "https://static0.therichestimages.com/wordpress/wp-content/uploads/2021/07/Some-Of-The-Most-Expensive-Shoes-Ever-Sold.jpg?w=1600&h=1200&fit=crop",
+        "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "children": [],
+        "attributes": [
+            "vendor"
+        ],
+        "allowed_clauses": [],
+        "product_count": 2,
+        "total_count": 2
     },
     "smartphones": {
         "id": "7b8b5bb4-7878-4203-a550-a0941e1e3eb9",
@@ -780,81 +834,6 @@ const CATEGORIES = {
 };
 
 const ATTRIBUTES = {
-    "size": {
-        "id": "4b41a785-a8f1-46e4-ae95-9b0957f00f0d",
-        "code": "s",
-        "label": "size",
-        "type": "text",
-        "predefined_values": [],
-        "clauses": [],
-        "categories": [
-            "electronics",
-            "iphones",
-            "food",
-            "sound_gadget",
-            "kitchen_appliances"
-        ]
-    },
-    "price_tier": {
-        "id": "7b125323-a6eb-47a5-9c5d-3fd98ca31dca",
-        "code": "p",
-        "label": "price tier",
-        "type": "select",
-        "predefined_values": [
-            {
-                "label": "budget",
-                "value": "budget"
-            },
-            {
-                "label": "midrange",
-                "value": "midrange"
-            },
-            {
-                "label": "premium",
-                "value": "premium"
-            },
-            {
-                "label": "flagship",
-                "value": "flagship"
-            }
-        ],
-        "clauses": [
-            {
-                "name": "p",
-                "label": "affordable",
-                "matches": [
-                    "budget",
-                    "midrange"
-                ],
-                "operator": "LIKE",
-                "prefix": "cheap",
-                "suffix": ""
-            },
-            {
-                "name": "e",
-                "label": "expensive",
-                "matches": [
-                    "premium",
-                    "flagship"
-                ],
-                "operator": "LIKE",
-                "prefix": "expensive",
-                "suffix": ""
-            }
-        ],
-        "categories": [
-            "smartphones",
-            "tablets",
-            "desktops",
-            "laptops_&_computers",
-            "components",
-            "cooling_system",
-            "graphics_card",
-            "ram_&_storage",
-            "ultrabooks",
-            "gaming"
-        ]
-    },
     "brand": {
         "id": "2eaf76d8-8872-46f3-8f96-e56e36b9a32c",
         "code": "b",
@@ -931,9 +910,86 @@ const ATTRIBUTES = {
             }
         ],
         "categories": [
+            "fashion",
             "android_phones",
             "business_laptops",
             "smartphones_&_tablets",
+            "laptops_&_computers",
+            "components",
+            "cooling_system",
+            "graphics_card",
+            "ram_&_storage",
+            "ultrabooks",
+            "gaming"
+        ]
+    },
+    "size": {
+        "id": "4b41a785-a8f1-46e4-ae95-9b0957f00f0d",
+        "code": "s",
+        "label": "size",
+        "type": "text",
+        "predefined_values": [],
+        "clauses": [],
+        "categories": [
+            "fashion",
+            "electronics",
+            "iphones",
+            "food",
+            "sound_gadget",
+            "kitchen_appliances"
+        ]
+    },
+    "price_tier": {
+        "id": "7b125323-a6eb-47a5-9c5d-3fd98ca31dca",
+        "code": "p",
+        "label": "price tier",
+        "type": "select",
+        "predefined_values": [
+            {
+                "label": "budget",
+                "value": "budget"
+            },
+            {
+                "label": "midrange",
+                "value": "midrange"
+            },
+            {
+                "label": "premium",
+                "value": "premium"
+            },
+            {
+                "label": "flagship",
+                "value": "flagship"
+            }
+        ],
+        "clauses": [
+            {
+                "name": "p",
+                "label": "affordable",
+                "matches": [
+                    "budget",
+                    "midrange"
+                ],
+                "operator": "LIKE",
+                "prefix": "cheap",
+                "suffix": ""
+            },
+            {
+                "name": "e",
+                "label": "expensive",
+                "matches": [
+                    "premium",
+                    "flagship"
+                ],
+                "operator": "LIKE",
+                "prefix": "expensive",
+                "suffix": ""
+            }
+        ],
+        "categories": [
+            "smartphones",
+            "tablets",
+            "desktops",
             "laptops_&_computers",
             "components",
             "cooling_system",
@@ -952,9 +1008,9 @@ const ATTRIBUTES = {
         "clauses": [],
         "categories": [
             "iphones",
-            "gadgets",
             "sound_gadget",
-            "kitchen_appliances"
+            "kitchen_appliances",
+            "gadgets"
         ]
     },
     "quality": {
@@ -1015,8 +1071,8 @@ const ATTRIBUTES = {
             }
         ],
         "categories": [
-            "food",
             "gadgets",
+            "food",
             "sound_gadget",
             "iphones",
             "kitchen_appliances",
@@ -1044,11 +1100,11 @@ const ATTRIBUTES = {
         ],
         "categories": [
             "android_phones",
-            "gadgets",
             "sound_gadget",
             "iphones",
             "kitchen_appliances",
-            "smartphones_&_tablets"
+            "smartphones_&_tablets",
+            "gadgets"
         ]
     },
     "vendor": {
@@ -1063,12 +1119,14 @@ const ATTRIBUTES = {
             "android_phones",
             "android_tablets",
             "business_laptops",
+            "clothing",
             "components",
             "controller_&_game_pads",
             "cooling_system",
             "desktops",
             "e-readers",
             "electronics",
+            "fashion",
             "flight_stick",
             "food",
             "gadgets",
@@ -1079,16 +1137,17 @@ const ATTRIBUTES = {
             "gaming_desktops",
             "gaming_laptops",
             "graphics_card",
+            "home_decor",
             "ipad",
             "iphones",
             "kitchen_appliances",
             "laptops_&_computers",
-            "new_cat",
             "nintendo_switch",
             "phone_accessories",
             "playstation",
             "racing_wheels",
             "ram_&_storage",
+            "shoes",
             "smartphones",
             "smartphones_&_tablets",
             "sound_gadget",
@@ -1196,7 +1255,7 @@ const VENDORS = {
         "checkout_style": "whatsapp",
         "whatsapp_phone": "2347031017216",
         "delivery_scope": "Local & National",
-        "product_count": 3,
+        "product_count": 7,
         "categories": []
     },
     "bola_foods": {
@@ -1228,12 +1287,14 @@ const CATEGORY_INVENTORY = {
     "android-phones": 6,
     "android-tablets": 3,
     "business-laptops": 0,
+    "clothing": 2,
     "components": 0,
     "controller-game-pads": 0,
     "cooling-system": 0,
     "desktops": 0,
     "e-readers": 0,
     "electronics": 2,
+    "fashion": 0,
     "flight-stick": 0,
     "food": 10,
     "gadgets": 7,
@@ -1244,16 +1305,17 @@ const CATEGORY_INVENTORY = {
     "gaming-desktops": 0,
     "gaming-laptops": 0,
     "graphics-card": 0,
+    "home-decor": 7,
     "ipad": 0,
     "iphones": 5,
     "kitchen-appliances": 1,
     "laptops-computers": 6,
-    "new-cat": 7,
     "nintendo-switch": 0,
     "phone-accessories": 0,
     "playstation": 0,
     "racing-wheels": 0,
     "ram-storage": 0,
+    "shoes": 2,
     "smartphones": 0,
     "smartphones-tablets": 6,
     "sound-gadget": 1,

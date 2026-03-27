@@ -607,7 +607,7 @@ app.post('/chat', async (req, res) => {
                             params: {
                                 query: sentinelVerdict.vector_query,
                                 search_mode: 'VECTOR',
-                                limit: 10
+                                limit: 5
                             },
                             reason: `Sentinel re-search: original products rejected as irrelevant`
                         }];
@@ -625,7 +625,13 @@ app.post('/chat', async (req, res) => {
                             const newProducts = final.products || [];
                             const originalWhatsappButtons = final.whatsapp?.buttons || [];
                             const snapshotId = Date.now().toString(36);
-                            const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more suggestions' };
+                            // PERSIST: Save the vector results to a search snapshot so __nav:cards can reveal them
+                            await stateManager.setSearchSnapshot(session_id, snapshotId, { 
+                                results: newProducts, 
+                                query: sentinelVerdict.vector_query 
+                            });
+
+                            const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
 
                             newSearchResult.result = {
                                 ...final,
@@ -637,7 +643,7 @@ app.post('/chat', async (req, res) => {
                                 whatsapp: {
                                     type: 'button',
                                     buttons: [
-                                        { id: '__nav:results__', title: 'See product details' },
+                                        { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
                                         seeMoreBtn
                                     ].filter(Boolean)
                                 }
