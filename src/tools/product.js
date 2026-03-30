@@ -34,6 +34,7 @@ const productTools = {
         params: {
             query: { type: 'string', description: 'Search keywords' },
             category: { type: 'string', description: 'Category name or slug' },
+            is_kickstart: { type: 'boolean', description: 'Internal: semantic kickstart fallback mode' },
             price_min: { type: 'number', description: 'Minimum price' },
             price_max: { type: 'number', description: 'Maximum price' },
             limit: { type: 'number', description: 'Max results (default 5)' },
@@ -46,7 +47,7 @@ const productTools = {
             clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' }
         },
         handler: async (params, context) => {
-            const { query, category, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, clause_words } = params;
+            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, clause_words } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -61,7 +62,7 @@ const productTools = {
             const cat = catKey ? context.CATEGORIES[catKey] : null;
 
             // --- STAGE 0: Context-First Check ---
-            if (cat && cat.total_count === 0) {
+            if (cat && cat.total_count === 0 && !is_kickstart) {
                 return {
                     products: [],
                     total: 0,
@@ -177,11 +178,75 @@ const productTools = {
                 return await handleSearchResults({ products, total, facets: searchData.facets, pagination: searchData.pagination }, params, context, snapshotId, cat, catId);
             }
 
+            // --- Kickstart Fallback (unscoped retry when semantic category was injected) ---
+            let didKickstartFallback = false;
+            if (is_kickstart && query) {
+                didKickstartFallback = true;
+                const { logDebug: kickLogDebug } = require('../utils/debugLogger');
+
+                kickLogDebug('TOOL:PRODUCT_KICKSTART_FALLBACK [product.search]', {
+                    _desc: 'Precision failed under semantic kickstart category; retry without category, then vector without category.',
+                    query,
+                    category_input: category,
+                    price_min,
+                    price_max,
+                    tag,
+                    attributes_keys: safeAttributes ? Object.keys(safeAttributes) : []
+                });
+
+                // 1) Re-run precision search WITHOUT category_id (keep q + filters)
+                const kickSearchParams = new URLSearchParams({
+                    type: 'product',
+                    per_page: limit,
+                    page: page,
+                    sort: sort
+                });
+                kickSearchParams.append('q', query);
+                if (price_min) kickSearchParams.append('price_min', price_min);
+                if (price_max) kickSearchParams.append('price_max', price_max);
+                if (tag) kickSearchParams.append('tag', tag);
+
+                Object.entries(safeAttributes).forEach(([key, val]) => {
+                    const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
+                    kickSearchParams.append(`attribute.${key}`, finalVal);
+                });
+
+                const kickResult = await callBackendAPI(`/search?${kickSearchParams.toString()}`);
+                if (kickResult?.success) {
+                    const kickData = kickResult.data || {};
+                    const kickProducts = kickData.results || kickData.products || [];
+                    const kickTotal = kickData.pagination?.total ?? kickData.total ?? 0;
+
+                    if (kickProducts.length > 0) {
+                        return await handleSearchResults(
+                            { products: kickProducts, total: kickTotal, facets: kickData.facets, pagination: kickData.pagination },
+                            params,
+                            context,
+                            snapshotId,
+                            null,
+                            null
+                        );
+                    }
+                }
+
+                // 2) If still nothing, try vector WITHOUT category_id (keep filters first, then unfiltered)
+                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                let vectorKickFallback = await performVectorSearch(query, limit, null, extraParams);
+                if (!vectorKickFallback || vectorKickFallback.products?.length === 0) {
+                    kickLogDebug('TOOL:PRODUCT_KICKSTART_VECTOR_UNFILTERED [product.search]', { query });
+                    vectorKickFallback = await performVectorSearch(query, limit, null);
+                }
+
+                if (vectorKickFallback && vectorKickFallback.products?.length > 0) {
+                    return await handleSearchResults(vectorKickFallback, params, context, snapshotId, null, null);
+                }
+            }
+
             // --- STAGE 2: Fallbacks ---
             const { logDebug } = require('../utils/debugLogger');
 
             // Fallback 1: Vector Search (Primary Fallback)
-            if (query && !search_mode && !similar_to) {
+            if (query && !search_mode && !similar_to && !didKickstartFallback) {
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
                 // Try with filters first
                 let vectorFallback = await performVectorSearch(query, limit, catId, extraParams);

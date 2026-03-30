@@ -892,13 +892,70 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 const nameLower = p.name.toLowerCase();
                 const nameTokens = nameLower.split(/\s+/).filter(t => t.length > 1);
                 
-                // Find all indices of these tokens in the cleaned statement text
-                const indices = [];
-                nameTokens.forEach(token => {
-                    statementWords.forEach((word, idx) => {
-                        if (word.includes(token)) indices.push(idx);
+                // Prefer a contiguous span match for wordIndices.
+                // IMPORTANT: if we collect *all* occurrences of each token (e.g. both "iphone" mentions),
+                // multiple resolved_product entities overlap heavily and PIE can attach the wrong
+                // resolved_product to a segment (leading to duplicates like "iphone 12", "iphone 12").
+                const findContiguousSpan = (words, tokens) => {
+                    if (!Array.isArray(tokens) || tokens.length === 0) return null;
+                    for (let start = 0; start <= words.length - tokens.length; start++) {
+                        let ok = true;
+                        for (let j = 0; j < tokens.length; j++) {
+                            const w = words[start + j];
+                            if (!w || !w.includes(tokens[j])) {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        if (ok) return Array.from({ length: tokens.length }, (_, k) => start + k);
+                    }
+                    return null;
+                };
+
+                let indices = findContiguousSpan(statementWords, nameTokens);
+                if (!indices) {
+                    // Fallback: loose (non-contiguous) matching.
+                    const loose = [];
+                    nameTokens.forEach(token => {
+                        statementWords.forEach((word, idx) => {
+                            if (word.includes(token)) loose.push(idx);
+                        });
                     });
-                });
+                    indices = Array.from(new Set(loose)).sort((a, b) => a - b);
+                }
+
+                // Choose a primary index for this product.
+                // Edge case: when multiple resolved_product entities share the same base token
+                // (e.g. "iphone 12" and "iphone 17" both hitting the "iphone" word), we want
+                // their primary indices to differ so the entity layer does not treat one as
+                // already-consumed.
+                //
+                // Heuristics (in order):
+                // - Prefer a digit-containing token ("12", "17") when present.
+                // - Otherwise prefer the *rarest* matched word in the statement (e.g. "pro" vs "max"
+                //   beats "airpods" when comparing "airpods pro or airpods max").
+                // - Otherwise fall back to the earliest match.
+                let primaryIdx;
+                if (indices.length > 0) {
+                    const digitIdx = indices.find(idx => /\d/.test(statementWords[idx]));
+                    if (digitIdx !== undefined) {
+                        primaryIdx = digitIdx;
+                    } else {
+                        const freq = new Map();
+                        for (const w of statementWords) freq.set(w, (freq.get(w) || 0) + 1);
+                        // Find the index whose word is least frequent in the statement.
+                        let best = indices[0];
+                        let bestCount = freq.get(statementWords[best]) || Number.MAX_SAFE_INTEGER;
+                        for (const idx of indices) {
+                            const c = freq.get(statementWords[idx]) || Number.MAX_SAFE_INTEGER;
+                            if (c < bestCount || (c === bestCount && idx < best)) {
+                                best = idx;
+                                bestCount = c;
+                            }
+                        }
+                        primaryIdx = best;
+                    }
+                }
 
                 statementPreEntities.push({
                     type: 'resolved_product',
@@ -906,7 +963,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     adjectives: p.adjectives || [],
                     source: 'INTELLISENSE_OVERRIDE',
                     quality: 1.0,
-                    localWordIndex: indices.length > 0 ? Math.min(...indices) : undefined,
+                    localWordIndex: primaryIdx,
                     wordIndices: indices.length > 0 ? indices : undefined,
                     wordCount: nameTokens.length > 0 ? nameTokens.length : 1
                 });

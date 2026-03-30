@@ -689,6 +689,10 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
             if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id || ent.categoryId || ent.value;
+            // Semantic category kickstart marker:
+            // entityExtractor marks category with source='SEMANTIC_KICKSTART' when determinism had no free words.
+            // We propagate this flag so downstream tools can run a high-confidence global fallback.
+            if (ent.type === 'category' && ent.source === 'SEMANTIC_KICKSTART') baseFromEntities.is_kickstart = true;
             if (ent.type === 'vendor' && !baseFromEntities.vendor) baseFromEntities.vendor = ent.value;
             if (ent.type === 'brand' && !baseFromEntities.brand) baseFromEntities.brand = ent.value;
             if (ent.type === 'order_id' && !baseFromEntities.order_id) baseFromEntities.order_id = ent.value;

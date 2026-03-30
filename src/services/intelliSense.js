@@ -32,7 +32,7 @@ TASK: For each user message —
 3. Extract product names
 4. Mark idiomatic pronouns to skip
 
-SPLITTING: Split on "that aside", "by the way", or clearly separate questions. Do NOT split coordinated phrases or same-topic "and/or". "and then"/"then" between different actions = split. When unsure, keep as one.
+SPLITTING: Split on "that aside", "by the way", or clearly separate questions. Also split when the user issues multiple FIND/SHOW/SEARCH clauses, each with its own product (e.g., "help me find smartphones that are blue in color, also find a lady's shoe and i also need a shirt" → 3 statements). Do NOT split true comparison phrasing like "compare X and Y", "X vs Y", "difference between X and Y" (these stay as a single statement for comparison). Do NOT split obviously same-topic modifiers joined by "and/or" (e.g., "cheap blue samsung phones"). "and then"/"then" between different actions = split. When unsure, keep as one.
 
 ORIGINAL: Copy verbatim from the message. No changes. Single statement = full message. Multi = each chunk exactly as written.
 
@@ -62,6 +62,12 @@ Out: {"statements":[{"original":"find iphone 15 and add it to cart","text":"find
 
 In: "I want Wipes called Angel. That aside, advantage and disadvantages of Crypto. Could you help with that?"
 Out: {"statements":[{"original":"I want Wipes called Angel","text":"want angel wipes","products":[{"name":"angel wipes","adjectives":[]}],"skip_resolve":[]},{"original":"advantage and disadvantages of Crypto. Could you help with that?","text":"advantage and disadvantages of crypto","products":[],"skip_resolve":["that"]}]}
+
+In: "help me find smartphones that are blue in color, also find a lady's shoe and i also need a shirt"
+Out: {"statements":[{"original":"help me find smartphones that are blue in color","text":"find blue smartphones","products":[{"name":"smartphones","adjectives":["blue"]}],"skip_resolve":[]},{"original":"also find a lady's shoe","text":"find a lady's shoe","products":[{"name":"lady's shoe","adjectives":[]}],"skip_resolve":[]},{"original":"and i also need a shirt","text":"find a shirt","products":[{"name":"shirt","adjectives":[]}],"skip_resolve":[]}]}
+
+In: "compare iphone 13 and infinix hot 30i"
+Out: {"statements":[{"original":"compare iphone 13 and infinix hot 30i","text":"compare iphone 13 and infinix hot 30i","products":[{"name":"iphone 13","adjectives":[]},{"name":"infinix hot 30i","adjectives":[]}],"skip_resolve":[]}]}
 
 In: "Show me cheap blue samsung phones"
 Out: {"statements":[{"original":"Show me cheap blue samsung phones","text":"show me cheap blue samsung phones","products":[{"name":"samsung phones","adjectives":["cheap","blue"]}],"skip_resolve":[]}]}

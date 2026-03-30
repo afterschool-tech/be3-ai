@@ -337,6 +337,7 @@ app.post('/chat', async (req, res) => {
 
             let toolsSelected = selection.tools || [];
             const intent = selection.intent || 'unknown';
+            const suppressWhatsAppUI = !!selection?.result?.isMultiIntent;
 
             // --- CONTEXTUAL CHECKOUT INJECTION ---
             // If the user wants to checkout but their cart is empty, check if they are actively viewing a product.
@@ -360,6 +361,7 @@ app.post('/chat', async (req, res) => {
                 _example: 'add_to_cart → cart.add with product_id',
                 intent,
                 confidence: selection.confidence,
+                suppressWhatsAppUI,
                 toolCount: toolsSelected.length,
                 toolsSelected: toolsSelected
             });
@@ -786,7 +788,7 @@ app.post('/chat', async (req, res) => {
             // Otherwise, a microstate prompt's controls (More/Cancel/etc) can leak into an unrelated
             // final tool response (e.g., after compare fulfillment).
             const ignoreMicrostateButtons = !directResponseResult;
-            const whatsappButtonResults = toolResults
+            const whatsappButtonResults = suppressWhatsAppUI ? [] : toolResults
                 .filter(tr => {
                     if (!ignoreMicrostateButtons) return true;
                     const toolName = String(tr?.tool || '');
@@ -797,7 +799,7 @@ app.post('/chat', async (req, res) => {
 
             // Product cards may come either from legacy `result.whatsapp` (transaction=product_card)
             // or from explicit `result.whatsapp_product_cards` (preferred for tools like product.search).
-            const whatsappProductCardResults = toolResults
+            const whatsappProductCardResults = suppressWhatsAppUI ? [] : toolResults
                 .map(tr => tr?.result?.whatsapp_product_cards)
                 .filter(w => w && w.type === 'button' && w.transaction === 'product_card');
 
@@ -875,6 +877,7 @@ app.post('/chat', async (req, res) => {
             logDebug('SERVER:WHATSAPP_BUTTON_EXTRACTION', {
                 _desc: 'WhatsApp button extraction — aggregate whatsapp_buttons from tool results',
                 _example: 'multiple tools each contribute a button; merged into one payload',
+                suppressWhatsAppUI,
                 buttonContributions: whatsappButtonResults.length,
                 hasButtons: !!whatsappButtons,
                 buttonCount: whatsappButtons?.buttons?.length || 0,
@@ -889,7 +892,7 @@ app.post('/chat', async (req, res) => {
                 ? consolidatedToolResults.map(tr => {
                     // Check if this tool instance was newly executed in this request
                     const isNewInThisRequest = toolResults.some(newTr => newTr === tr);
-                    if (!isNewInThisRequest && tr.result) {
+                    if ((suppressWhatsAppUI || !isNewInThisRequest) && tr.result) {
                         const strippedResult = { ...tr.result };
                         delete strippedResult.whatsapp;
                         delete strippedResult.whatsapp_product_cards;

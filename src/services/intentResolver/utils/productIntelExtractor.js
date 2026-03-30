@@ -257,6 +257,25 @@ function extractProductIntel(options) {
         };
     }).filter(Boolean);
 
+    // Compare-mode hardening:
+    // If we have one or more high-confidence resolved_product entities, prefer returning ONLY those
+    // (and de-duplicate). This prevents "ghost products" reconstructed from preamble phrases like
+    // "can't decide between ..." in product_compare turns.
+    if (intentName === 'product_compare') {
+        const resolvedOnly = products.filter(p => p && p.isResolved && p.intel?.resolvedId);
+        if (resolvedOnly.length > 0) {
+            const seen = new Set();
+            const deduped = [];
+            for (const p of resolvedOnly) {
+                const key = String(p.name || '').toLowerCase().trim();
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                deduped.push(p);
+            }
+            products.splice(0, products.length, ...deduped);
+        }
+    }
+
     // ── PURCHASE VERB PRE-POSITION GUARD ──────────────────────────────────────
     // Problem: PIE can produce spurious "products" from fragments that appear
     // BEFORE a purchase verb in the sentence. E.g. "i'd like to purchase a laptop"

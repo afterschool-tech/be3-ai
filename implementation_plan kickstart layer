@@ -1,0 +1,40 @@
+# Kickstart Fallback Implementation Plan
+
+This plan introduces a new, high-confidence fallback layer in the `product.search` tool. When the AI is unsure about a category (Semantic Kickstart) and the filtered search fails, it will attempt one more "global" precision/vector search before giving up and showing relaxed suggestions.
+
+## User Review Required
+
+> [!IMPORTANT]
+> This change affects the search logic hierarchy. The "Kickstart Fallback" is treated as a **Real Match** (returning actual products) rather than a **Suggestion**, which means the bot will present these results as definitive matches.
+
+## Proposed Changes
+
+### Intent Pipeline
+
+#### [MODIFY] [parameterExtractor.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/services/intentResolver/pipeline/parameterExtractor.js)
+- Detect `source === 'SEMANTIC_KICKSTART'` during category extraction in `extractParameters`.
+- Set `is_kickstart: true` in the returned parameters.
+
+### Product Tool
+
+#### [MODIFY] [product.js](file:///c:/Users/chatz/Downloads/eCommerce/be3_ai/src/tools/product.js)
+- Add `is_kickstart` to the `product.search` parameter schema.
+- Update the `handler` to implement the new fallback layer:
+    1. **Stage 1 & Fallback 1** run as normal (category-filtered).
+    2. **Kickstart Fallback (New)**: If results are zero, `is_kickstart` is true, and a query exists:
+        - Log `TOOL:PRODUCT_KICKSTART_FALLBACK`.
+        - Try Stage 1 again without `catId`.
+        - If still zero, try Fallback 1 (Vector) again without `catId`.
+        - If results found, return them immediately via `handleSearchResults`.
+    3. **Fallback 2 (Suggestions)**: If no results yet, run the existing "Relaxed Search" (Attempt 1 & 2) which *keeps* the category.
+
+## Verification Plan
+
+### Automated Tests
+- Run `node __pipeline_tests__/test_kickstart_fallback.js` (to be created) with a query that triggers a semantic kickstart (e.g., "super 26 ultra" with a misaligned category).
+- Verify logs show `TOOL:PRODUCT_KICKSTART_FALLBACK`.
+- Verify the final response contains products instead of "I couldn't find an exact match".
+
+### Manual Verification
+- Test via a mock interaction where the transformer resolves a slightly incorrect category slug.
+- Confirm the system correctly falls back to global search and finds the product in the "true" category.
