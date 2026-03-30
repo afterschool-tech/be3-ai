@@ -1,9 +1,59 @@
 
 /**
  * AUTO-GENERATED Semantic Clauses
- * Generated: 2026-03-27T18:02:35.647Z
+ * Generated: 2026-03-30T00:09:28.987Z
  */
 const CLAUSES = {
+    "affordable": {
+        "label": "affordable",
+        "attribute": "price tier",
+        "matches": [
+            "budget",
+            "midrange"
+        ],
+        "display": {
+            "prefix": "cheap",
+            "suffix": ""
+        },
+        "categories": [
+            "desktops",
+            "smartphones",
+            "tablets",
+            "laptops_&_computers",
+            "cooling_system",
+            "components",
+            "graphics_card",
+            "ultrabooks",
+            "ram_&_storage",
+            "gaming"
+        ],
+        "excluded_categories": []
+    },
+    "expensive": {
+        "label": "expensive",
+        "attribute": "price tier",
+        "matches": [
+            "premium",
+            "flagship"
+        ],
+        "display": {
+            "prefix": "expensive",
+            "suffix": ""
+        },
+        "categories": [
+            "desktops",
+            "smartphones",
+            "tablets",
+            "laptops_&_computers",
+            "cooling_system",
+            "components",
+            "graphics_card",
+            "ultrabooks",
+            "ram_&_storage",
+            "gaming"
+        ],
+        "excluded_categories": []
+    },
     "color_for_ladies": {
         "label": "color for ladies",
         "attribute": "color",
@@ -21,13 +71,13 @@ const CLAUSES = {
             "suffix": "for ladies"
         },
         "categories": [
-            "gadgets",
             "food",
             "sound_gadget",
-            "iphones",
             "kitchen_appliances",
+            "iphones",
             "ultrabooks",
-            "gaming"
+            "gaming",
+            "gadgets"
         ],
         "excluded_categories": []
     },
@@ -43,88 +93,13 @@ const CLAUSES = {
             "suffix": "for men"
         },
         "categories": [
-            "gadgets",
             "food",
             "sound_gadget",
-            "iphones",
             "kitchen_appliances",
+            "iphones",
             "ultrabooks",
-            "gaming"
-        ],
-        "excluded_categories": []
-    },
-    "apple_product": {
-        "label": "apple product",
-        "attribute": "brand",
-        "matches": [
-            "apple"
-        ],
-        "display": {
-            "prefix": "",
-            "suffix": "by apple"
-        },
-        "categories": [
-            "fashion",
-            "android_phones",
-            "business_laptops",
-            "smartphones_&_tablets",
-            "laptops_&_computers",
-            "components",
-            "cooling_system",
-            "graphics_card",
-            "ram_&_storage",
-            "ultrabooks",
-            "gaming"
-        ],
-        "excluded_categories": []
-    },
-    "infinix_product": {
-        "label": "infinix product",
-        "attribute": "brand",
-        "matches": [
-            "infinix"
-        ],
-        "display": {
-            "prefix": "",
-            "suffix": "by infinix"
-        },
-        "categories": [
-            "fashion",
-            "android_phones",
-            "business_laptops",
-            "smartphones_&_tablets",
-            "laptops_&_computers",
-            "components",
-            "cooling_system",
-            "graphics_card",
-            "ram_&_storage",
-            "ultrabooks",
-            "gaming"
-        ],
-        "excluded_categories": []
-    },
-    "microsoft_product": {
-        "label": "Microsoft product",
-        "attribute": "brand",
-        "matches": [
-            "microsoft"
-        ],
-        "display": {
-            "prefix": "Microsoft",
-            "suffix": ""
-        },
-        "categories": [
-            "fashion",
-            "android_phones",
-            "business_laptops",
-            "smartphones_&_tablets",
-            "laptops_&_computers",
-            "components",
-            "cooling_system",
-            "graphics_card",
-            "ram_&_storage",
-            "ultrabooks",
-            "gaming"
+            "gaming",
+            "gadgets"
         ],
         "excluded_categories": []
     },
@@ -139,62 +114,84 @@ const CLAUSES = {
             "suffix": ""
         },
         "categories": [
-            "android_phones",
             "sound_gadget",
-            "iphones",
             "kitchen_appliances",
+            "iphones",
+            "android_phones",
             "smartphones_&_tablets",
             "gadgets"
         ],
         "excluded_categories": []
     },
-    "affordable": {
-        "label": "affordable",
-        "attribute": "price tier",
+    "apple_product": {
+        "label": "apple product",
+        "attribute": "brand",
         "matches": [
-            "budget",
-            "midrange"
+            "apple"
         ],
         "display": {
-            "prefix": "cheap",
-            "suffix": ""
+            "prefix": "",
+            "suffix": "by apple"
         },
         "categories": [
-            "smartphones",
-            "tablets",
-            "desktops",
+            "business_laptops",
             "laptops_&_computers",
-            "components",
             "cooling_system",
+            "components",
             "graphics_card",
-            "ram_&_storage",
             "ultrabooks",
-            "gaming"
+            "smartphones_&_tablets",
+            "ram_&_storage",
+            "gaming",
+            "fashion"
         ],
         "excluded_categories": []
     },
-    "expensive": {
-        "label": "expensive",
-        "attribute": "price tier",
+    "infinix_product": {
+        "label": "infinix product",
+        "attribute": "brand",
         "matches": [
-            "premium",
-            "flagship"
+            "infinix"
         ],
         "display": {
-            "prefix": "expensive",
+            "prefix": "",
+            "suffix": "by infinix"
+        },
+        "categories": [
+            "business_laptops",
+            "laptops_&_computers",
+            "cooling_system",
+            "components",
+            "graphics_card",
+            "ultrabooks",
+            "smartphones_&_tablets",
+            "ram_&_storage",
+            "gaming",
+            "fashion"
+        ],
+        "excluded_categories": []
+    },
+    "microsoft_product": {
+        "label": "Microsoft product",
+        "attribute": "brand",
+        "matches": [
+            "microsoft"
+        ],
+        "display": {
+            "prefix": "Microsoft",
             "suffix": ""
         },
         "categories": [
-            "smartphones",
-            "tablets",
-            "desktops",
+            "business_laptops",
             "laptops_&_computers",
-            "components",
             "cooling_system",
+            "components",
             "graphics_card",
-            "ram_&_storage",
             "ultrabooks",
-            "gaming"
+            "smartphones_&_tablets",
+            "ram_&_storage",
+            "gaming",
+            "fashion"
         ],
         "excluded_categories": []
     },

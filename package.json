@@ -7,7 +7,8 @@
         "start": "node server.js",
         "dev": "nodemon server.js",
         "repl:pipeline": "node src/services/intentResolver/pipelineREPL.js",
-        "test": "jest __pipeline_tests__"
+        "test": "jest __pipeline_tests__",
+        "repl": "node tests/repl_intent_resolver.js"
     },
     "dependencies": {
         "axios": "^1.13.5",

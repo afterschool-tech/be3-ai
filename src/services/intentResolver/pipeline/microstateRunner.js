@@ -133,8 +133,15 @@ async function run(userMessage, microstate, state, storeContext) {
                     console.log(`[MicrostateRunner]    ↳ Store rotation (${datasource}): items=${items.length}, offset=${currentOffset} -> ${nextOffset}`);
                     
                     const updatedMs = await stateManager.advanceMicrostate(userId, { _page_offset: nextOffset }, false, true);
-                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
                     const injections = await featureProvider.getFeatureInjections(updatedMs, storeContext);
+                    
+                    // CRITICAL: Sync injected options to state so selections work on next turn.
+                    if (injections.options && injections.options.length > 0) {
+                        updatedMs.options = injections.options;
+                        await stateManager.setMicrostate(userId, updatedMs);
+                    }
+
+                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
 
                     return {
                         handled: true,
@@ -169,8 +176,15 @@ async function run(userMessage, microstate, state, storeContext) {
                 if (next) {
                     console.log(`[MicrostateRunner]    ↳ Product rotation: shifted to ${next.categorySlug}`);
                     const updatedMs = await stateManager.advanceMicrostate(userId, next.params, false, true);
-                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
                     const injections = await featureProvider.getFeatureInjections(updatedMs, storeContext);
+                    
+                    // CRITICAL: Sync injected options to state so selections work on next turn.
+                    if (injections.options && injections.options.length > 0) {
+                        updatedMs.options = injections.options;
+                        await stateManager.setMicrostate(userId, updatedMs);
+                    }
+
+                    const { message: repromptMessage, pendingParam } = await buildReprompt(updatedMs, {}, { engineeredToken, rawText: cleanedText }, storeContext);
 
                     return {
                         handled: true,
@@ -526,8 +540,11 @@ async function run(userMessage, microstate, state, storeContext) {
     const injections = await featureProvider.getFeatureInjections(msForReprompt, storeContext);
 
     // Sync injected options to state so ordinals (1, 2) can be matched on next turn
-    if (injections.options.length > 0) {
+    if (injections.options && injections.options.length > 0) {
         msForReprompt.options = injections.options;
+        // CRITICAL: Persist the synchronized options to the state manager.
+        // Without this, the bot "forgets" the screen options on the next user turn.
+        await stateManager.setMicrostate(userId, msForReprompt);
     }
 
     logDebug('MICROSTATE:REPROMPT_BUILD', {
@@ -702,6 +719,26 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
         else if (newParams.brand) newParams.query = newParams.brand;
     }
 
+    // Special fallback for missing products:
+    // If we're waiting for products, but the user typed something that was captured as a category,
+    // and no other products were captured in this turn, map the category to the products list.
+    if (onFulfilled.includes('products') && !newParams.products && newParams.category) {
+        const existing = Array.isArray(microstate?.params?.products) ? microstate.params.products : [];
+        const combined = [...existing, newParams.category];
+        const deduped = [];
+        const seen = new Set();
+        for (const x of combined) {
+            const key = (x ?? '').toString().trim();
+            if (!key) continue;
+            const k = key.toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            deduped.push(key);
+        }
+        newParams.products = deduped;
+        console.log(`[MicrostateRunner] 🔄 Category-to-Product Fallback: Mapping category "${newParams.category}" to products for ${microstate.intent} (Total: ${deduped.length})`);
+    }
+
     // Residual words might be the product name we're waiting for
     if (extractionResult.residualWords && extractionResult.residualWords.length > 0) {
         const residualText = extractionResult.residualWords.join(' ').trim();
@@ -756,7 +793,16 @@ function buildNewParams(responseAnalysis, extractionResult, microstate) {
             // Determine the currently missing parameter this microstate is actively asking for
             const activeParam = onFulfilled.find(p => {
                 const val = (microstate.params || {})[p];
-                return val === null || val === undefined || (typeof val === 'string' && val.trim() === '') || (Array.isArray(val) && val.length === 0);
+                const isEmpty = val === null || val === undefined || (typeof val === 'string' && val.trim() === '') || (Array.isArray(val) && val.length === 0);
+
+                // Intent-specific "growing" lists: 
+                // A list is still active if it's not fulfilled according to core intent needs.
+                // e.g., product_compare REQUIRES 2 products; if it has 1, it is still "active" for capture.
+                if (microstate.intent === 'product_compare' && p === 'products') {
+                    if (Array.isArray(val) && val.length < 2) return true;
+                }
+
+                return isEmpty;
             });
 
             // If we're waiting for products (list), use rawText for splitting (with special array resolution logic)

@@ -443,43 +443,66 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Product details screen "Compare" uses: __product:compare:<productId>__
     // This opens product_compare microstate with the first product pre-filled.
     if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'compare' && userId) {
-        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
-        if (productId) {
-            const msObj = {
-                type: 'missing_products',
-                intent: 'product_compare',
-                sandbox: 'soft',
-                boostScore: 10.0,
-                params: {
-                    products: [productId]
-                },
-                entities: [],
+            const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+            if (productId) {
+                const triggers = microstateRegistry.getTriggers('product_compare');
+                const triggerDef = (triggers && triggers['missing_products']) || {};
+
+                // Fix: Resolve product name to avoid UUID showing in breadcrumbs/captured list
+                const productName = reconcileNameFromId(state, productId) || 'Product';
+
+                const msObj = {
+                    type: 'missing_products',
+                    intent: 'product_compare',
+                    sandbox: triggerDef.sandbox || 'soft',
+                    boostScore: triggerDef.boostScore || 10.0,
+                    params: {
+                        products: [productId],
+                        _labels: { [productId]: productName }
+                    },
+                    entities: [],
                 options: [],
-                validators: {},
-                normalizers: {},
-                breakthrough: null,
-                fields: null,
+                validators: triggerDef.validators || {},
+                normalizers: triggerDef.normalizers || {},
+                breakthrough: triggerDef.breakthrough || null,
+                fields: triggerDef.fields || null,
+                features: triggerDef.features || [],
                 currentFieldIndex: 0,
                 contract: {
-                    maxMessages: 3,
+                    maxMessages: triggerDef.termination?.maxMessages || 3,
                     messagesUsed: 0,
-                    onFulfilled: ['products'],
-                    onKeyword: ['cancel', 'nevermind', 'stop'],
-                    escalation: null,
-                    onFulfilledSpawn: null
+                    onFulfilled: triggerDef.termination?.onFulfilled || [],
+                    onKeyword: triggerDef.termination?.onKeyword || ['cancel', 'nevermind', 'stop'],
+                    escalation: triggerDef.termination?.escalation || null,
+                    onFulfilledSpawn: triggerDef.termination?.onFulfilledSpawn || null
                 }
             };
             await stateManager.setMicrostate(userId, msObj);
 
+            // RUN FEATURES: on initial open from an engineered token, we must manually
+            // trigger feature providers to get recommendations/buttons for the first turn.
+            const injections = await microstateFeatureProvider.getFeatureInjections(msObj, storeContext);
+
+            // Sync injections back to state so selections/ordinals work on next turn.
+            if (injections.options && injections.options.length > 0) {
+                msObj.options = injections.options;
+                await stateManager.setMicrostate(userId, msObj);
+            }
+
+            const message = msObj.params.products.length === 1
+                ? 'What is the second product you want to compare with?'
+                : (triggerDef.prompt?.params?.message || 'Which products would you like to compare?');
+
             return {
                 intents: [{ intentName: 'product_compare', score: 0, parameters: msObj.params }],
                 tools: [{
-                    tool: 'microstate.collect',
+                    tool: injections.options.length > 0 ? 'microstate.disambiguate' : (triggerDef.prompt?.tool || 'microstate.collect'),
                     params: {
-                        paramName: 'products',
-                        message: 'What is the second product you want to compare with?',
-                        hint: 'e.g., "Galaxy S24"',
-                        controls: { cancel: true }
+                        ...(triggerDef.prompt?.params || {}),
+                        message: `${injections.promptPrefix || ''}${message}${injections.promptSuffix || ''}`,
+                        parentIntent: 'product_compare',
+                        options: injections.options.length > 0 ? injections.options : msObj.options,
+                        controls: { ...injections.controls, cancel: true }
                     },
                     reason: 'Compare: collect second product'
                 }],
@@ -2002,27 +2025,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 onFulfilled: msObj.contract.onFulfilled
             });
 
-            const openedPrompt = (winner.intentName === 'product_compare' && triggered.triggerName === 'missing_products')
-                ? {
-                    tool: 'microstate.disambiguate',
-                    params: {
-                        reason: 'compare_recommendations',
-                        message: (() => {
-                            const fallback = triggered.prompt?.params?.message || 'Which products would you like to compare?';
-                            const slug = msObj?.params?._compare_rec?.categorySlug;
-                            if (slug) {
-                                return `Here are some suggestions from **${slug}**. You can also type any product name to compare:`;
-                            }
-                            return `${fallback} (You can also type any product name — these are just suggestions.)`;
-                        })(),
-                        parentIntent: winner.intentName,
-                        options: msObj.options || [],
-                        controls: { more: true, recommendedIndex: 0, cancel: true },
-                        missingParam: 'products'
-                    },
-                    reason: 'Compare: recommended products'
-                }
-                : triggered.prompt;
+            const openedPrompt = triggered.prompt;
 
             // Enrich confirm prompts (e.g. Stage2 porting confirm_add_ported) with product context when available.
             if (openedPrompt && openedPrompt.tool === 'microstate.confirm') {

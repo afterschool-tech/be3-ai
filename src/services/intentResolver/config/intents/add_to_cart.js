@@ -77,7 +77,7 @@ module.exports = {
                 escalation: null
             },
             features: [
-                'show_captured'
+                { type: 'show_captured' }
             ]
         },
 
@@ -148,7 +148,7 @@ module.exports = {
                 escalation: 'product_search'
             },
             features: [
-                'show_captured',
+                { type: 'show_captured' },
                 { type: 'suggest_related_products' }
             ]
         }

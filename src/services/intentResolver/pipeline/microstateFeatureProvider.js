@@ -126,10 +126,7 @@ async function getDynamicProductRecommendations(microstate, storeContext, delta 
 
         let seedCategories = seed;
         if (seedCategories.length === 0) {
-            const cats = Object.values(storeContext?.CATEGORIES || {})
-                .filter(c => (c?.total_count || 0) > 0 && c?.slug)
-                .map(c => c.slug);
-            seedCategories = cats.sort(() => Math.random() - 0.5).slice(0, 6);
+            seedCategories = await getSeedCategories(storeContext);
         }
 
         let nextIndex = idx;
@@ -184,7 +181,13 @@ async function getDynamicProductRecommendations(microstate, storeContext, delta 
     }
 
     // Determine base category from first product if needed.
-    if (!rec.baseCategoryId && firstProduct) {
+    // Only attempt lookup if it's a valid ID (UUID) or handle (no spaces).
+    // This prevents 404 noise from raw user-typed names like "bench".
+    const isPotentiallyId = typeof firstProduct === 'string' && 
+        (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(firstProduct) || 
+         (!firstProduct.includes(' ') && firstProduct.length > 5));
+
+    if (!rec.baseCategoryId && firstProduct && isPotentiallyId) {
         try {
             const details = await callBackendAPI(`/products/storefront/products/${firstProduct}`);
             const catIds = details?.data?.product?.metadata?.category_ids || [];
@@ -204,7 +207,13 @@ async function getDynamicProductRecommendations(microstate, storeContext, delta 
     }
 
     const traversal = [rec.baseCategorySlug, ...(rec.siblingSlugs || [])].filter(Boolean);
-    if (traversal.length === 0) return null;
+    if (traversal.length === 0) {
+        // Fallback: If no specific relationship found, rotate through trending categories
+        // ensuring the user always has buttons to click even on Turn 2 of a button-flow.
+        const seeds = await getSeedCategories(storeContext);
+        traversal.push(...seeds);
+        console.log(`[FeatureProvider] 🧬 Suggestion Fallback: Using seeds for "${microstate.intent}"`);
+    }
 
     // Paging within current category first; if no next page, move to next category.
     let currentCatIndex = Number.isFinite(rec.siblingIndex) ? rec.siblingIndex : 0;
@@ -375,6 +384,18 @@ function formatParamValue(val, params = {}) {
     if (Array.isArray(val)) return val.map(resolveLabel).join(', ');
     if (typeof val === 'boolean') return val ? 'Yes' : 'No';
     return String(resolveLabel(val));
+}
+
+/**
+ * Helper: get a list of active category slugs to seed suggestions.
+ */
+async function getSeedCategories(storeContext) {
+    const cats = Object.values(storeContext?.CATEGORIES || {});
+    const active = cats
+        .filter(c => (c?.total_count || 0) > 0 && c?.slug)
+        .sort((a, b) => (b.total_count || 0) - (a.total_count || 0))
+        .map(c => c.slug);
+    return active.slice(0, 5);
 }
 
 module.exports = {

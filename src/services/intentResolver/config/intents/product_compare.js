@@ -80,7 +80,7 @@ module.exports = {
                 escalation: null
             },
             features: [
-                'show_captured',
+                { type: 'show_captured' },
                 { type: 'suggest_related_products' }
             ]
         }
