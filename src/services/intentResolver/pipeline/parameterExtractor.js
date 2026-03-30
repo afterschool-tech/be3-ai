@@ -28,11 +28,206 @@ for (const [key, entry] of Object.entries(FACET_BENCH)) {
     }
 }
 
+// ── Per-Attribute Bench Word Sets ──
+// For each attribute in the bench, build a Set of its key + all variations.
+// Used by sanitizeAttributeHints() to strip bench keywords from hint values.
+const PER_ATTR_BENCH_WORDS = {};
+for (const [key, entry] of Object.entries(FACET_BENCH)) {
+    const wordSet = new Set();
+    wordSet.add(key.toLowerCase());
+    if (Array.isArray(entry.variations)) {
+        for (const v of entry.variations) {
+            // Support multi-word variations (e.g. "disk space") — add each word individually
+            const parts = String(v).toLowerCase().split(/\s+/).filter(Boolean);
+            parts.forEach(p => wordSet.add(p));
+        }
+    }
+    PER_ATTR_BENCH_WORDS[key.toLowerCase()] = wordSet;
+}
+
+/**
+ * ── Semantic Attribute Hint Sanitization Layer ──
+ * 3-step pipeline to clean, gate, and tie-break transformer attribute hints
+ * before they become search parameters.
+ *
+ * Step 1: Bench Word Stripping — removes facet bench keywords from values
+ *         e.g. "medium size" → "medium" (stripped: ["size"])
+ * Step 2: Category Support Gating — rejects hints for attributes the category doesn't support
+ * Step 3: Same-Value Tie-Breaking — when multiple attributes claim the same value,
+ *         the one where the user named the attribute wins
+ *
+ * @param {Array} hints - Array of { subType, value } objects (pre-filtered by echo/facet guards)
+ * @param {string|null} categoryId - The winning category ID (null = no category detected)
+ * @param {Object} storeContext - Store context with CATEGORIES, ATTRIBUTES
+ * @returns {Array} Surviving hints with _cleanValue and _strippedWords metadata
+ */
+function sanitizeAttributeHints(hints, categoryId, storeContext) {
+    if (!hints || hints.length === 0) return [];
+
+    // ════════════════════════════════════════════
+    // Step 1: Bench Word Stripping
+    // ════════════════════════════════════════════
+    const afterStep1 = [];
+    for (const hint of hints) {
+        const benchWords = PER_ATTR_BENCH_WORDS[hint.subType.toLowerCase()];
+        if (!benchWords) {
+            // No bench entry for this attribute → pass through unstripped
+            hint._cleanValue = hint.value;
+            hint._strippedWords = [];
+            afterStep1.push(hint);
+            continue;
+        }
+
+        const valueWords = String(hint.value).toLowerCase().trim().split(/\s+/).filter(Boolean);
+        const kept = [];
+        const stripped = [];
+
+        for (const word of valueWords) {
+            if (benchWords.has(word)) {
+                stripped.push(word);
+            } else {
+                kept.push(word);
+            }
+        }
+
+        const cleanValue = kept.join(' ').trim();
+
+        // If stripping removed ALL words, the hint is pure noise → reject
+        if (!cleanValue) {
+            logDebug('PARAM:HINT_SANITIZE_STEP1_EMPTY', {
+                _desc: 'Hint rejected — bench word stripping removed all words (pure echo)',
+                attribute: hint.subType,
+                originalValue: hint.value,
+                strippedWords: stripped
+            });
+            continue;
+        }
+
+        hint._cleanValue = cleanValue;
+        hint._strippedWords = stripped;
+        afterStep1.push(hint);
+
+        if (stripped.length > 0) {
+            logDebug('PARAM:HINT_SANITIZE_STEP1_STRIP', {
+                _desc: 'Bench word stripping — removed facet keywords from hint value',
+                attribute: hint.subType,
+                originalValue: hint.value,
+                cleanValue,
+                strippedWords: stripped
+            });
+        }
+    }
+
+    // ════════════════════════════════════════════
+    // Step 2: Category Support Gating
+    // ════════════════════════════════════════════
+    let afterStep2 = afterStep1;
+    if (categoryId && storeContext?.CATEGORIES) {
+        // Find the category object by ID
+        const catEntry = Object.entries(storeContext.CATEGORIES).find(
+            ([, c]) => c.id === categoryId
+        );
+        const catSlug = catEntry ? catEntry[0] : null;
+        const catAttributes = catEntry ? (catEntry[1].attributes || []) : [];
+
+        afterStep2 = afterStep1.filter(hint => {
+            const attrKey = hint.subType.toLowerCase();
+
+            // Check 1: Is this attribute in the category's attributes array?
+            const catSupports = catAttributes.includes(attrKey);
+
+            // Check 2: Does the ATTRIBUTES metadata list this category?
+            const attrMeta = storeContext.ATTRIBUTES?.[attrKey];
+            const attrListsCategory = attrMeta?.categories?.includes(catSlug) || false;
+
+            const supported = catSupports || attrListsCategory;
+
+            if (!supported) {
+                logDebug('PARAM:HINT_SANITIZE_STEP2_REJECTED', {
+                    _desc: 'Category support gating — attribute not supported by winning category',
+                    attribute: attrKey,
+                    value: hint._cleanValue,
+                    categorySlug: catSlug,
+                    categoryAttributes: catAttributes,
+                    reason: `Category "${catSlug}" does not support attribute "${attrKey}"`
+                });
+            }
+
+            return supported;
+        });
+    } else {
+        logDebug('PARAM:HINT_SANITIZE_STEP2_SKIP', {
+            _desc: 'Category support gating skipped — no category detected, hints pass through',
+            hintCount: afterStep1.length
+        });
+    }
+
+    // ════════════════════════════════════════════
+    // Step 3: Same-Value Tie-Breaking
+    // ════════════════════════════════════════════
+    // Group surviving hints by their clean value
+    const groups = {};
+    for (const hint of afterStep2) {
+        const cv = hint._cleanValue.toLowerCase();
+        if (!groups[cv]) groups[cv] = [];
+        groups[cv].push(hint);
+    }
+
+    const afterStep3 = [];
+    for (const [cleanValue, groupHints] of Object.entries(groups)) {
+        if (groupHints.length <= 1) {
+            // Single hint for this value → passes automatically
+            afterStep3.push(...groupHints);
+            continue;
+        }
+
+        // Multiple attributes claim the same value — tie-break by stripped word count
+        const maxStripped = Math.max(...groupHints.map(h => h._strippedWords.length));
+        const minStripped = Math.min(...groupHints.map(h => h._strippedWords.length));
+
+        if (maxStripped === minStripped) {
+            // Equal stripped count → all survive
+            afterStep3.push(...groupHints);
+            logDebug('PARAM:HINT_SANITIZE_STEP3_TIE', {
+                _desc: 'Same-value tie-break — equal stripped word counts, all survive',
+                cleanValue,
+                attributes: groupHints.map(h => h.subType),
+                strippedCount: maxStripped
+            });
+        } else {
+            // Winner(s): those with the most stripped words
+            const winners = groupHints.filter(h => h._strippedWords.length === maxStripped);
+            const losers = groupHints.filter(h => h._strippedWords.length < maxStripped);
+            afterStep3.push(...winners);
+
+            logDebug('PARAM:HINT_SANITIZE_STEP3_RESOLVED', {
+                _desc: 'Same-value tie-break — attribute with more stripped words wins',
+                cleanValue,
+                winners: winners.map(h => ({ attribute: h.subType, strippedWords: h._strippedWords })),
+                losers: losers.map(h => ({ attribute: h.subType, strippedWords: h._strippedWords }))
+            });
+        }
+    }
+
+    return afterStep3;
+}
+
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const stripTokenFromText = (text, tokenLower) => {
+    if (!text || !tokenLower) return text;
+    const escaped = escapeRegex(tokenLower);
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'gi');
+    return String(text)
+        .replace(re, (_m, g1, g2) => `${g1}${g2}`)
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
 /**
  * Deterministic extraction patterns.
  * Returns what it can extract without AI.
  */
-function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null, entities = [], rawText = null) {
+function extractDeterministic(text, candidates = [], storeContext = {}, resolutions = [], categoryId = null, entities = [], rawText = null, safeTokens = []) {
     const extracted = {};
 
     // Identify supported attributes for scoping
@@ -105,8 +300,19 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
 
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
-            if (['clause', 'brand', 'category', 'resolved_product'].includes(ent.type) && ent.value) {
+            // Also include transformer_attribute_hint so that the attribute value (and the stripped 
+            // bench words like "size" in "medium size") are stripped from the product name fallback.
+            if (['clause', 'brand', 'category', 'resolved_product', 'transformer_attribute_hint'].includes(ent.type) && ent.value) {
                 const entWords = String(ent.value).toLowerCase().split(/\s+/);
+                
+                if (ent.type === 'transformer_attribute_hint') {
+                    logDebug('PARAM:STRIP_ATTR_FROM_PRODUCT_NAME', {
+                        _desc: 'Stripping attribute hint words from product name fallback',
+                        attribute: ent.subType,
+                        strippedWords: entWords
+                    });
+                }
+                
                 entWords.forEach(w => excludeSet.add(w));
             }
         });
@@ -189,7 +395,19 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             //
             // Rule: exact match only. "laptop" drops. "gaming laptop" keeps.
             // "iphone" drops (it IS the category slug). "iphone 15" keeps.
-            const candidateName = pieResults[0].name.toLowerCase().trim();
+            // PRE-STRIP: Remove attributes from the raw string BEFORE running the Category Guard
+            // By doing this here, "256gb smartphone" becomes "smartphone", which perfectly
+            // triggers this First Bare Category Guard, removing the need for a Second Guard
+            // at the end of the pipeline.
+            let rawPieName = pieResults[0].name;
+            if (safeTokens && safeTokens.length > 0) {
+                rawPieName = safeTokens.reduce(
+                    (acc, t) => stripTokenFromText(acc, t),
+                    rawPieName
+                );
+            }
+
+            const candidateName = rawPieName.toLowerCase().trim();
             const isBareCategory = storeContext?.CATEGORIES && Object.values(storeContext.CATEGORIES).some(cat => {
                 const label = (cat.label || '').toLowerCase().trim();
                 const slug = (cat.slug || '').toLowerCase().trim();
@@ -211,7 +429,7 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
                     reason: 'Exact category match — using category browse instead of keyword search'
                 });
             } else {
-                extracted.product_name = pieResults[0].name;
+                extracted.product_name = rawPieName;
                 if (pieResults[0].intel.resolvedId) {
                     const rid = pieResults[0].intel.resolvedId;
                     extracted._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
@@ -466,6 +684,8 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         });
     }
 
+    let collectedHints = null; // Transformer attribute hints collected during loop, sanitized after
+
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
             if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id || ent.categoryId || ent.value;
@@ -500,37 +720,29 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
                 baseFromEntities.target_facet = ent.attribute; // e.g., "storage" attribute code
             }
 
-            // ── Transformer Attribute Hint Ingestion (Intent-Gated) ──
-            // Only ingest transformer attribute hints when the winning intent is NOT
-            // a facet intent. For facet intents, the attribute name IS the query target,
-            // not a filtering signal.
+            // ── Transformer Attribute Hint Collection (Intent-Gated) ──
+            // Collect all transformer attribute hints that pass first-class guards.
+            // These are sanitized in bulk AFTER the entity loop via sanitizeAttributeHints().
             if (ent.type === 'transformer_attribute_hint' && ent.subType && ent.value) {
                 const isFacetIntent = candidates?.[0]?.intentName === 'facet_list' ||
                                      candidates?.[0]?.intentName === 'vendor_facet';
                 const hasFacetTarget = entities.some(e => e.type === 'facet_target' && e.attribute === ent.subType);
 
-                // ── Facet Name Echo Guard ──
-                // The transformer's facet detection returns attribute NAMES (e.g. "material")
-                // as values when it sees a facet bench keyword in the text. These are NOT
-                // real attribute values — they're echoes of the facet name itself.
-                // Reject: attribute.material = "material"  (name echo)
-                // Accept: attribute.storage  = "256gb"     (real value)
-                const valueLower = String(ent.value).toLowerCase().trim();
-                const isFacetNameEcho = FACET_NAME_SET.has(valueLower);
-
-                if (!isFacetIntent && !hasFacetTarget && !isFacetNameEcho) {
-                    if (!baseFromEntities.attributes) baseFromEntities.attributes = {};
-                    const key = ent.subType;
-                    if (baseFromEntities.attributes[key] === undefined) {
-                        baseFromEntities.attributes[key] = ent.value;
-                    }
-                } else if (isFacetNameEcho) {
-                    logDebug('PARAM:FACET_NAME_ECHO_REJECTED', {
-                        _desc: 'Transformer attribute hint rejected — value is a facet name/synonym, not a real attribute value',
+                if (isFacetIntent) {
+                    logDebug('PARAM:HINT_DROPPED_BY_FACET_INTENT', {
+                        _desc: 'Transformer attribute hint dropped — facet listing intent active, direct attributes blocked',
                         attribute: ent.subType,
-                        rejectedValue: ent.value,
-                        reason: 'Value matches facet_bench key or variation'
+                        value: ent.value
                     });
+                } else if (hasFacetTarget) {
+                    logDebug('PARAM:HINT_DROPPED_BY_FACET_TARGET', {
+                        _desc: 'Transformer attribute hint dropped — user explicitly named this attribute/facet in Stage 4',
+                        attribute: ent.subType,
+                        value: ent.value
+                    });
+                } else {
+                    if (!collectedHints) collectedHints = [];
+                    collectedHints.push({ subType: ent.subType, value: ent.value });
                 }
             }
 
@@ -544,9 +756,100 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         });
     }
 
+    // ── Transformer Attribute Hint Sanitization ──
+    // Run the 3-step sanitization pipeline on collected hints, then write survivors.
+    if (collectedHints && collectedHints.length > 0) {
+        const categoryId = baseFromEntities.category;
+        const sanitized = sanitizeAttributeHints(collectedHints, categoryId, storeContext);
+
+        if (sanitized.length > 0) {
+            if (!baseFromEntities.attributes) baseFromEntities.attributes = {};
+            if (!baseFromEntities._stripped_bench_words) baseFromEntities._stripped_bench_words = [];
+
+            for (const hint of sanitized) {
+                const key = hint.subType;
+                if (baseFromEntities.attributes[key] === undefined) {
+                    baseFromEntities.attributes[key] = hint._cleanValue;
+                    
+                    if (hint._strippedWords && hint._strippedWords.length > 0) {
+                        baseFromEntities._stripped_bench_words.push(...hint._strippedWords);
+                    }
+                }
+            }
+
+            logDebug('PARAM:HINT_SANITIZE_COMPLETE', {
+                _desc: 'Attribute hint sanitization complete — survivors written to params',
+                inputCount: collectedHints.length,
+                survivorCount: sanitized.length,
+                survivors: sanitized.map(h => ({
+                    attribute: h.subType,
+                    originalValue: h.value,
+                    cleanValue: h._cleanValue,
+                    strippedWords: h._strippedWords
+                })),
+                attributes: baseFromEntities.attributes
+            });
+        } else {
+            logDebug('PARAM:HINT_SANITIZE_ALL_REJECTED', {
+                _desc: 'All transformer attribute hints were rejected by sanitization',
+                inputCount: collectedHints.length,
+                hints: collectedHints.map(h => ({ attribute: h.subType, value: h.value }))
+            });
+        }
+    }
+
+    // ── PREPARE SAFE TOKENS FOR EARLY STRIPPING ──
+    const isFacetIntent = candidates?.[0]?.intentName === 'facet_list' || candidates?.[0]?.intentName === 'vendor_facet';
+    let safeTokens = [];
+    
+    if (!isFacetIntent) {
+        const valuesToStrip = new Set();
+        if (baseFromEntities.attributes && typeof baseFromEntities.attributes === 'object') {
+            Object.values(baseFromEntities.attributes).forEach(v => {
+                const strV = String(v || '').toLowerCase().trim();
+                if (strV) valuesToStrip.add(strV);
+            });
+        }
+        if (baseFromEntities._stripped_bench_words && Array.isArray(baseFromEntities._stripped_bench_words)) {
+            const addedWords = [];
+            baseFromEntities._stripped_bench_words.forEach(w => {
+                const strW = String(w || '').toLowerCase().trim();
+                if (strW) {
+                    valuesToStrip.add(strW);
+                    addedWords.push(strW);
+                }
+            });
+
+            if (addedWords.length > 0) {
+                logDebug('PARAM:STRIP_BENCH_WORDS_PRE_PIE', {
+                    _desc: 'Collected bench words to strip from product name',
+                    wordsToStrip: addedWords
+                });
+            }
+        }
+        
+        safeTokens = Array.from(valuesToStrip).filter(t => !t.includes(',') && !t.includes(' '));
+        
+        // Strip IntelliSense's raw bypass output immediately so it's clean before PIE/INTEL SHIELD
+        if (safeTokens.length > 0) {
+            if (baseFromEntities.product_name) {
+                baseFromEntities.product_name = safeTokens.reduce(
+                    (acc, t) => stripTokenFromText(acc, t),
+                    baseFromEntities.product_name
+                );
+            }
+            if (Array.isArray(baseFromEntities.products)) {
+                baseFromEntities.products = baseFromEntities.products.map(p => {
+                    if (!p) return p;
+                    return safeTokens.reduce((acc, t) => stripTokenFromText(acc, t), p);
+                });
+            }
+        }
+    }
+
     // 1. Run Deterministic Fallback (Keyword/Category Stripping)
     const categoryId = baseFromEntities.category;
-    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities, rawText);
+    const deterministic = extractDeterministic(text, candidates, storeContext, resolutions, categoryId, entities, rawText, safeTokens);
 
     // Communicate PIE drops to base entities so they don't resurrect dropped names
     if (deterministic._blocked_bare_category) {
@@ -669,86 +972,6 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
             if (mapped[backendKey] === undefined) mapped[backendKey] = v;
         }
         combinedBase.attributes = mapped;
-    }
-
-    // ── STRIP DETECTED ATTRIBUTE VALUES FROM PRODUCT NAME ──
-    // If IntelliSense/context collapsed a resolved_product like "256gb smartphone",
-    // we now also extract "storage=256gb". UX expectation: product_name should
-    // be the "base product" without the spec token when an attribute value was found.
-    // GATED: Only runs for non-facet intents (facet queries need the words intact).
-    const isFacetIntent = candidates?.[0]?.intentName === 'facet_list' ||
-                          candidates?.[0]?.intentName === 'vendor_facet';
-
-    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const stripTokenFromText = (text, tokenLower) => {
-        if (!text || !tokenLower) return text;
-        const escaped = escapeRegex(tokenLower);
-        const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'gi');
-        return String(text)
-            .replace(re, (_m, g1, g2) => `${g1}${g2}`)
-            .replace(/\s+/g, ' ')
-            .trim();
-    };
-
-    if (!isFacetIntent && combinedBase.attributes && typeof combinedBase.attributes === 'object' && combinedBase.product_name) {
-        const values = new Set(Object.values(combinedBase.attributes).map(v => String(v || '').toLowerCase().trim()).filter(Boolean));
-        const safeTokens = Array.from(values).filter(t => !t.includes(',') && !t.includes(' '));
-
-        if (safeTokens.length > 0) {
-            combinedBase.product_name = safeTokens.reduce(
-                (acc, t) => stripTokenFromText(acc, t),
-                combinedBase.product_name
-            );
-
-            if (Array.isArray(combinedBase.products)) {
-                combinedBase.products = combinedBase.products.map(p => {
-                    if (!p) return p;
-                    return safeTokens.reduce((acc, t) => stripTokenFromText(acc, t), p);
-                }).filter(Boolean);
-            }
-        }
-    }
-
-    // ── SECOND BARE CATEGORY GUARD (post-strip) ──
-    // PIE drops "category label as product" *before* we strip attribute tokens out
-    // of product_name/products. For cases like "256gb smartphone", stripping may
-    // turn the reconstructed product back into the bare category token (e.g. "smartphone"),
-    // so we must re-check AFTER stripping.
-    if (!isFacetIntent) {
-        const findCategoryMetaById = (catId) => {
-            if (!catId || !storeContext?.CATEGORIES) return null;
-            return Object.values(storeContext.CATEGORIES).find(c => c?.id && String(c.id) === String(catId)) || null;
-        };
-
-        const catMeta = findCategoryMetaById(combinedBase.category);
-        if (catMeta && storeContext?.CATEGORIES) {
-            const labelLower = String(catMeta.label || '').toLowerCase().trim();
-            const slugLower = String(catMeta.slug || '').toLowerCase().trim();
-
-            const isBareCategoryToken = (s) => {
-                const t = String(s || '').toLowerCase().trim();
-                if (!t) return false;
-                if (t === labelLower || t === slugLower) return true;
-                // Singular/plural tolerance
-                if (labelLower.endsWith('s') && t === labelLower.slice(0, -1)) return true;
-                if (slugLower.endsWith('s') && t === slugLower.slice(0, -1)) return true;
-                return false;
-            };
-
-            const productNameBare = combinedBase.product_name && isBareCategoryToken(combinedBase.product_name);
-            const anyProductsBare = Array.isArray(combinedBase.products) && combinedBase.products.some(p => isBareCategoryToken(p));
-
-            if (productNameBare || anyProductsBare) {
-                combinedBase.product_name = null;
-                combinedBase._resolved_product_id = null;
-                combinedBase.products = [];
-                logDebug('PARAM:POST_STRIP_BARE_CATEGORY', {
-                    _desc: 'Post-strip bare category guard — product_name was just the category after attribute stripping',
-                    droppedName: productNameBare ? combinedBase.product_name : null,
-                    category: catMeta.label
-                });
-            }
-        }
     }
 
     // Check which params still need AI

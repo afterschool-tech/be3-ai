@@ -248,12 +248,27 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
     if (semanticContext?.available && semanticContext.entities?.attribute) {
         for (const [attrType, attrValues] of Object.entries(semanticContext.entities.attribute)) {
             // Skip if brand already detected as entity (brand is first-class)
-            if (attrType === 'brand' && entities.some(e => e.type === 'brand')) continue;
+            if (attrType === 'brand' && entities.some(e => e.type === 'brand')) {
+                logDebug('ENTITY:HINT_DROPPED_BY_BRAND', {
+                    _desc: 'Transformer brand hint dropped — first-class brand entity already exists',
+                    brand: attrValues?.[0]
+                });
+                continue;
+            }
+
             // Skip if this attribute type already detected via clauses (first-class citizens)
-            const alreadyDetected = entities.some(e =>
+            const clauseOverlap = entities.find(e =>
                 e.type === 'clause' && e.attribute === attrType
             );
-            if (alreadyDetected) continue;
+            if (clauseOverlap) {
+                logDebug('ENTITY:HINT_DROPPED_BY_CLAUSE', {
+                    _desc: 'Transformer attribute hint dropped — first-class semantic clause already exists for this attribute',
+                    attribute: attrType,
+                    droppedValue: attrValues?.[0],
+                    winningClause: clauseOverlap.clauseId
+                });
+                continue;
+            }
 
             for (const attrValue of attrValues) {
                 const attrValueLower = attrValue.toLowerCase();

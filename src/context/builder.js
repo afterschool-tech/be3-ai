@@ -201,6 +201,66 @@ async function buildComprehensiveContext() {
 
         console.log(`✅ ${catAttrRes.rows.length} category-attribute mappings processed`);
 
+        // ===== 3b. ATTRIBUTE INHERITANCE (Parent → Child) =====
+        // The storefront resolves attributes using a recursive CTE that walks UP the
+        // parent chain (categories.routes.js). A child category inherits ALL attributes
+        // and clauses from its ancestors unless it explicitly has its own definition.
+        // We replicate that here by walking UP each category's parent chain.
+        console.log('🧬 Propagating inherited attributes (parent → child)...');
+        let inheritedCount = 0;
+
+        // Helper: collect the ancestor chain for a category (bottom-up)
+        function getAncestorChain(catKey) {
+            const chain = [];
+            let current = categoriesMap[catKey];
+            while (current && current.parent_id) {
+                const parentKey = idToKeyMap[current.parent_id];
+                if (!parentKey || !categoriesMap[parentKey]) break;
+                chain.push(parentKey);
+                current = categoriesMap[parentKey];
+            }
+            return chain; // [parent, grandparent, great-grandparent, ...]
+        }
+
+        for (const catKey of Object.keys(categoriesMap)) {
+            const ancestors = getAncestorChain(catKey);
+            if (ancestors.length === 0) continue; // Top-level, nothing to inherit
+
+            for (const ancestorKey of ancestors) {
+                const ancestor = categoriesMap[ancestorKey];
+
+                // Inherit attributes
+                for (const attrKey of ancestor.attributes) {
+                    // Skip system attributes (already applied globally)
+                    if (systemAttributeKeys.includes(attrKey)) continue;
+
+                    if (!categoriesMap[catKey].attributes.includes(attrKey)) {
+                        categoriesMap[catKey].attributes.push(attrKey);
+                        inheritedCount++;
+
+                        // Also update the reverse mapping (attribute → categories)
+                        if (attributesMap[attrKey] && !attributesMap[attrKey].categories.includes(catKey)) {
+                            attributesMap[attrKey].categories.push(catKey);
+                        }
+                    }
+                }
+
+                // Inherit allowed_clauses
+                for (const clauseKey of ancestor.allowed_clauses) {
+                    if (!categoriesMap[catKey].allowed_clauses.includes(clauseKey)) {
+                        categoriesMap[catKey].allowed_clauses.push(clauseKey);
+
+                        // Also update clause.categories for the global CLAUSES map
+                        if (allClauses[clauseKey] && !allClauses[clauseKey].categories.includes(catKey)) {
+                            allClauses[clauseKey].categories.push(catKey);
+                        }
+                    }
+                }
+            }
+        }
+
+        console.log(`✅ ${inheritedCount} inherited attribute-category links added`);
+
         // ===== 4. COLLECTIONS (with rules) =====
         console.log('📦 Fetching collections...');
         const collRes = await pool.query(`
