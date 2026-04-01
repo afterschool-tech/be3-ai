@@ -1,88 +1,215 @@
 {
-    "color": {
-        "variations": [
-            "colour",
-            "colors",
-            "colours",
-            "shades",
-            "looks",
-            "tint",
-            "appearance",
-            "hue",
-            "pigment"
-        ]
-    },
-    "storage": {
-        "variations": [
-            "capacity",
-            "disk space",
-            "memory",
-            "rom",
-            "gigabytes",
-            "gb",
-            "space",
-            "size",
-            "internal",
-            "drive",
-            "storages"
-        ]
-    },
-    "brand": {
-        "variations": [
-            "brands",
-            "make",
-            "makes",
-            "manufacturer",
-            "manufacturers",
-            "company",
-            "labels",
-            "builders",
-            "who made",
-            "brand name"
-        ]
-    },
-    "vendor": {
-        "variations": [
-            "vendor",
-            "vendors",
-            "merchant",
-            "merchants",
-            "seller",
-            "sellers",
-            "store",
-            "shop",
-            "provider"
-        ]
-    },
-    "material": {
-        "variations": [
-            "materials",
-            "build",
-            "substance",
-            "composition",
-            "texture",
-            "made of",
-            "fabric",
-            "metal",
-            "plastic"
-        ]
-    },
-    "quality": {
-        "variations": [
-            "qualities",
-            "condition",
-            "grade",
-            "state",
-            "standard",
-            "rating",
-            "level"
-        ]
-    },
-    "size": {
-        "variations": [
-            "sizes",
-            "dimensions",
-            "proportions"
-        ]
+  "color": {
+    "variations": [
+      "colour",
+      "colors",
+      "colours",
+      "shades",
+      "looks",
+      "tint",
+      "appearance",
+      "hue",
+      "pigment"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.034Z"
     }
+  },
+  "storage": {
+    "variations": [
+      "capacity",
+      "disk space",
+      "memory",
+      "rom",
+      "gigabytes",
+      "gb",
+      "space",
+      "size",
+      "internal",
+      "drive",
+      "storages"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.040Z"
+    }
+  },
+  "brand": {
+    "variations": [
+      "brands",
+      "make",
+      "makes",
+      "manufacturer",
+      "manufacturers",
+      "company",
+      "labels",
+      "builders",
+      "who made",
+      "brand name"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.041Z"
+    }
+  },
+  "vendor": {
+    "variations": [
+      "vendor",
+      "vendors",
+      "merchant",
+      "merchants",
+      "seller",
+      "sellers",
+      "store",
+      "shop",
+      "provider"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.041Z"
+    }
+  },
+  "material": {
+    "variations": [
+      "materials",
+      "build",
+      "substance",
+      "composition",
+      "texture",
+      "made of",
+      "fabric",
+      "metal",
+      "plastic"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.041Z"
+    }
+  },
+  "quality": {
+    "variations": [
+      "qualities",
+      "condition",
+      "grade",
+      "state",
+      "standard",
+      "rating",
+      "level"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.041Z"
+    }
+  },
+  "size": {
+    "variations": [
+      "sizes",
+      "dimensions",
+      "proportions"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:53:17.041Z"
+    }
+  },
+  "gender": {
+    "variations": [
+      "sex",
+      "demographics",
+      "pronoun",
+      "identity",
+      "classification",
+      "categorization",
+      "masculinity",
+      "femininity",
+      "nonbinary",
+      "androgyny",
+      "intersex",
+      "transgender",
+      "binary",
+      "unisex",
+      "neutral",
+      "malehood",
+      "femalehood",
+      "personhood",
+      "humanness",
+      "biologicalsex",
+      "sociologicalgender",
+      "psychologicalgender",
+      "physiologicalgender",
+      "anatomicalsex",
+      "genitalia",
+      "reproductivehealth",
+      "chromosomes",
+      "hormonalbalance",
+      "geneticpredisposition",
+      "phenotype",
+      "embodiment",
+      "selfidentification",
+      "socialconstruct",
+      "culturalnorm",
+      "stereotype",
+      "archetype",
+      "persona",
+      "individuality",
+      "characteristics",
+      "traits",
+      "attributes"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:54:07.059Z"
+    }
+  },
+  "price_tier": {
+    "variations": [
+      "cost bracket",
+      "pricing category",
+      "financial tier",
+      "expense level",
+      "value range",
+      "monetary grade",
+      "fare class",
+      "tariff level",
+      "price point",
+      "budget range",
+      "cost scale",
+      "expenditure tier",
+      "price classification",
+      "monetary classification",
+      "tariff classification",
+      "fee structure",
+      "pricing structure",
+      "cost hierarchy",
+      "price stratification",
+      "financial stratification",
+      "expense stratification",
+      "value hierarchy",
+      "monetary hierarchy",
+      "budget category",
+      "cost category",
+      "pricing tier system",
+      "tiered pricing",
+      "multi-level pricing",
+      "price ladder",
+      "cost ladder",
+      "financial ladder",
+      "pricing spectrum",
+      "cost spectrum",
+      "monetary spectrum",
+      "value spectrum",
+      "budget spectrum",
+      "tiered cost",
+      "stratified pricing",
+      "layered pricing",
+      "pricing matrix",
+      "cost matrix",
+      "financial matrix"
+    ],
+    "metadata": {
+      "runs": 1,
+      "last_updated": "2026-04-01T01:54:09.194Z"
+    }
+  }
 }

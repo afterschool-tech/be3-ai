@@ -94,10 +94,15 @@ async function buildComprehensiveContext() {
                 label: a.label,
                 type: a.type || 'text',
                 // Predefined values (for select type dropdown)
-                predefined_values: (options && Array.isArray(options)) ? options.map(opt => ({
-                    label: opt.label || opt.name || opt.value,
-                    value: opt.value
-                })) : [],
+                predefined_values: (options && Array.isArray(options)) ? options.map(opt => {
+                    if (typeof opt === 'string' || typeof opt === 'number') {
+                        return { label: String(opt), value: String(opt) };
+                    }
+                    return {
+                        label: opt.label || opt.name || opt.value,
+                        value: opt.value !== undefined ? opt.value : opt
+                    };
+                }) : [],
                 // Semantic clauses (e.g., "affordable" = ["budget", "midrange"])
                 clauses: clauses.filter(c => c && c.label).map(c => ({
                     name: c.name || c.label.toLowerCase().replace(/\s+/g, '_'),
@@ -168,29 +173,30 @@ async function buildComprehensiveContext() {
                         const clauseKey = clause.label.toLowerCase().replace(/\s+/g, '_');
                         const isExcluded = row.excluded_clauses && Array.isArray(row.excluded_clauses) && row.excluded_clauses.includes(clause.name);
 
+                        // Initialize global clause structure whether excluded or not
+                        if (!allClauses[clauseKey]) {
+                            allClauses[clauseKey] = {
+                                label: clause.label,
+                                attribute: row.attr_label,
+                                matches: Array.isArray(clause.value) ? clause.value : [clause.value],
+                                display: {
+                                    prefix: clause.prefix || '',
+                                    suffix: clause.suffix || ''
+                                },
+                                categories: [],
+                                excluded_categories: []
+                            };
+                        }
+
                         if (!isExcluded) {
                             if (!categoriesMap[catKey].allowed_clauses.includes(clauseKey)) {
                                 categoriesMap[catKey].allowed_clauses.push(clauseKey);
-                            }
-
-                            if (!allClauses[clauseKey]) {
-                                allClauses[clauseKey] = {
-                                    label: clause.label,
-                                    attribute: row.attr_label,
-                                    matches: Array.isArray(clause.value) ? clause.value : [clause.value],
-                                    display: {
-                                        prefix: clause.prefix || '',
-                                        suffix: clause.suffix || ''
-                                    },
-                                    categories: [],
-                                    excluded_categories: []
-                                };
                             }
                             if (!allClauses[clauseKey].categories.includes(catKey)) {
                                 allClauses[clauseKey].categories.push(catKey);
                             }
                         } else {
-                            if (allClauses[clauseKey] && !allClauses[clauseKey].excluded_categories.includes(catKey)) {
+                            if (!allClauses[clauseKey].excluded_categories.includes(catKey)) {
                                 allClauses[clauseKey].excluded_categories.push(catKey);
                             }
                         }
@@ -247,7 +253,10 @@ async function buildComprehensiveContext() {
 
                 // Inherit allowed_clauses
                 for (const clauseKey of ancestor.allowed_clauses) {
-                    if (!categoriesMap[catKey].allowed_clauses.includes(clauseKey)) {
+                    // CRITICAL FIX: Do not inherit if the child category explicitly excluded this clause!
+                    const isExcludedByChild = allClauses[clauseKey] && allClauses[clauseKey].excluded_categories && allClauses[clauseKey].excluded_categories.includes(catKey);
+
+                    if (!isExcludedByChild && !categoriesMap[catKey].allowed_clauses.includes(clauseKey)) {
                         categoriesMap[catKey].allowed_clauses.push(clauseKey);
 
                         // Also update clause.categories for the global CLAUSES map

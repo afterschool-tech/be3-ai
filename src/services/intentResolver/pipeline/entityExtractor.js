@@ -530,20 +530,41 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 });
             }
 
-            entities.push({
-                type: 'category',
-                value: phrase,
-                id: catId,
-                source: 'storeContext.CATEGORIES',
-                matchMeta: catMeta,
-                quality: categoryQuality,
-                wordIndices: matchedWordIndices,
-                consumedWordIndices,
-                _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
-            });
+            // --- SEMANTIC KICKSTART HARMONIZATION ---
+            // If the category won solely via Hint, Depth, or Semantic bonuses (zero lexical match),
+            // we downgrade it to a SEMANTIC_KICKSTART source. This ensures the search engine
+            // treats it as a guess and triggers fallback search if no products are found.
+            const isPureSemanticGuess = (catMeta?.lexScore || 0) === 0;
 
-            for (const idx of consumedWordIndices) {
-                consumed.add(idx);
+            if (isPureSemanticGuess) {
+                entities.push({
+                    type: 'category',
+                    value: phrase,
+                    id: catId,
+                    source: 'SEMANTIC_KICKSTART',
+                    matchMeta: catMeta,
+                    quality: 0.35,
+                    wordIndices: [-1],
+                    consumedWordIndices: [],
+                    _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
+                });
+                // Note: We do NOT add to 'consumed' set for pure guesses.
+            } else {
+                entities.push({
+                    type: 'category',
+                    value: phrase,
+                    id: catId,
+                    source: 'storeContext.CATEGORIES',
+                    matchMeta: catMeta,
+                    quality: categoryQuality,
+                    wordIndices: matchedWordIndices,
+                    consumedWordIndices,
+                    _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
+                });
+
+                for (const idx of consumedWordIndices) {
+                    consumed.add(idx);
+                }
             }
 
             logDebug('ENTITY:WINNER_SELECTION', {

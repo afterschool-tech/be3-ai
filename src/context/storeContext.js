@@ -1,7 +1,7 @@
 
 /**
  * AUTO-GENERATED Comprehensive Store Context
- * Generated: 2026-03-30T11:11:33.109Z
+ * Generated: 2026-04-01T01:26:18.922Z
  * 
  * This context powers the AI with:
  * - Hierarchical categories (parent→child)
@@ -26,11 +26,26 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 3,
-        "total_count": 3
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "action_figures_&_collectibles": {
         "id": "2f93c6ed-0cb3-409a-ac78-13c6682b33ce",
@@ -41,9 +56,13 @@ const CATEGORIES = {
         "parent_id": "100746ef-7dba-452b-9ddd-b0c782557c35",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -57,9 +76,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -72,9 +106,13 @@ const CATEGORIES = {
         "parent_id": "2380f970-7bbf-484f-a124-c314e78d0076",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -89,14 +127,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -112,17 +153,20 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "storage",
+            "brand",
             "material",
             "price_tier",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
             "small_storage",
+            "infinix_product",
+            "microsoft_product",
+            "leather",
             "affordable",
             "expensive",
-            "apple_product",
-            "infinix_product",
-            "microsoft_product"
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 6,
         "total_count": 6
@@ -137,18 +181,21 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "brand",
             "price_tier",
             "material",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
+            "infinix_product",
+            "microsoft_product",
             "affordable",
             "expensive",
+            "leather",
             "small_storage",
-            "apple_product",
-            "infinix_product",
-            "microsoft_product"
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 3,
         "total_count": 3
@@ -161,17 +208,20 @@ const CATEGORIES = {
         "image_url": "https://t3.ftcdn.net/jpg/03/29/32/18/360_F_329321873_tWphXnKQHwtZzj4xHUvFRsnaL6cEoLtX.jpg",
         "parent_id": null,
         "children": [
-            "blenders",
             "large_appliances",
             "power_solutions",
             "small_appliances"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
-        "total_count": 2
+        "total_count": 0
     },
     "automobile": {
         "id": "03c12991-9fb9-45cb-820e-249e51c7eb19",
@@ -186,9 +236,13 @@ const CATEGORIES = {
             "interior_accessories"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -201,9 +255,13 @@ const CATEGORIES = {
         "parent_id": "100746ef-7dba-452b-9ddd-b0c782557c35",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -242,20 +300,21 @@ const CATEGORIES = {
         "label": "Beverages",
         "slug": "beverages",
         "description": "",
-        "image_url": null,
+        "image_url": "https://media.istockphoto.com/id/1468173966/photo/cocktail-party-bright-fruity-and-citrus-alcoholic-drinks-with-gin-vodka-vermouth-and-juice.jpg?s=612x612&w=0&k=20&c=I3vNEqwuk4OzK0bdosqpmlowLb2MYlonHTbDwQvX1tk=",
         "parent_id": "9569c36b-343d-47b2-9aac-1f2046c82b0e",
         "children": [],
         "attributes": [
             "vendor",
-            "color",
-            "size"
+            "size",
+            "color"
         ],
         "allowed_clauses": [
+            "xl",
             "color_for_ladies",
             "color_for_men"
         ],
-        "product_count": 0,
-        "total_count": 0
+        "product_count": 4,
+        "total_count": 4
     },
     "blenders": {
         "id": "d661c954-861a-4496-85e1-14760610f367",
@@ -263,12 +322,15 @@ const CATEGORIES = {
         "slug": "blenders",
         "description": "",
         "image_url": "https://www.shutterstock.com/image-photo/electric-blender-standing-on-kitchen-600nw-2698751239.jpg",
-        "parent_id": "c2d10e28-892f-4532-9d36-0e5d8868fbd0",
+        "parent_id": "06a03588-da4c-4121-83f5-227760c70cc9",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies"
+        ],
         "product_count": 2,
         "total_count": 2
     },
@@ -282,9 +344,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -298,9 +375,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -315,14 +407,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "brand",
-            "price_tier"
+            "price_tier",
+            "color"
         ],
         "allowed_clauses": [
             "apple_product",
             "infinix_product",
             "microsoft_product",
             "affordable",
-            "expensive"
+            "expensive",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -341,14 +436,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 0,
         "total_count": 0
@@ -358,20 +455,21 @@ const CATEGORIES = {
         "label": "Canned & Packaged Foods",
         "slug": "canned-packaged-foods",
         "description": "",
-        "image_url": null,
+        "image_url": "https://w0.peakpx.com/wallpaper/71/83/HD-wallpaper-food-shelf-pretty-item-scenic-object-cg-objects-box-sweet-nice-anime-package-scenery-realistic-lovely-food-items-shelf-cute-kawaii-3d-snack-scene.jpg",
         "parent_id": "9569c36b-343d-47b2-9aac-1f2046c82b0e",
         "children": [],
         "attributes": [
             "vendor",
-            "color",
-            "size"
+            "size",
+            "color"
         ],
         "allowed_clauses": [
+            "xl",
             "color_for_ladies",
             "color_for_men"
         ],
-        "product_count": 0,
-        "total_count": 0
+        "product_count": 5,
+        "total_count": 5
     },
     "car_care": {
         "id": "c0adbb1d-2ae0-42e7-a079-3019f9d00951",
@@ -382,9 +480,13 @@ const CATEGORIES = {
         "parent_id": "03c12991-9fb9-45cb-820e-249e51c7eb19",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -397,9 +499,13 @@ const CATEGORIES = {
         "parent_id": "03c12991-9fb9-45cb-820e-249e51c7eb19",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -414,14 +520,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -437,14 +547,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 0,
         "total_count": 0
@@ -460,14 +572,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -481,9 +597,13 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -498,16 +618,33 @@ const CATEGORIES = {
             "activewear",
             "bottoms_&_pants",
             "jackets_&_outerwear",
+            "jersey",
+            "shirts",
             "sleepwear_&_loungewear",
             "tops_&_t-shirts"
         ],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 2,
-        "total_count": 2
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 5,
+        "total_count": 11
     },
     "components": {
         "id": "d64b240e-3146-4386-a98a-418057f66614",
@@ -528,14 +665,15 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -551,14 +689,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -574,17 +715,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -598,11 +739,33 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
+    },
+    "cookware_sets": {
+        "id": "b5f2919c-6bc4-4883-9940-b154af0e6773",
+        "label": "Cookware Sets",
+        "slug": "cookware-sets",
+        "description": "",
+        "image_url": "https://www.lecreuset.co.za/on/demandware.static/-/Sites-LeCreuset_SA-Library/default/dw773ada47/fff-colourful-cookware.jpg",
+        "parent_id": "06a03588-da4c-4121-83f5-227760c70cc9",
+        "children": [],
+        "attributes": [
+            "vendor",
+            "color"
+        ],
+        "allowed_clauses": [
+            "color_for_ladies"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "cooling": {
         "id": "35c76cbb-b3ba-4e0c-8c82-c71ac5bc8ded",
@@ -613,9 +776,13 @@ const CATEGORIES = {
         "parent_id": "2380f970-7bbf-484f-a124-c314e78d0076",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -630,14 +797,15 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -653,14 +821,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -680,14 +851,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -701,9 +875,13 @@ const CATEGORIES = {
         "parent_id": "2887cda1-7435-4a60-aaa1-33ef26eff22b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -718,14 +896,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 0,
         "total_count": 0
@@ -741,14 +921,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -762,9 +946,13 @@ const CATEGORIES = {
         "parent_id": "100746ef-7dba-452b-9ddd-b0c782557c35",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -784,14 +972,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 2,
         "total_count": 3
@@ -809,19 +999,31 @@ const CATEGORIES = {
             "footwear",
             "handbags",
             "handbags_&_bags",
-            "jersey",
             "jewellery",
-            "shirts",
-            "shoes",
             "watches_&_eyewear"
         ],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
-        "total_count": 16
+        "total_count": 38
     },
     "feature_phones": {
         "id": "045389eb-03ba-4466-bed3-3343870d547a",
@@ -834,14 +1036,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -855,9 +1061,13 @@ const CATEGORIES = {
         "parent_id": "066f4171-55af-4577-9b7b-1ecf7368988f",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -872,17 +1082,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -901,15 +1111,16 @@ const CATEGORIES = {
         ],
         "attributes": [
             "vendor",
-            "color",
-            "size"
+            "size",
+            "color"
         ],
         "allowed_clauses": [
+            "xl",
             "color_for_ladies",
             "color_for_men"
         ],
         "product_count": 10,
-        "total_count": 10
+        "total_count": 19
     },
     "food_preparation": {
         "id": "fcd8b89f-0fac-4019-a8c2-8fd8fa23e277",
@@ -920,9 +1131,13 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -931,16 +1146,34 @@ const CATEGORIES = {
         "label": "Footwear",
         "slug": "footwear",
         "description": "",
-        "image_url": null,
+        "image_url": "https://hips.hearstapps.com/hmg-prod/images/singlemarket-indexcomp-1551214427.jpg?crop=1.00xw:1.00xh;0,0&resize=640:*",
         "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
-        "children": [],
+        "children": [
+            "sandals_&_slippers",
+            "shoes"
+        ],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
-        "total_count": 0
+        "total_count": 11
     },
     "formal_&_dress_shoes": {
         "id": "d56e7819-9c38-4da7-a80f-a58f9d05f1f0",
@@ -952,9 +1185,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -963,22 +1211,26 @@ const CATEGORIES = {
         "label": "Fragrances",
         "slug": "fragrances",
         "description": "",
-        "image_url": null,
+        "image_url": "https://wallpapers.com/images/hd/fragrance-1500-x-1000-wallpaper-d4zq5v3ise7eh1gr.jpg",
         "parent_id": "36071d35-6c9c-4fcb-ac5c-c543b938173b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "furniture_&_organization": {
         "id": "3aa527e0-a871-413f-b8ed-050e28c49da5",
         "label": "Furniture & Organization",
         "slug": "furniture-organization",
         "description": "",
-        "image_url": null,
+        "image_url": "https://cdn.mos.cms.futurecdn.net/7W2n5T4Wki9YVHUnprVUaM.jpg",
         "parent_id": null,
         "children": [
             "bedroom_furniture",
@@ -1000,22 +1252,22 @@ const CATEGORIES = {
         "image_url": "https://www.ul.com/sites/default/files/styles/hero_boxed_width/public/2019-05/Image18_Quadcopter-drone_Caban_022819-Hero-1000x715.jpg?itok=6WSk4wNj",
         "parent_id": null,
         "children": [
-            "electronics",
-            "kitchen_appliances"
+            "electronics"
         ],
         "attributes": [
             "vendor",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 7,
-        "total_count": 11
+        "total_count": 10
     },
     "game_consoles": {
         "id": "2c86882a-c069-47c3-bdb6-9af4849672bb",
@@ -1032,17 +1284,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 1
@@ -1063,17 +1315,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 6,
         "total_count": 8
@@ -1093,17 +1345,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1119,17 +1371,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1145,14 +1397,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1168,14 +1423,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1191,14 +1449,15 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1208,15 +1467,19 @@ const CATEGORIES = {
         "label": "Hair Care",
         "slug": "hair-care",
         "description": "",
-        "image_url": null,
+        "image_url": "https://img.freepik.com/free-photo/combs-scissors-copy-space_23-2148352839.jpg?semt=ais_hybrid&w=740&q=80",
         "parent_id": "36071d35-6c9c-4fcb-ac5c-c543b938173b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "handbags": {
         "id": "16b1db22-fd3e-4fa2-921b-517daa5da40d",
@@ -1228,11 +1491,25 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 2,
-        "total_count": 2
+        "allowed_clauses": [
+            "male",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "handbags_&_bags": {
         "id": "90edb1eb-00a3-4c07-b2df-b13a86652baa",
@@ -1244,9 +1521,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1255,21 +1547,24 @@ const CATEGORIES = {
         "label": "Health & Beauty",
         "slug": "health-beauty",
         "description": "",
-        "image_url": null,
+        "image_url": "https://m.media-amazon.com/images/I/713F-y8GylL._AC_UF1000,1000_QL80_.jpg",
         "parent_id": null,
         "children": [
             "fragrances",
             "hair_care",
             "makeup",
-            "personal_care",
-            "skin_care"
+            "personal_care"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
-        "total_count": 0
+        "total_count": 23
     },
     "home_audio": {
         "id": "7f24ccd0-1309-4bbe-a252-5bfc7e613d29",
@@ -1282,14 +1577,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1327,9 +1624,13 @@ const CATEGORIES = {
             "surface_&_floor_cleaners"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1342,9 +1643,13 @@ const CATEGORIES = {
         "parent_id": "03c12991-9fb9-45cb-820e-249e51c7eb19",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1360,16 +1665,20 @@ const CATEGORIES = {
             "vendor",
             "price_tier",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1385,8 +1694,8 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "storage",
             "material",
+            "storage",
             "size",
             "price_tier",
             "brand"
@@ -1394,15 +1703,18 @@ const CATEGORIES = {
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
+            "neutrals",
+            "leather",
             "small_storage",
+            "xl",
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
             "microsoft_product"
         ],
-        "product_count": 5,
-        "total_count": 5
+        "product_count": 6,
+        "total_count": 6
     },
     "irons_&_steamers": {
         "id": "b0ac7ac4-5dbc-466f-9f17-b1741c73f057",
@@ -1413,9 +1725,13 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1429,9 +1745,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1441,13 +1772,28 @@ const CATEGORIES = {
         "slug": "jersey",
         "description": "jerseys of all kinds",
         "image_url": "https://i.etsystatic.com/11813826/r/il/186a29/6689856418/il_fullxfull.6689856418_n4oj.jpg",
-        "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "parent_id": "7a8f8f3e-1221-4409-a223-e3b09b3f8f1b",
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 2,
         "total_count": 2
     },
@@ -1461,11 +1807,48 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 3,
-        "total_count": 3
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 6,
+        "total_count": 6
+    },
+    "kitchen": {
+        "id": "06a03588-da4c-4121-83f5-227760c70cc9",
+        "label": "Kitchen",
+        "slug": "kitchen",
+        "description": "",
+        "image_url": "https://cdn.magicdecor.in/com/2023/11/15141824/Wooden-Spoons-and-Spices-Wallpaper-for-Restaurants-Kitchens-M.jpg",
+        "parent_id": null,
+        "children": [
+            "blenders",
+            "cookware_sets",
+            "kitchen_appliances"
+        ],
+        "attributes": [
+            "vendor",
+            "color"
+        ],
+        "allowed_clauses": [
+            "color_for_ladies"
+        ],
+        "product_count": 0,
+        "total_count": 12
     },
     "kitchen_appliances": {
         "id": "3e5781a6-5500-476f-8612-bdd1c2eeeb27",
@@ -1473,24 +1856,25 @@ const CATEGORIES = {
         "slug": "kitchen-appliances",
         "description": "Everything kitchen related",
         "image_url": "https://majesticchef.pk/cdn/shop/files/GlSet.jpg",
-        "parent_id": "95bd9c7a-4c90-4d9e-950b-d27a12113c4b",
+        "parent_id": "06a03588-da4c-4121-83f5-227760c70cc9",
         "children": [],
         "attributes": [
             "vendor",
             "color",
-            "storage",
-            "material",
             "quality",
+            "material",
             "size"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "small_storage",
-            "high_quality"
+            "neutrals",
+            "high_quality",
+            "leather",
+            "xl"
         ],
-        "product_count": 1,
-        "total_count": 1
+        "product_count": 5,
+        "total_count": 5
     },
     "laptops_&_computers": {
         "id": "dfa80cc4-f95a-4c87-949b-8b0438b28949",
@@ -1512,14 +1896,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 6,
         "total_count": 7
@@ -1539,9 +1926,13 @@ const CATEGORIES = {
             "washing_machines_&_dryers"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1554,9 +1945,13 @@ const CATEGORIES = {
         "parent_id": "2380f970-7bbf-484f-a124-c314e78d0076",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1569,9 +1964,13 @@ const CATEGORIES = {
         "parent_id": "2887cda1-7435-4a60-aaa1-33ef26eff22b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1610,15 +2009,19 @@ const CATEGORIES = {
         "label": "Makeup",
         "slug": "makeup",
         "description": "",
-        "image_url": null,
+        "image_url": "https://png.pngtree.com/thumb_back/fw800/background/20251229/pngtree-makeup-brushes-and-cosmetic-bag-on-pink-background-image_20723638.webp",
         "parent_id": "36071d35-6c9c-4fcb-ac5c-c543b938173b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "microwaves": {
         "id": "0dea8ad5-d898-4445-a78b-58421b87d6a4",
@@ -1629,9 +2032,13 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1646,14 +2053,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men",
+            "affordable",
+            "apple_product"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1669,17 +2079,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1708,9 +2118,13 @@ const CATEGORIES = {
         "parent_id": "066f4171-55af-4577-9b7b-1ecf7368988f",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1723,9 +2137,13 @@ const CATEGORIES = {
         "parent_id": "f46b0f38-9c96-4a42-b0e7-9921d8dfaaef",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1740,14 +2158,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men",
+            "affordable",
+            "apple_product"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1757,15 +2178,21 @@ const CATEGORIES = {
         "label": "Personal Care",
         "slug": "personal-care",
         "description": "",
-        "image_url": null,
+        "image_url": "https://images.everydayhealth.com/images/healthy-living/health-benefits-of-taking-a-bath-plus-healthy-add-ins-for-your-next-soak-1440x810.jpg?sfvrsn=fabc5394_5",
         "parent_id": "36071d35-6c9c-4fcb-ac5c-c543b938173b",
-        "children": [],
-        "attributes": [
-            "vendor"
+        "children": [
+            "skin_care"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "attributes": [
+            "vendor",
+            "color"
+        ],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
+        "product_count": 3,
+        "total_count": 8
     },
     "pet_supplies": {
         "id": "0fb7a563-5be7-4ec0-a168-bc6d545380dc",
@@ -1776,9 +2203,13 @@ const CATEGORIES = {
         "parent_id": "f46b0f38-9c96-4a42-b0e7-9921d8dfaaef",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1798,14 +2229,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1821,17 +2256,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1847,14 +2282,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1868,9 +2307,13 @@ const CATEGORIES = {
         "parent_id": "c2d10e28-892f-4532-9d36-0e5d8868fbd0",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -1885,14 +2328,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men",
+            "affordable",
+            "apple_product"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1908,14 +2354,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1931,14 +2380,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men",
+            "affordable",
+            "apple_product"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1954,17 +2406,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 0,
         "total_count": 0
@@ -1980,14 +2432,15 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
-            "affordable",
             "expensive",
-            "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -2001,9 +2454,13 @@ const CATEGORIES = {
         "parent_id": "2380f970-7bbf-484f-a124-c314e78d0076",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2027,16 +2484,31 @@ const CATEGORIES = {
         "label": "Sandals & Slippers",
         "slug": "sandals-slippers",
         "description": "",
-        "image_url": null,
-        "parent_id": "bfa02d36-7c1e-45f4-aa9a-8ea38ca689a8",
+        "image_url": "https://img.freepik.com/free-photo/flip-flops-wooden-blue-background_1101-1051.jpg?semt=ais_hybrid&w=740&q=80",
+        "parent_id": "cb51fbab-9386-46e6-a14a-210cce5ce24a",
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "shirts": {
         "id": "a0a28520-d394-48ae-8cfb-4411171fe227",
@@ -2044,17 +2516,32 @@ const CATEGORIES = {
         "slug": "shirts",
         "description": "Shirts of all kinds",
         "image_url": "https://static.vecteezy.com/system/resources/thumbnails/051/935/463/small/yellow-t-shirt-hanging-on-a-rack-with-other-colored-shirts-in-a-store-free-photo.jpeg",
-        "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "parent_id": "7a8f8f3e-1221-4409-a223-e3b09b3f8f1b",
         "children": [
             "tshirts"
         ],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
-        "total_count": 2
+        "total_count": 3
     },
     "shoes": {
         "id": "bfa02d36-7c1e-45f4-aa9a-8ea38ca689a8",
@@ -2062,35 +2549,53 @@ const CATEGORIES = {
         "slug": "shoes",
         "description": "Quality footwear for everyone",
         "image_url": "https://static0.therichestimages.com/wordpress/wp-content/uploads/2021/07/Some-Of-The-Most-Expensive-Shoes-Ever-Sold.jpg?w=1600&h=1200&fit=crop",
-        "parent_id": "5f0a09a7-7f88-4d9f-a6d9-a18311b3387e",
+        "parent_id": "cb51fbab-9386-46e6-a14a-210cce5ce24a",
         "children": [
             "boots",
             "formal_&_dress_shoes",
-            "sandals_&_slippers",
             "sneakers_&_athletic"
         ],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 2,
-        "total_count": 2
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 6,
+        "total_count": 6
     },
     "skin_care": {
         "id": "da3ab8a2-6c3d-4b83-8d12-65726d442eaa",
         "label": "Skin Care",
         "slug": "skin-care",
         "description": "",
-        "image_url": null,
-        "parent_id": "36071d35-6c9c-4fcb-ac5c-c543b938173b",
+        "image_url": "https://www.ualberta.ca/en/youalberta/media-library/2023/03/skincare.jpg",
+        "parent_id": "c9dca9ef-48e4-4c15-9601-f09fbd19a6c5",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
+        "product_count": 5,
+        "total_count": 5
     },
     "sleepwear_&_loungewear": {
         "id": "9d0b9255-48e2-4090-a388-fa04f4133a67",
@@ -2102,11 +2607,27 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "color",
+            "gender",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 0,
-        "total_count": 0
+        "allowed_clauses": [
+            "color_for_ladies",
+            "neutrals",
+            "male",
+            "female",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 1,
+        "total_count": 1
     },
     "small_appliances": {
         "id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
@@ -2124,9 +2645,13 @@ const CATEGORIES = {
             "vacuum_cleaners"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2145,19 +2670,23 @@ const CATEGORIES = {
             "vendor",
             "material",
             "price_tier",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
+            "leather",
             "affordable",
             "expensive",
-            "small_storage",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
-        "total_count": 11
+        "total_count": 12
     },
     "smartphones_&_tablets": {
         "id": "d8aed750-6164-4065-881c-652ef888179f",
@@ -2176,17 +2705,21 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 6,
-        "total_count": 20
+        "total_count": 21
     },
     "snacks_&_confectionery": {
         "id": "a62475cb-87ad-49d6-a005-8b9c5331e631",
@@ -2198,10 +2731,11 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
-            "color",
-            "size"
+            "size",
+            "color"
         ],
         "allowed_clauses": [
+            "xl",
             "color_for_ladies",
             "color_for_men"
         ],
@@ -2218,9 +2752,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2235,14 +2784,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "storage",
             "material",
+            "storage",
             "size"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "small_storage"
+            "neutrals",
+            "leather",
+            "xl"
         ],
         "product_count": 1,
         "total_count": 1
@@ -2260,9 +2811,13 @@ const CATEGORIES = {
             "team_sports"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2279,9 +2834,13 @@ const CATEGORIES = {
             "pet_supplies"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2294,9 +2853,13 @@ const CATEGORIES = {
         "parent_id": "2887cda1-7435-4a60-aaa1-33ef26eff22b",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2316,16 +2879,20 @@ const CATEGORIES = {
             "vendor",
             "price_tier",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 3
@@ -2339,9 +2906,13 @@ const CATEGORIES = {
         "parent_id": "066f4171-55af-4577-9b7b-1ecf7368988f",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2356,14 +2927,16 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "size",
-            "storage",
+            "color",
             "material",
-            "color"
+            "storage"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "xl",
             "color_for_ladies",
-            "color_for_men"
+            "color_for_men",
+            "leather",
+            "small_storage"
         ],
         "product_count": 0,
         "total_count": 0
@@ -2378,9 +2951,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2397,9 +2985,13 @@ const CATEGORIES = {
             "educational_toys"
         ],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2413,11 +3005,26 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
-        "product_count": 2,
-        "total_count": 2
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
+        "product_count": 3,
+        "total_count": 3
     },
     "ultrabooks": {
         "id": "8bc87612-cc22-41c4-9800-b616c787056d",
@@ -2430,17 +3037,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
+            "neutrals",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 1,
         "total_count": 1
@@ -2454,9 +3062,13 @@ const CATEGORIES = {
         "parent_id": "fd925a14-6d8a-43c9-a67e-4d20582016ba",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2471,17 +3083,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 1,
         "total_count": 1
@@ -2510,9 +3122,13 @@ const CATEGORIES = {
         "parent_id": "2380f970-7bbf-484f-a124-c314e78d0076",
         "children": [],
         "attributes": [
-            "vendor"
+            "vendor",
+            "color"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "color_for_ladies",
+            "color_for_men"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2526,9 +3142,24 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "gender",
+            "color",
+            "quality",
+            "material",
+            "brand",
             "size"
         ],
-        "allowed_clauses": [],
+        "allowed_clauses": [
+            "male",
+            "female",
+            "neutrals",
+            "high_quality",
+            "leather",
+            "apple_product",
+            "infinix_product",
+            "microsoft_product",
+            "xl"
+        ],
         "product_count": 0,
         "total_count": 0
     },
@@ -2543,14 +3174,18 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "material",
+            "brand",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
-            "small_storage",
+            "leather",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "small_storage",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -2565,18 +3200,21 @@ const CATEGORIES = {
         "children": [],
         "attributes": [
             "vendor",
+            "brand",
             "price_tier",
             "material",
             "storage",
-            "brand"
+            "color"
         ],
         "allowed_clauses": [
+            "infinix_product",
+            "microsoft_product",
             "affordable",
             "expensive",
+            "leather",
             "small_storage",
-            "apple_product",
-            "infinix_product",
-            "microsoft_product"
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -2592,14 +3230,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "price_tier",
-            "brand"
+            "brand",
+            "color"
         ],
         "allowed_clauses": [
             "affordable",
             "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "color_for_ladies",
+            "color_for_men"
         ],
         "product_count": 0,
         "total_count": 0
@@ -2615,17 +3256,17 @@ const CATEGORIES = {
         "attributes": [
             "vendor",
             "color",
-            "price_tier",
-            "brand"
+            "brand",
+            "price_tier"
         ],
         "allowed_clauses": [
             "color_for_ladies",
             "color_for_men",
-            "affordable",
-            "expensive",
             "apple_product",
             "infinix_product",
-            "microsoft_product"
+            "microsoft_product",
+            "affordable",
+            "expensive"
         ],
         "product_count": 1,
         "total_count": 1
@@ -2633,35 +3274,54 @@ const CATEGORIES = {
 };
 
 const ATTRIBUTES = {
-    "size": {
-        "id": "4b41a785-a8f1-46e4-ae95-9b0957f00f0d",
-        "code": "s",
-        "label": "size",
-        "type": "text",
-        "predefined_values": [],
-        "clauses": [],
+    "gender": {
+        "id": "90016e0f-dff9-49f5-92c6-e9b2775200be",
+        "code": "gender",
+        "label": "Gender",
+        "type": "select",
+        "predefined_values": [
+            {
+                "label": "MALE",
+                "value": "male"
+            },
+            {
+                "label": "FEMALE",
+                "value": "female"
+            }
+        ],
+        "clauses": [
+            {
+                "name": "m",
+                "label": "male",
+                "matches": [
+                    "male"
+                ],
+                "operator": "=",
+                "prefix": "Men's",
+                "suffix": ""
+            },
+            {
+                "name": "f",
+                "label": "female",
+                "matches": [
+                    "female"
+                ],
+                "operator": "=",
+                "prefix": "Women's",
+                "suffix": ""
+            }
+        ],
         "categories": [
-            "electronics",
-            "food",
-            "sound_gadget",
-            "kitchen_appliances",
-            "iphones",
             "fashion",
+            "handbags",
             "accessories",
             "activewear",
-            "beverages",
             "boots",
             "bottoms_&_pants",
-            "cameras_&_photography",
-            "canned_&_packaged_foods",
-            "cctv",
             "clothing",
-            "drones",
             "footwear",
             "formal_&_dress_shoes",
-            "handbags",
             "handbags_&_bags",
-            "home_audio",
             "jackets_&_outerwear",
             "jersey",
             "jewellery",
@@ -2669,12 +3329,76 @@ const ATTRIBUTES = {
             "shirts",
             "shoes",
             "sleepwear_&_loungewear",
-            "snacks_&_confectionery",
             "sneakers_&_athletic",
-            "television_&_video",
             "tops_&_t-shirts",
             "tshirts",
             "watches_&_eyewear"
+        ]
+    },
+    "material": {
+        "id": "9925207b-ca88-4be2-bee7-cd402c9ee98f",
+        "code": "m",
+        "label": "material",
+        "type": "text",
+        "predefined_values": [],
+        "clauses": [
+            {
+                "name": "l",
+                "label": "leather",
+                "matches": [
+                    "leather"
+                ],
+                "operator": "=",
+                "prefix": "leather",
+                "suffix": ""
+            }
+        ],
+        "categories": [
+            "iphones",
+            "sound_gadget",
+            "smartphones_&_tablets",
+            "gadgets",
+            "smartphones",
+            "fashion",
+            "kitchen_appliances",
+            "accessories",
+            "activewear",
+            "android_phones",
+            "android_tablets",
+            "boots",
+            "bottoms_&_pants",
+            "cameras_&_photography",
+            "cases_&_covers",
+            "cctv",
+            "chargers_&_cables",
+            "clothing",
+            "drones",
+            "e-readers",
+            "electronics",
+            "feature_phones",
+            "footwear",
+            "formal_&_dress_shoes",
+            "handbags",
+            "handbags_&_bags",
+            "home_audio",
+            "ipad",
+            "jackets_&_outerwear",
+            "jersey",
+            "jewellery",
+            "phone_accessories",
+            "power_banks",
+            "sandals_&_slippers",
+            "shirts",
+            "shoes",
+            "sleepwear_&_loungewear",
+            "sneakers_&_athletic",
+            "tablets",
+            "television_&_video",
+            "tops_&_t-shirts",
+            "tshirts",
+            "watches_&_eyewear",
+            "wearable_tech",
+            "windows_tablets"
         ]
     },
     "price_tier": {
@@ -2720,20 +3444,20 @@ const ATTRIBUTES = {
                     "flagship"
                 ],
                 "operator": "LIKE",
-                "prefix": "expensive",
+                "prefix": "High End",
                 "suffix": ""
             }
         ],
         "categories": [
+            "components",
+            "cooling_system",
+            "graphics_card",
+            "ram_&_storage",
+            "tablets",
             "desktops",
             "smartphones",
-            "tablets",
             "laptops_&_computers",
-            "cooling_system",
-            "components",
-            "graphics_card",
             "ultrabooks",
-            "ram_&_storage",
             "gaming",
             "all_in_one_pcs",
             "android_phones",
@@ -2764,40 +3488,6 @@ const ATTRIBUTES = {
             "xbox"
         ]
     },
-    "material": {
-        "id": "9925207b-ca88-4be2-bee7-cd402c9ee98f",
-        "code": "m",
-        "label": "material",
-        "type": "text",
-        "predefined_values": [],
-        "clauses": [],
-        "categories": [
-            "smartphones",
-            "sound_gadget",
-            "kitchen_appliances",
-            "iphones",
-            "smartphones_&_tablets",
-            "gadgets",
-            "android_phones",
-            "android_tablets",
-            "cameras_&_photography",
-            "cases_&_covers",
-            "cctv",
-            "chargers_&_cables",
-            "drones",
-            "e-readers",
-            "electronics",
-            "feature_phones",
-            "home_audio",
-            "ipad",
-            "phone_accessories",
-            "power_banks",
-            "tablets",
-            "television_&_video",
-            "wearable_tech",
-            "windows_tablets"
-        ]
-    },
     "quality": {
         "id": "4d7af189-7f57-405a-8cc3-d9e87eadacdc",
         "code": "q",
@@ -2817,71 +3507,28 @@ const ATTRIBUTES = {
             }
         ],
         "categories": [
-            "kitchen_appliances"
-        ]
-    },
-    "color": {
-        "id": "b078374b-efeb-412e-8a46-bc6c383fb5e8",
-        "code": "c",
-        "label": "color",
-        "type": "text",
-        "predefined_values": [],
-        "clauses": [
-            {
-                "name": "v",
-                "label": "color for ladies",
-                "matches": [
-                    "red",
-                    "green",
-                    "blue",
-                    "yellow",
-                    "pink",
-                    "grey",
-                    "white"
-                ],
-                "operator": "LIKE",
-                "prefix": "vibrant",
-                "suffix": "for ladies"
-            },
-            {
-                "name": "c",
-                "label": "color for men",
-                "matches": [
-                    "black",
-                    "brown"
-                ],
-                "operator": "LIKE",
-                "prefix": "",
-                "suffix": "for men"
-            }
-        ],
-        "categories": [
-            "food",
-            "sound_gadget",
+            "fashion",
             "kitchen_appliances",
-            "iphones",
-            "ultrabooks",
-            "gaming",
-            "gadgets",
-            "beverages",
-            "cameras_&_photography",
-            "canned_&_packaged_foods",
-            "cctv",
-            "controller_&_game_pads",
-            "drones",
-            "electronics",
-            "flight_stick",
-            "game_consoles",
-            "gaming_accessories",
-            "gaming_chairs_&_furnitures",
-            "home_audio",
-            "nintendo_switch",
-            "playstation",
-            "racing_wheels",
-            "snacks_&_confectionery",
-            "television_&_video",
-            "vr_&_ar_headset",
-            "xbox"
+            "accessories",
+            "activewear",
+            "boots",
+            "bottoms_&_pants",
+            "clothing",
+            "footwear",
+            "formal_&_dress_shoes",
+            "handbags",
+            "handbags_&_bags",
+            "jackets_&_outerwear",
+            "jersey",
+            "jewellery",
+            "sandals_&_slippers",
+            "shirts",
+            "shoes",
+            "sleepwear_&_loungewear",
+            "sneakers_&_athletic",
+            "tops_&_t-shirts",
+            "tshirts",
+            "watches_&_eyewear"
         ]
     },
     "brand": {
@@ -2960,20 +3607,27 @@ const ATTRIBUTES = {
             }
         ],
         "categories": [
-            "business_laptops",
-            "laptops_&_computers",
-            "cooling_system",
             "components",
+            "cooling_system",
             "graphics_card",
-            "ultrabooks",
-            "smartphones_&_tablets",
             "ram_&_storage",
+            "smartphones_&_tablets",
+            "business_laptops",
+            "fashion",
+            "laptops_&_computers",
+            "ultrabooks",
             "gaming",
-            "all_in_one_pcs",
             "android_phones",
             "android_tablets",
+            "windows_tablets",
+            "accessories",
+            "activewear",
+            "all_in_one_pcs",
+            "boots",
+            "bottoms_&_pants",
             "cases_&_covers",
             "chargers_&_cables",
+            "clothing",
             "computing_accessories",
             "controller_&_game_pads",
             "data_storage",
@@ -2981,13 +3635,20 @@ const ATTRIBUTES = {
             "e-readers",
             "feature_phones",
             "flight_stick",
+            "footwear",
+            "formal_&_dress_shoes",
             "game_consoles",
             "gaming_accessories",
             "gaming_chairs_&_furnitures",
             "gaming_desktops",
             "gaming_laptops",
+            "handbags",
+            "handbags_&_bags",
             "ipad",
             "iphones",
+            "jackets_&_outerwear",
+            "jersey",
+            "jewellery",
             "motherboards",
             "nintendo_switch",
             "pc_cases_&_fans",
@@ -2998,11 +3659,18 @@ const ATTRIBUTES = {
             "printers_&_scanners",
             "processors_(cpus)",
             "racing_wheels",
+            "sandals_&_slippers",
+            "shirts",
+            "shoes",
+            "sleepwear_&_loungewear",
             "smartphones",
+            "sneakers_&_athletic",
             "tablets",
+            "tops_&_t-shirts",
+            "tshirts",
             "vr_&_ar_headset",
+            "watches_&_eyewear",
             "wearable_tech",
-            "windows_tablets",
             "workstations",
             "xbox"
         ]
@@ -3026,12 +3694,11 @@ const ATTRIBUTES = {
             }
         ],
         "categories": [
-            "sound_gadget",
-            "kitchen_appliances",
-            "iphones",
             "android_phones",
+            "iphones",
             "smartphones_&_tablets",
             "gadgets",
+            "sound_gadget",
             "android_tablets",
             "cameras_&_photography",
             "cases_&_covers",
@@ -3050,6 +3717,237 @@ const ATTRIBUTES = {
             "television_&_video",
             "wearable_tech",
             "windows_tablets"
+        ]
+    },
+    "size": {
+        "id": "4b41a785-a8f1-46e4-ae95-9b0957f00f0d",
+        "code": "s",
+        "label": "size",
+        "type": "text",
+        "predefined_values": [],
+        "clauses": [
+            {
+                "name": "x",
+                "label": "xl",
+                "matches": [
+                    "xl"
+                ],
+                "operator": "=",
+                "prefix": "xl size",
+                "suffix": ""
+            }
+        ],
+        "categories": [
+            "fashion",
+            "electronics",
+            "iphones",
+            "sound_gadget",
+            "food",
+            "kitchen_appliances",
+            "accessories",
+            "activewear",
+            "beverages",
+            "boots",
+            "bottoms_&_pants",
+            "cameras_&_photography",
+            "canned_&_packaged_foods",
+            "cctv",
+            "clothing",
+            "drones",
+            "footwear",
+            "formal_&_dress_shoes",
+            "handbags",
+            "handbags_&_bags",
+            "home_audio",
+            "jackets_&_outerwear",
+            "jersey",
+            "jewellery",
+            "sandals_&_slippers",
+            "shirts",
+            "shoes",
+            "sleepwear_&_loungewear",
+            "snacks_&_confectionery",
+            "sneakers_&_athletic",
+            "television_&_video",
+            "tops_&_t-shirts",
+            "tshirts",
+            "watches_&_eyewear"
+        ]
+    },
+    "color": {
+        "id": "b078374b-efeb-412e-8a46-bc6c383fb5e8",
+        "code": "c",
+        "label": "color",
+        "type": "text",
+        "predefined_values": [],
+        "clauses": [
+            {
+                "name": "v",
+                "label": "color for ladies",
+                "matches": [
+                    "red",
+                    "green",
+                    "blue",
+                    "yellow",
+                    "pink",
+                    "grey",
+                    "white"
+                ],
+                "operator": "LIKE",
+                "prefix": "vibrant",
+                "suffix": "for ladies"
+            },
+            {
+                "name": "c",
+                "label": "color for men",
+                "matches": [
+                    "black",
+                    "brown"
+                ],
+                "operator": "LIKE",
+                "prefix": "",
+                "suffix": "for men"
+            },
+            {
+                "name": "d",
+                "label": "Neutrals",
+                "matches": [
+                    "black",
+                    "grey",
+                    "white",
+                    "tan",
+                    "navy",
+                    "beige",
+                    "silver"
+                ],
+                "operator": "LIKE",
+                "prefix": "Classic Neutral",
+                "suffix": ""
+            }
+        ],
+        "categories": [
+            "kitchen_appliances",
+            "sound_gadget",
+            "iphones",
+            "ultrabooks",
+            "fashion",
+            "gadgets",
+            "gaming",
+            "sleepwear_&_loungewear",
+            "kitchen",
+            "laptops_&_computers",
+            "smartphones_&_tablets",
+            "appliances",
+            "automobile",
+            "food",
+            "health_&_beauty",
+            "supermarket_essentials",
+            "sporting_goods",
+            "toys,_kids_&_babies",
+            "accessories",
+            "action_figures_&_collectibles",
+            "activewear",
+            "air_conditioners",
+            "all_in_one_pcs",
+            "android_phones",
+            "android_tablets",
+            "baby_care",
+            "beverages",
+            "blenders",
+            "boots",
+            "bottoms_&_pants",
+            "business_laptops",
+            "cameras_&_photography",
+            "canned_&_packaged_foods",
+            "car_care",
+            "car_electronics",
+            "cases_&_covers",
+            "cctv",
+            "chargers_&_cables",
+            "cleaning_appliances",
+            "clothing",
+            "components",
+            "computing_accessories",
+            "controller_&_game_pads",
+            "cooking_appliances",
+            "cookware_sets",
+            "cooling",
+            "cooling_system",
+            "data_storage",
+            "desktops",
+            "dishwashing_supplies",
+            "drones",
+            "e-readers",
+            "educational_toys",
+            "electronics",
+            "feature_phones",
+            "fitness_&_exercise",
+            "flight_stick",
+            "food_preparation",
+            "footwear",
+            "formal_&_dress_shoes",
+            "fragrances",
+            "game_consoles",
+            "gaming_accessories",
+            "gaming_chairs_&_furnitures",
+            "gaming_desktops",
+            "gaming_laptops",
+            "graphics_card",
+            "hair_care",
+            "handbags",
+            "handbags_&_bags",
+            "home_audio",
+            "household_cleaning",
+            "interior_accessories",
+            "ipad",
+            "irons_&_steamers",
+            "jackets_&_outerwear",
+            "jersey",
+            "jewellery",
+            "large_appliances",
+            "laundry",
+            "laundry_detergents",
+            "makeup",
+            "microwaves",
+            "motherboards",
+            "nintendo_switch",
+            "outdoor_sports",
+            "paper_&_plastic_products",
+            "pc_cases_&_fans",
+            "personal_care",
+            "pet_supplies",
+            "phone_accessories",
+            "playstation",
+            "power_banks",
+            "power_solutions",
+            "power_supplies_(psus)",
+            "printers_&_scanners",
+            "processors_(cpus)",
+            "racing_wheels",
+            "ram_&_storage",
+            "refrigerators_&_freezers",
+            "sandals_&_slippers",
+            "shirts",
+            "shoes",
+            "skin_care",
+            "small_appliances",
+            "smartphones",
+            "snacks_&_confectionery",
+            "sneakers_&_athletic",
+            "surface_&_floor_cleaners",
+            "tablets",
+            "team_sports",
+            "television_&_video",
+            "tops_&_t-shirts",
+            "tshirts",
+            "vacuum_cleaners",
+            "vr_&_ar_headset",
+            "washing_machines_&_dryers",
+            "watches_&_eyewear",
+            "wearable_tech",
+            "windows_tablets",
+            "workstations",
+            "xbox"
         ]
     },
     "vendor": {
@@ -3090,6 +3988,7 @@ const ATTRIBUTES = {
             "computing_accessories",
             "controller_&_game_pads",
             "cooking_appliances",
+            "cookware_sets",
             "cooling",
             "cooling_system",
             "data_storage",
@@ -3131,6 +4030,7 @@ const ATTRIBUTES = {
             "jackets_&_outerwear",
             "jersey",
             "jewellery",
+            "kitchen",
             "kitchen_appliances",
             "laptops_&_computers",
             "large_appliances",
@@ -3244,6 +4144,23 @@ const COLLECTIONS = {
         "is_dynamic": true,
         "categories": null
     },
+    "pressy_store": {
+        "id": "c216d176-5187-4f5c-bf46-fae1fcf0ee6f",
+        "label": "Pressy Store",
+        "slug": "pressy-store-284a6311-collection",
+        "rules": [
+            {
+                "field": "attribute",
+                "value": "Pressy Store",
+                "operator": "eq",
+                "attribute_code": "vendor"
+            }
+        ],
+        "manual_product_ids": [],
+        "excluded_product_ids": [],
+        "is_dynamic": true,
+        "categories": null
+    },
     "new_arrivals": {
         "id": "3aad4ac6-2d17-4965-a501-edc5f2ac923c",
         "label": "New Arrivals",
@@ -3276,6 +4193,40 @@ const COLLECTIONS = {
         "excluded_product_ids": [],
         "is_dynamic": true,
         "categories": null
+    },
+    "test": {
+        "id": "1b2cdf32-e214-49ef-a5e7-1204f516d24f",
+        "label": "Test",
+        "slug": "",
+        "rules": [
+            {
+                "field": "attribute_clause",
+                "value": "m",
+                "operator": "in",
+                "attribute_code": "gender"
+            }
+        ],
+        "manual_product_ids": [],
+        "excluded_product_ids": [],
+        "is_dynamic": true,
+        "categories": null
+    },
+    "anthy_wears_store": {
+        "id": "cebfe6aa-c659-471d-9c36-441865cdb276",
+        "label": "Anthy Wears Store",
+        "slug": "anthy-wears-store-be114e10-collection",
+        "rules": [
+            {
+                "field": "attribute",
+                "value": "Anthy Wears Store",
+                "operator": "eq",
+                "attribute_code": "vendor"
+            }
+        ],
+        "manual_product_ids": [],
+        "excluded_product_ids": [],
+        "is_dynamic": true,
+        "categories": null
     }
 };
 
@@ -3287,7 +4238,37 @@ const VENDORS = {
         "checkout_style": "inhouse",
         "whatsapp_phone": null,
         "delivery_scope": "Local & National",
-        "product_count": 1,
+        "product_count": 10,
+        "categories": []
+    },
+    "pressy_store": {
+        "id": "284a6311-a791-47b5-bbef-689eb6c505f6",
+        "business_name": "Pressy Store",
+        "tag": "Pressy Store",
+        "checkout_style": "inhouse",
+        "whatsapp_phone": null,
+        "delivery_scope": "Local & National",
+        "product_count": 15,
+        "categories": []
+    },
+    "dareymi": {
+        "id": "397b6118-2a98-4144-aa18-88ef225f69bb",
+        "business_name": "Dareymi",
+        "tag": "Dareymi",
+        "checkout_style": "whatsapp",
+        "whatsapp_phone": "2347031017216",
+        "delivery_scope": "Local & National",
+        "product_count": 29,
+        "categories": []
+    },
+    "anthy_wears_store": {
+        "id": "be114e10-2e84-443e-bb4d-6af5535368db",
+        "business_name": "Anthy Wears Store",
+        "tag": "Anthy Wears Store",
+        "checkout_style": "inhouse",
+        "whatsapp_phone": null,
+        "delivery_scope": "Local & National",
+        "product_count": 32,
         "categories": []
     },
     "taye's_home_decor": {
@@ -3299,23 +4280,13 @@ const VENDORS = {
         "delivery_scope": "Local & National",
         "product_count": 2,
         "categories": []
-    },
-    "dareymi": {
-        "id": "397b6118-2a98-4144-aa18-88ef225f69bb",
-        "business_name": "Dareymi",
-        "tag": "Dareymi",
-        "checkout_style": "whatsapp",
-        "whatsapp_phone": "2347031017216",
-        "delivery_scope": "Local & National",
-        "product_count": 21,
-        "categories": []
     }
 };
 
 const BUSINESSES = { ...VENDORS };
 
 const CATEGORY_INVENTORY = {
-    "accessories": 3,
+    "accessories": 5,
     "action-figures-collectibles": 0,
     "activewear": 0,
     "air-conditioners": 0,
@@ -3327,24 +4298,25 @@ const CATEGORY_INVENTORY = {
     "baby-care": 0,
     "bed-bath": 0,
     "bedroom-furniture": 0,
-    "beverages": 0,
+    "beverages": 4,
     "blenders": 2,
     "boots": 0,
     "bottoms-pants": 0,
     "business-laptops": 0,
     "cameras-photography": 0,
-    "canned-packaged-foods": 0,
+    "canned-packaged-foods": 5,
     "car-care": 0,
     "car-electronics": 0,
     "cases-covers": 0,
     "cctv": 0,
     "chargers-cables": 0,
     "cleaning-appliances": 0,
-    "clothing": 2,
+    "clothing": 5,
     "components": 0,
     "computing-accessories": 0,
     "controller-game-pads": 0,
     "cooking-appliances": 0,
+    "cookware-sets": 5,
     "cooling": 0,
     "cooling-system": 0,
     "data-storage": 0,
@@ -3362,7 +4334,7 @@ const CATEGORY_INVENTORY = {
     "food-preparation": 0,
     "footwear": 0,
     "formal-dress-shoes": 0,
-    "fragrances": 0,
+    "fragrances": 5,
     "furniture-organization": 0,
     "gadgets": 7,
     "game-consoles": 0,
@@ -3372,8 +4344,8 @@ const CATEGORY_INVENTORY = {
     "gaming-desktops": 0,
     "gaming-laptops": 0,
     "graphics-card": 0,
-    "hair-care": 0,
-    "handbags": 2,
+    "hair-care": 5,
+    "handbags": 5,
     "handbags-bags": 0,
     "health-beauty": 0,
     "home-audio": 0,
@@ -3381,19 +4353,20 @@ const CATEGORY_INVENTORY = {
     "household-cleaning": 0,
     "interior-accessories": 0,
     "ipad": 0,
-    "iphones": 5,
+    "iphones": 6,
     "irons-steamers": 0,
     "jackets-outerwear": 0,
     "jersey": 2,
-    "jewellery": 3,
-    "kitchen-appliances": 1,
+    "jewellery": 6,
+    "kitchen": 0,
+    "kitchen-appliances": 5,
     "laptops-computers": 6,
     "large-appliances": 0,
     "laundry": 0,
     "laundry-detergents": 0,
     "lighting": 0,
     "living-room-furniture": 0,
-    "makeup": 0,
+    "makeup": 5,
     "microwaves": 0,
     "motherboards": 0,
     "nintendo-switch": 0,
@@ -3401,7 +4374,7 @@ const CATEGORY_INVENTORY = {
     "outdoor-sports": 0,
     "paper-plastic-products": 0,
     "pc-cases-fans": 0,
-    "personal-care": 0,
+    "personal-care": 3,
     "pet-supplies": 0,
     "phone-accessories": 0,
     "playstation": 0,
@@ -3414,11 +4387,11 @@ const CATEGORY_INVENTORY = {
     "ram-storage": 0,
     "refrigerators-freezers": 0,
     "rugs-carpets": 0,
-    "sandals-slippers": 0,
+    "sandals-slippers": 5,
     "shirts": 0,
-    "shoes": 2,
-    "skin-care": 0,
-    "sleepwear-loungewear": 0,
+    "shoes": 6,
+    "skin-care": 5,
+    "sleepwear-loungewear": 1,
     "small-appliances": 0,
     "smartphones": 0,
     "smartphones-tablets": 6,
@@ -3433,7 +4406,7 @@ const CATEGORY_INVENTORY = {
     "television-video": 0,
     "tops-t-shirts": 0,
     "toys-kids-babies": 0,
-    "tshirts": 2,
+    "tshirts": 3,
     "ultrabooks": 1,
     "vacuum-cleaners": 0,
     "vr-ar-headset": 1,

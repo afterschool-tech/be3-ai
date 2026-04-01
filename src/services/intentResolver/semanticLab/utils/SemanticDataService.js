@@ -52,6 +52,67 @@ class SemanticDataService {
     }
 
     /**
+     * Wipes the bench entirely and starts fresh.
+     */
+    clearBench() {
+        console.log('\n🧹 [Maintenance] Wiping bench clean...');
+        this.bench = {};
+        this.save();
+    }
+
+    /**
+     * Initialize an empty slot without hitting the API.
+     */
+    addSkeleton(key) {
+        if (!this.bench[key]) {
+            this.bench[key] = { variations: [], metadata: { runs: 0, last_updated: null } };
+            this.save();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Delete any items in the bench that are no longer valid.
+     */
+    deleteGhosts(validKeysArray) {
+        const validSet = new Set(validKeysArray);
+        let deletedCount = 0;
+        for (const key of Object.keys(this.bench)) {
+            if (!validSet.has(key)) {
+                console.log(`👻 Deleting ghost item: ${key}`);
+                delete this.bench[key];
+                deletedCount++;
+            }
+        }
+        if (deletedCount > 0) {
+            console.log(`   ✅ Removed ${deletedCount} ghosts.`);
+            this.save();
+        } else {
+            console.log(`   ✨ No ghosts found.`);
+        }
+    }
+
+    /**
+     * Find the keys with the absolute lowest number of runs.
+     */
+    getWeakestKeys() {
+        if (Object.keys(this.bench).length === 0) return [];
+        let minRuns = Infinity;
+        let weakest = [];
+        for (const [key, val] of Object.entries(this.bench)) {
+            const r = val?.metadata?.runs || 0;
+            if (r < minRuns) {
+                minRuns = r;
+                weakest = [key];
+            } else if (r === minRuns) {
+                weakest.push(key);
+            }
+        }
+        return weakest;
+    }
+
+    /**
      * Generate variations for a specific item (Intent or Clause).
      */
     async generateVariations(key, config, targetCount = 50) {

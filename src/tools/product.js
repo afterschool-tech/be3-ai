@@ -11,12 +11,12 @@ const { performVectorSearch, performSimilarSearch } = require('../utils/vectorSe
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
-const { 
-    buildProductCards, 
-    buildFacetRefinerButtons, 
-    deriveClauseNameFromAttributes, 
-    buildDefaultSeeMoreTitle, 
-    pickVendorSeeMoreTitle 
+const {
+    buildProductCards,
+    buildFacetRefinerButtons,
+    deriveClauseNameFromAttributes,
+    buildDefaultSeeMoreTitle,
+    pickVendorSeeMoreTitle
 } = require('../utils/storefrontWhatsAppUx');
 const crypto = require('crypto');
 
@@ -80,16 +80,16 @@ const productTools = {
 
                 if (similar_to) {
                     logDebug('TOOL:SIMILAR_SEARCH_MODE [product.search]', { similar_to, limit, hasFilters: true });
-                    
+
                     // NEW: Optimization — if similar_to is already a UUID (e.g. from an engineered token), use it directly.
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(similar_to);
                     resolvedSimilarityId = isUuid ? similar_to : await resolveProduct(similar_to, context, { category: catId });
-                    
+
                     if (!resolvedSimilarityId) {
                         logDebug('TOOL:SIMILAR_SEARCH_FAILED [product.search]', { similar_to, reason: 'unresolved' });
                     } else {
                         vectorResult = await performSimilarSearch(resolvedSimilarityId, limit, extraParams);
-                        
+
                         // Fallback to unfiltered similarity if filtered returns nothing
                         if (!vectorResult || vectorResult.products.length === 0) {
                             logDebug('TOOL:SIMILAR_FALLBACK_UNFILTERED [product.search]', { similar_to: resolvedSimilarityId });
@@ -141,7 +141,7 @@ const productTools = {
                                     }
                                 }
                                 if (resolvedName) finalResult.similar_to_name = resolvedName;
-                            } catch (_) {}
+                            } catch (_) { }
                         }
                     }
 
@@ -250,7 +250,7 @@ const productTools = {
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
                 // Try with filters first
                 let vectorFallback = await performVectorSearch(query, limit, catId, extraParams);
-                
+
                 // If filtered fails, try unfiltered
                 if (!vectorFallback || vectorFallback.products?.length === 0) {
                     vectorFallback = await performVectorSearch(query, limit, catId);
@@ -290,7 +290,7 @@ const productTools = {
             const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
             if (attempt1 && attempt1.products.length > 0) {
                 const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
-                
+
                 logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
                     _desc: 'No-result fallback — retry without query (keep filters)',
                     original: { query, category, price_min, price_max, tag, attributes },
@@ -321,7 +321,7 @@ const productTools = {
             const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
             if (attempt2 && attempt2.products.length > 0) {
                 const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
-                
+
                 logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
                     _desc: 'No-result fallback — retry without query and without other filters',
                     original: { query, category, price_min, price_max, tag, attributes },
@@ -359,7 +359,7 @@ const productTools = {
         },
         handler: async (params, context) => {
             const { snapshot_id } = params;
-            
+
             let cachedProducts = [];
             try {
                 // Try targeted snapshot first
@@ -374,14 +374,14 @@ const productTools = {
                         cachedProducts = lastSearch;
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
 
             if (cachedProducts.length === 0) {
                 return { error: "Could not retrieve the product cards because the session context expired." };
             }
 
             const cardsPayload = buildProductCards(cachedProducts.filter(Boolean));
-            
+
             return {
                 directResponse: true,
                 message: "Here are the details for the products:",
@@ -400,7 +400,7 @@ const productTools = {
             const resolvedId = await resolveProduct(product_id, context);
 
             if (!resolvedId) {
-                return { 
+                return {
                     message: `I couldn't find a product matching "${product_id}". Would you like me to search for it instead?`,
                     whatsapp: {
                         type: 'button',
@@ -495,7 +495,7 @@ const productTools = {
 
             if (context.sessionId && result.data.product && !_suppress_ambient) {
                 await stateManager.setCurrentlyViewing(context.sessionId, resolvedId);
-                
+
                 // --- AMBIENT CONTEXT: Record active product topic ---
                 await stateManager.setActiveTopic(context.sessionId, {
                     type: "single_product",
@@ -590,7 +590,7 @@ const productTools = {
                     );
                     const firstId = products[0]?.id || products[0]?.handle || products[0]?.product_id;
                     if (firstId) await stateManager.setCurrentlyViewing(context.sessionId, firstId);
-                    
+
                     // --- AMBIENT CONTEXT: Record comparison topic ---
                     await stateManager.setActiveTopic(context.sessionId, {
                         type: "comparison",
@@ -880,7 +880,7 @@ const productTools = {
             if (targetId && context?.sessionId) {
                 try {
                     const state = await stateManager.getState(context.sessionId);
-                    
+
                     // Strategy A: Check search_context.product_attributes_map (explicitly populated during search)
                     const sc = state?.search_context;
                     if (sc?.product_attributes_map && sc.product_attributes_map[targetId]) {
@@ -952,7 +952,7 @@ const productTools = {
             if (queryStr) searchParams.append('q', queryStr);
             if (category) searchParams.append('category_id', cat?.slug || category);
             if (targetId) searchParams.append('product_id', targetId); // Bug 1 Fix: Scope to product ID if present
-            
+
             if (vendor) {
                 const resolvedVendor = normalizeVendor(vendor);
                 if (resolvedVendor) searchParams.append('tag', resolvedVendor);
@@ -1107,7 +1107,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         const pid = p.id || p.handle || p.product_id;
         if (!pid) return;
         const attrs = { ...(p.attributes || p.metadata?.attributes || {}) };
-        
+
         // Extract common attributes even if they aren't in metadata.attributes
         const commonAttrs = ['color', 'brand', 'size', 'storage', 'material'];
         commonAttrs.forEach(k => { if (p[k] && !attrs[k]) attrs[k] = p[k]; });
@@ -1131,7 +1131,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
     // 3. Update reference map and session state
     if (context.sessionId && products.length > 0) {
         const scope = context && context.microstate_active ? 'microstate' : 'global';
-        
+
         logDebug('TOOL:REFERENCE_MAP_UPDATE [product.search]', {
             _desc: 'Reference map update — add product aliases (name, handle, vendor) to reference_map',
             _example: 'Product "Rattan 2 Drawers" → keys: rattan_2_drawers, the_drawer, etc.',
@@ -1140,7 +1140,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         });
 
         await stateManager.updateReferenceMap(context.sessionId, products, { scope });
-        
+
         const queryForMap = typeof query === 'string' ? query : (query?.query ?? null);
         if (queryForMap) await stateManager.updateUserQueryMap(context.sessionId, queryForMap, products);
 
@@ -1151,7 +1151,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         existingCtx.product_ids = products.slice(0, 10).map(p => p.id || p.handle || p.product_id).filter(Boolean);
         existingCtx.result_count = totalCount;
         existingCtx.product_attributes_map = { ...existingCtx.product_attributes_map, ...productAttrsMap };
-        
+
         if (!existingCtx.category_id && catId) {
             existingCtx.category_id = catId;
             if (cat?.label) existingCtx.category = cat.label;
@@ -1169,7 +1169,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
 
         const firstId = products[0].handle || products[0].id || products[0].product_id;
         await stateManager.setCurrentlyViewing(context.sessionId, firstId);
-        
+
         // --- AMBIENT CONTEXT: Record active browsing topic ---
         let finalCatId = catId;
         let finalCatLabel = cat?.label;
@@ -1203,7 +1203,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
     // 4. Build WhatsApp Cards and Buttons
     const cardsPayload = buildProductCards(products.filter(Boolean));
     const facets = searchResult.facets || {};
-    
+
     // Pagination check
     const currentPage = Number(searchResult.pagination?.page || page);
     const totalPages = Number(searchResult.pagination?.totalPages || (limit > 0 ? Math.ceil(totalCount / limit) : 1));
@@ -1227,7 +1227,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
                 });
             });
         }
-    } catch (_) {}
+    } catch (_) { }
 
     const globalButtons = [];
     if (hasNextPage) {
@@ -1257,7 +1257,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
                 // --- SUGGESTION TIERED LABELING ---
                 // Tier 1: Clause + Category suggestions
                 if (userClause && catName) seeMoreTitle = `See more ${userClause} ${catName} suggestions`;
-                
+
                 // Tier 2: Category suggestions (or Clause suggestions)
                 if ((!seeMoreTitle || seeMoreTitle.length > 45) && (userClause || catName)) {
                     if (catName) seeMoreTitle = `See more ${catName} suggestions`;
@@ -1282,11 +1282,11 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
                     const tier2 = `See more ${systemClause} ${catName}`;
                     if (systemClause && catName && tier2.length <= 45 && systemClause !== userClause) {
                         seeMoreTitle = tier2;
-                    } 
+                    }
                     // Tier 3: Category only
                     else if (catName && `See more ${catName}`.length <= 45) {
                         seeMoreTitle = `See more ${catName}`;
-                    } 
+                    }
                     // Tier 4: Generic Fallback
                     else {
                         seeMoreTitle = 'See more products';
@@ -1294,7 +1294,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
                 }
             }
         }
-        
+
         globalButtons.push({ id: `__nav:more:${snapshotId}__`, title: seeMoreTitle, priority: 100 });
     }
 

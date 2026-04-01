@@ -112,6 +112,15 @@ function normalizeParameters(resolvedIntents, storeContext) {
                             const compositeKey = `${attrCode}:${matchingAttrClause.name}`;
 
                             if (csv) {
+                                // ── DOUBLE MAPPING GUARD ──
+                                // If a clause-driven composite key (e.g., 'p:p') is being set,
+                                // we must ensure the raw attribute key (e.g., 'p') is cleared.
+                                // This prevents "Double Filtering" where both the raw value and
+                                // the high-precision clause values compete in the same query.
+                                if (params.attributes[attrCode] !== undefined) {
+                                    delete params.attributes[attrCode];
+                                }
+
                                 params.attributes[compositeKey] = csv;
                                 mapped = true;
                             }

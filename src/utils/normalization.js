@@ -86,6 +86,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         }
         return result(cats[catLower].id, {
             layer: 'key',
+            lexScore: 100,
             match: { field: 'key', query: catLower },
             usedWords: [catLower]
         });
@@ -207,6 +208,7 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
                         }
                         return result(targetId, {
                             layer: 'alias',
+                            lexScore: 100,
                             matchedAlias: a,
                             matchedAliasLoose: alias,
                             inputLoose,
@@ -486,7 +488,13 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         // 4. HINT Membership Boost: Adder for contextually identified categories
         let hintBoost = 0;
         if (options.categoryHints && Array.isArray(options.categoryHints)) {
-            if (options.categoryHints.includes(c.id) || options.categoryHints.includes(c.slug)) {
+            // Support both hyphenated slugs (android-phones) and underscored keys (android_phones)
+            const slugUnderscored = slug.replace(/-/g, '_');
+            if (
+                options.categoryHints.includes(c.id) || 
+                options.categoryHints.includes(slug) || 
+                options.categoryHints.includes(slugUnderscored)
+            ) {
                 hintBoost = 20;
             }
         }
