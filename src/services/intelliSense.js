@@ -31,6 +31,7 @@ TASK: For each user message —
 2. For each statement return a verbatim original span and a normalized text
 3. Extract product names
 4. Mark idiomatic pronouns to skip
+5. At the TOP LEVEL, recommend an execution path (FULL_PIPELINE, CONVERSATIONAL, or STATE_RESOLUTION), a reason, and your confidence (0.0 to 1.0).
 
 SPLITTING: Split on "that aside", "by the way", or clearly separate questions. Also split when the user issues multiple FIND/SHOW/SEARCH clauses, each with its own product (e.g., "help me find smartphones that are blue in color, also find a lady's shoe and i also need a shirt" → 3 statements). Do NOT split true comparison phrasing like "compare X and Y", "X vs Y", "difference between X and Y" (these stay as a single statement for comparison). Do NOT split obviously same-topic modifiers joined by "and/or" (e.g., "cheap blue samsung phones"). "and then"/"then" between different actions = split. When unsure, keep as one.
 
@@ -50,30 +51,18 @@ PRONOUNS — skip_resolve when idiomatic or intra-statement:
 - Pronoun refers to product IN SAME statement → skip ("find iphone and add it" → skip "it")
 - Keep only cross-statement pronouns with no local antecedent ("add it to cart" standalone → keep)
 
-OUTPUT:
-{"statements":[{"original":"verbatim span","text":"normalized text","products":[{"name":"","adjectives":[]}],"skip_resolve":[]}]}
+PATH_RECOMMENDATION:
+- FULL_PIPELINE: Use when a product search, cart action, or order lookup is needed.
+- CONVERSATIONAL: Use for pure greetings, gratitude, or social noise with NO products or action verbs.
+- STATE_RESOLUTION: Use for messages that ONLY contain pronouns or references to items on screen (e.g., "add it", "show more", "compare them").
 
-EXAMPLES:
-In: "how do i make moi moi please"
-Out: {"statements":[{"original":"how do i make moi moi please","text":"how do i make moi moi","products":[],"skip_resolve":[]}]}
-
-In: "find iphone 15 and add it to cart"
-Out: {"statements":[{"original":"find iphone 15 and add it to cart","text":"find iphone 15 and add it to cart","products":[{"name":"iphone 15","adjectives":[]}],"skip_resolve":["it"]}]}
-
-In: "I want Wipes called Angel. That aside, advantage and disadvantages of Crypto. Could you help with that?"
-Out: {"statements":[{"original":"I want Wipes called Angel","text":"want angel wipes","products":[{"name":"angel wipes","adjectives":[]}],"skip_resolve":[]},{"original":"advantage and disadvantages of Crypto. Could you help with that?","text":"advantage and disadvantages of crypto","products":[],"skip_resolve":["that"]}]}
-
-In: "help me find smartphones that are blue in color, also find a lady's shoe and i also need a shirt"
-Out: {"statements":[{"original":"help me find smartphones that are blue in color","text":"find blue smartphones","products":[{"name":"smartphones","adjectives":["blue"]}],"skip_resolve":[]},{"original":"also find a lady's shoe","text":"find a lady's shoe","products":[{"name":"lady's shoe","adjectives":[]}],"skip_resolve":[]},{"original":"and i also need a shirt","text":"find a shirt","products":[{"name":"shirt","adjectives":[]}],"skip_resolve":[]}]}
-
-In: "compare iphone 13 and infinix hot 30i"
-Out: {"statements":[{"original":"compare iphone 13 and infinix hot 30i","text":"compare iphone 13 and infinix hot 30i","products":[{"name":"iphone 13","adjectives":[]},{"name":"infinix hot 30i","adjectives":[]}],"skip_resolve":[]}]}
-
-In: "Show me cheap blue samsung phones"
-Out: {"statements":[{"original":"Show me cheap blue samsung phones","text":"show me cheap blue samsung phones","products":[{"name":"samsung phones","adjectives":["cheap","blue"]}],"skip_resolve":[]}]}
-
-In: "None of it because I'm not an Iphone Freak"
-Out: {"statements":[{"original":"None of it because I'm not an Iphone Freak","text":"not an iphone freak","products":[],"skip_resolve":["it"]}]}
+OUTPUT_SCHEMA:
+{
+  "statements": [{"original":"string","text":"string","products":[{"name":"string","adjectives":["string"]}],"skip_resolve":["string"]}],
+  "recommended_path": "FULL_PIPELINE|CONVERSATIONAL|STATE_RESOLUTION",
+  "short_circuit_reason": "string",
+  "confidence": number
+}
 `;
 
 // Tokens too generic to serve as grounding evidence
@@ -226,6 +215,44 @@ async function analyze(text, aiQueryFn) {
     try {
         const prompt = [
             { role: 'system', content: SYSTEM_PROMPT },
+
+            // Example 1: Product Search
+            { role: 'user', content: 'how do i make moi moi please' },
+            {
+                role: 'assistant',
+                content: JSON.stringify({
+                    statements: [{ original: "how do i make moi moi please", text: "how do i make moi moi", products: [], skip_resolve: [] }],
+                    recommended_path: "FULL_PIPELINE",
+                    short_circuit_reason: "Requires product/recipe search",
+                    confidence: 0.98
+                })
+            },
+
+            // Example 2: Conversational
+            { role: 'user', content: "None of it because I'm not an Iphone Freak" },
+            {
+                role: 'assistant',
+                content: JSON.stringify({
+                    statements: [{ original: "None of it because I'm not an Iphone Freak", text: "not an iphone freak", products: [], skip_resolve: ["it"] }],
+                    recommended_path: "CONVERSATIONAL",
+                    short_circuit_reason: "Social commentary",
+                    confidence: 0.85
+                })
+            },
+
+            // Example 3: State Resolution
+            { role: 'user', content: "add it to cart" },
+            {
+                role: 'assistant',
+                content: JSON.stringify({
+                    statements: [{ original: "add it to cart", text: "add it to cart", products: [], skip_resolve: [] }],
+                    recommended_path: "STATE_RESOLUTION",
+                    short_circuit_reason: "Direct reference to previous context",
+                    confidence: 0.95
+                })
+            },
+
+            // The actual query
             { role: 'user', content: text }
         ];
 
@@ -248,10 +275,18 @@ async function analyze(text, aiQueryFn) {
                 totalSkipResolve: vettedStatements.reduce((acc, s) => acc + s.skip_resolve.length, 0)
             },
             vettingLogs: logs,
-            results: vettedStatements
+            results: vettedStatements,
+            recommendedPath: parsed.recommended_path || 'FULL_PIPELINE',
+            shortCircuitReason: parsed.short_circuit_reason || null,
+            confidence: parsed.confidence ?? 1.0
         });
 
-        return { statements: vettedStatements };
+        return {
+            statements: vettedStatements,
+            recommended_path: parsed.recommended_path || 'FULL_PIPELINE',
+            short_circuit_reason: parsed.short_circuit_reason || null,
+            confidence: parsed.confidence ?? 1.0
+        };
     } catch (err) {
         console.error('🔴 [IntelliSense] Analysis failed or timed out:', err.message);
         return null;

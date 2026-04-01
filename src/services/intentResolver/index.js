@@ -108,7 +108,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     if (lastSuggestion) {
         // ALWAYS clear the suggestion so it only lives for exactly one turn
         await stateManager.updateState(state.user_id, { last_bot_suggestion: null });
-        
+
         const confirmationType = isConfirmation(userMessage);
         if (confirmationType === 'yes' && lastSuggestion.rephrase) {
             logDebug('PIPELINE:SUGGESTION_CONFIRMED', {
@@ -116,7 +116,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 originalInput: userMessage,
                 rephrasedInput: lastSuggestion.rephrase
             });
-            
+
             // Elegantly recurse using the rephrased suggestion string ("show me other products from Dareymi")
             return await resolveAndMap(lastSuggestion.rephrase, state, aiQueryFn, storeContext);
         } else if (confirmationType === 'yes') {
@@ -125,7 +125,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 _desc: 'User confirmed legacy suggestion. Bypassing NLU.',
                 suggestion: lastSuggestion
             });
-            
+
             return {
                 intents: [{
                     intentName: lastSuggestion.intent,
@@ -443,24 +443,24 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Product details screen "Compare" uses: __product:compare:<productId>__
     // This opens product_compare microstate with the first product pre-filled.
     if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'compare' && userId) {
-            const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
-            if (productId) {
-                const triggers = microstateRegistry.getTriggers('product_compare');
-                const triggerDef = (triggers && triggers['missing_products']) || {};
+        const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
+        if (productId) {
+            const triggers = microstateRegistry.getTriggers('product_compare');
+            const triggerDef = (triggers && triggers['missing_products']) || {};
 
-                // Fix: Resolve product name to avoid UUID showing in breadcrumbs/captured list
-                const productName = reconcileNameFromId(state, productId) || 'Product';
+            // Fix: Resolve product name to avoid UUID showing in breadcrumbs/captured list
+            const productName = reconcileNameFromId(state, productId) || 'Product';
 
-                const msObj = {
-                    type: 'missing_products',
-                    intent: 'product_compare',
-                    sandbox: triggerDef.sandbox || 'soft',
-                    boostScore: triggerDef.boostScore || 10.0,
-                    params: {
-                        products: [productId],
-                        _labels: { [productId]: productName }
-                    },
-                    entities: [],
+            const msObj = {
+                type: 'missing_products',
+                intent: 'product_compare',
+                sandbox: triggerDef.sandbox || 'soft',
+                boostScore: triggerDef.boostScore || 10.0,
+                params: {
+                    products: [productId],
+                    _labels: { [productId]: productName }
+                },
+                entities: [],
                 options: [],
                 validators: triggerDef.validators || {},
                 normalizers: triggerDef.normalizers || {},
@@ -706,6 +706,17 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Stage 0b: IntelliSense Analysis (High-level LLM pre-pass)
     const senseResult = await intelliSense.analyze(afterFuzzy, aiQueryFn);
     const skipResolve = senseResult?.statements?.flatMap(s => s.skip_resolve) || [];
+    const recommendedPath = senseResult?.recommended_path || 'FULL_PIPELINE';
+    const pathReason = senseResult?.short_circuit_reason || 'Default path';
+    const pathConfidence = senseResult?.confidence ?? 1.0;
+
+    logDebug('PIPELINE:STAGE0C_PATH_ADVICE', {
+        _desc: 'IntelliSense Path Advice — categorized message intent (PASSIVE)',
+        _icon: recommendedPath === 'CONVERSATIONAL' ? '💬' : (recommendedPath === 'STATE_RESOLUTION' ? '🔗' : '⚙️'),
+        path: recommendedPath,
+        reason: pathReason,
+        confidence: pathConfidence
+    });
 
     // Stage 3: Preprocess (normalize, negate, split) - MOVED UP TO START
     const manualStatements = senseResult?.statements || [];
@@ -891,7 +902,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             for (const p of senseStmt.products) {
                 const nameLower = p.name.toLowerCase();
                 const nameTokens = nameLower.split(/\s+/).filter(t => t.length > 1);
-                
+
                 // Prefer a contiguous span match for wordIndices.
                 // IMPORTANT: if we collect *all* occurrences of each token (e.g. both "iphone" mentions),
                 // multiple resolved_product entities overlap heavily and PIE can attach the wrong
@@ -1025,8 +1036,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             score: c.score,
             matchedKeywords: c.matchedKeywords,
             matchedParams: c.matchedParams,
-            breakdown: { 
-                deterministic: c.score, 
+            breakdown: {
+                deterministic: c.score,
                 semantic: 0,
                 semanticRaw: 0,
                 semanticGapBonus: 0,
@@ -1037,7 +1048,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         let transformerGap = 0;
         if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
             const semanticResults = localSemanticContext.classification;
-            
+
             // Calculate transformer gap (winner score - mean scores)
             const highestSemanticScore = semanticResults[0]?.score || 0;
             const meanSemanticScore = semanticResults.reduce((sum, s) => sum + (s.score || 0), 0) / (semanticResults.length || 1);
@@ -1092,8 +1103,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         score: semanticPoints,
                         matchedKeywords: ['semantic'],
                         matchedParams: {},
-                        breakdown: { 
-                            deterministic: 0, 
+                        breakdown: {
+                            deterministic: 0,
                             semantic: semanticPoints,
                             semanticRaw: rawSemantic,
                             semanticGapBonus: appliedBonus,
