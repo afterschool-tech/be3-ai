@@ -718,6 +718,41 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         confidence: pathConfidence
     });
 
+    // ── Stage 0d: IntelliSense Short-Circuit (ACTIVE) ──
+    // If IntelliSense is highly confident this is a pure conversational message,
+    // bypass the entire heavy pipeline (Transformer, Entity Extraction, Parameter Mapping).
+    if (recommendedPath === 'CONVERSATIONAL' && pathConfidence >= 0.8) {
+        logDebug('PIPELINE:STAGE0D_SHORT_CIRCUIT', {
+            _desc: 'IntelliSense Short-Circuit — bypassing heavy pipeline for conversational intent',
+            _icon: '⚡',
+            path: recommendedPath,
+            confidence: pathConfidence,
+            reason: pathReason
+        });
+
+        return {
+            intents: [{
+                intentName: 'conversation',
+                score: 10.0,
+                parameters: {
+                    _intellisense_short_circuit: true,
+                    _short_circuit_reason: pathReason
+                }
+            }],
+            tools: [{
+                tool: 'conversation.chat',
+                params: {
+                    query: afterFuzzy,
+                    _intellisense_short_circuit: true,
+                    _short_circuit_reason: pathReason
+                },
+                reason: 'IntelliSense Short-Circuit: Conversational'
+            }],
+            isMultiIntent: false,
+            corrections: { original: userMessage, afterFuzzy, afterContext: afterFuzzy }
+        };
+    }
+
     // Stage 3: Preprocess (normalize, negate, split) - MOVED UP TO START
     const manualStatements = senseResult?.statements || [];
     const { statements, isMultiIntent } = preprocessor.preprocess(afterFuzzy, manualStatements);
