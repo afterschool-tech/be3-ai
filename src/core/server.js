@@ -347,7 +347,7 @@ app.post('/chat', async (req, res) => {
 
             if (isCheckoutIntent && isCartEmpty && currentlyViewing) {
                 console.log(`[Server] 🛒 Empty cart checkout recovery: preemptively adding viewed product ${currentlyViewing} to cart.`);
-                
+
                 // Prepend an add_to_cart tool so the pipeline runs cart.add THEN cart.checkout
                 toolsSelected.unshift({
                     tool: 'cart.add',
@@ -628,9 +628,9 @@ app.post('/chat', async (req, res) => {
                             const originalWhatsappButtons = final.whatsapp?.buttons || [];
                             const snapshotId = Date.now().toString(36);
                             // PERSIST: Save the vector results to a search snapshot so __nav:cards can reveal them
-                            await stateManager.setSearchSnapshot(session_id, snapshotId, { 
-                                results: newProducts, 
-                                query: sentinelVerdict.vector_query 
+                            await stateManager.setSearchSnapshot(session_id, snapshotId, {
+                                results: newProducts,
+                                query: sentinelVerdict.vector_query
                             });
 
                             const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
@@ -743,14 +743,15 @@ app.post('/chat', async (req, res) => {
             });
             await stateManager.extendTTL(session_id);
 
-            // DCO: Trigger summarizer every 5 individual user messages
-            const userMessagesCount = (state.conversation_history || []).filter(m => m.role === 'user').length + 1; // +1 for the message that just came in
-            if (userMessagesCount > 0 && userMessagesCount % 5 === 0) {
+            // DCO: Trigger summarizer every 10 total messages (roughly every 5 user messages)
+            // Using session.message_count ensures consistency even when history is trimmed.
+            const totalMessages = (state.session?.message_count || 0);
+            if (totalMessages > 0 && totalMessages % 10 === 0) {
                 logDebug('SERVER:CONVERSATION_SUMMARIZATION', {
                     _desc: 'Conversation summarization — shopping-journey-aware summary for DCO history compression',
-                    _example: 'Every 5 user messages → "User browsed phones, added Samsung A55, prefers mid-range"',
-                    userMessagesCount: userMessagesCount,
-                    trigger: 'every_5_user_messages'
+                    _example: 'Every 10 turns → "User browsed phones, added Samsung A55, prefers mid-range"',
+                    totalMessages: totalMessages,
+                    trigger: 'every_10_total_messages'
                 });
                 summarizeConversation(session_id).catch(err => console.error(err));
             }
@@ -908,7 +909,7 @@ app.post('/chat', async (req, res) => {
             let extractedSuggestion = null;
             const suggestionRegex = /<suggestion>([\s\S]*?)<\/suggestion>/i;
             const match = sanitizedResponse.match(suggestionRegex);
-            
+
             if (match) {
                 try {
                     const parsed = JSON.parse(match[1].trim());
@@ -918,9 +919,9 @@ app.post('/chat', async (req, res) => {
                             hint: parsed.hint || 'general',
                             rephrase: parsed.rephrase
                         };
-                        
+
                         await stateManager.updateState(session_id, { last_bot_suggestion: extractedSuggestion });
-                        
+
                         // Strip the XML block from the final reply sent to the user so they don't see JSON
                         sanitizedResponse = sanitizedResponse.replace(suggestionRegex, '').trim();
                     }

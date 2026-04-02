@@ -68,7 +68,7 @@ async function evaluateProductRelevance(userMessage, products, conversationSumma
             : null
     }));
 
-    const userContext = conversationSummary 
+    const userContext = conversationSummary
         ? `Conversation Summary: "${conversationSummary}"\n\nCurrent User message: "${userMessage}"`
         : `User message: "${userMessage}"`;
 
