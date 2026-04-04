@@ -152,7 +152,18 @@ IMPOSSIBLE REQUESTS: If the user asks for something we don't sell (a car, a pupp
 - If results include whatsapp_link or checkout_url, copy the URL EXACTLY as provided.
 - Do NOT shorten, decode, reformat, or add tracking parameters to URLs.
 - If vendor_breakdown exists, display ALL vendors with their order_number, subtotal, and links.
-- Do NOT omit any vendor or field from the breakdown.`
+- Do NOT omit any vendor or field from the breakdown.`,
+
+    /**
+     * Visual Search framing rules
+     * ~80 tokens
+     */
+    visual_search: () => `VISUAL SEARCH RESULTS:
+- The user sent an image to find similar products.
+- The "products" list contains the best visual matches from our store.
+- Be brief and enthusiastic about the visual matches!
+- DO NOT suggest "searching for something else" or "refining with text" unless the results are empty.
+- FOCUS: Use the "See product details" buttons to help the user explore the matches.`
 };
 
 module.exports = { SEGMENTS };

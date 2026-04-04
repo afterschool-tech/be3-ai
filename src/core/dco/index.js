@@ -140,10 +140,15 @@ function getMergedDcoConfig(intentNames) {
  * @param {boolean} [options.hasSkipped] - Whether any tools were skipped
  * @param {string} [options.skippedMessage] - Message for skipped actions
  * @param {string[]} [options.failedToolsSummary] - Summary of failed tools
+ * @param {boolean} [options.visual_search] - Whether this is a visual search result
  * @returns {string} Assembled system prompt
  */
 function assemblePrompt(intentNames, toolResultsSummary, options = {}) {
     const dco = getMergedDcoConfig(intentNames);
+
+    if (options.visual_search && !dco.segments.includes('visual_search')) {
+        dco.segments.push('visual_search');
+    }
 
     // 1. Build prompt from selected segments
     const promptParts = [];

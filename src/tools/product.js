@@ -7,7 +7,7 @@ const { CATEGORIES, VENDORS, ATTRIBUTES } = require('../context/storeContext');
 const { normalizeCategory, normalizeVendor, isOrdinalOrReferencePhrase } = require('../utils/normalization');
 const { resolveProduct } = require('../utils/productResolver');
 const { performSemanticSearch } = require('../utils/searchUtility');
-const { performVectorSearch, performSimilarSearch } = require('../utils/vectorSearchUtility');
+const { performVectorSearch, performSimilarSearch, performImageSearch } = require('../utils/vectorSearchUtility');
 const { callBackendAPI } = require('../utils/apiClient');
 const stateManager = require('../state/stateManager');
 const { processProductList } = require('../utils/productUtility');
@@ -44,10 +44,11 @@ const productTools = {
             attributes: { type: 'object', description: 'Dynamic filters like { b: "Apple", color: "Red" } using attribute codes' },
             search_mode: { type: 'string', description: 'The search mode to use. Set to "VECTOR" for pure semantic search.' },
             similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' },
+            image: { type: 'string', description: 'Base64 encoded image data for visual search' },
             clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' }
         },
         handler: async (params, context) => {
-            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, clause_words } = params;
+            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -71,14 +72,24 @@ const productTools = {
                 };
             }
 
-            // --- STAGE 0.2: Pure Vector / Similarity Mode ---
-            if (search_mode === 'VECTOR' || similar_to) {
+            // --- STAGE 0.2: Pure Vector / Similarity / Image Mode ---
+            if (search_mode === 'VECTOR' || search_mode === 'IMAGE' || similar_to) {
                 const { logDebug } = require('../utils/debugLogger');
                 let vectorResult = null;
                 let resolvedSimilarityId = null; // hoisted so annotation block can access it
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
 
-                if (similar_to) {
+                if (search_mode === 'IMAGE' && image) {
+                    logDebug('TOOL:IMAGE_SEARCH_MODE [product.search]', { imageLength: image.length, limit, hasFilters: true });
+                    vectorResult = await performImageSearch(image, limit, catId, extraParams);
+
+                    if (!vectorResult || !vectorResult.products || vectorResult.products.length === 0) {
+                        return {
+                            directResponse: true,
+                            message: "I scanned the image, but I couldn't find any visually similar products in our store right now. Try uploading a different angle or a clearer picture! 📸"
+                        };
+                    }
+                } else if (similar_to) {
                     logDebug('TOOL:SIMILAR_SEARCH_MODE [product.search]', { similar_to, limit, hasFilters: true });
 
                     // NEW: Optimization — if similar_to is already a UUID (e.g. from an engineered token), use it directly.
@@ -114,7 +125,9 @@ const productTools = {
                     // these are "similar to X" results, not general search results.
                     // The LLM uses this to say "here are products similar to Iphone 12 Pro" 
                     // instead of acting confused or dismissive.
-                    if (similar_to) {
+                    if (search_mode === 'IMAGE') {
+                        finalResult.mode = 'IMAGE';
+                    } else if (similar_to) {
                         finalResult.mode = 'similar';
                         finalResult.similar_to = resolvedSimilarityId;
                         // Derive a human-readable reference name:

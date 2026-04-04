@@ -143,11 +143,11 @@ function summarizeToolResultsForLLM(results) {
             'vendor.getProducts', 'vendor_products',
             'cart.view', 'cart.get', 'cart'
         ];
-        
+
         if (toolsWithProducts.includes(tool)) {
             const tempProducts = Array.isArray(rr.products) ? rr.products : (Array.isArray(rr.results) ? rr.results : null);
             if (tempProducts && rr.method !== 'vector') {
-                base.facets = rr.facets?.attributes 
+                base.facets = rr.facets?.attributes
                     ? Object.keys(rr.facets.attributes).slice(0, 5).reduce((acc, k) => {
                         acc[k] = rr.facets.attributes[k].clauses || rr.facets.attributes[k].options;
                         return acc;
@@ -362,7 +362,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         hasFailures: failedActions.length > 0,
         hasSkipped: skippedActions.length > 0,
         skippedMessage: skippedActions[0]?.skippedMessage || null,
-        failedToolsSummary: failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null }))
+        failedToolsSummary: failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })),
+        visual_search: !!dcoContext.visual_search
     });
 
     // ═══════════════════════════════════════════════

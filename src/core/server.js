@@ -66,7 +66,8 @@ function logStep(msg) {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
 const PORT = process.env.PORT || 3005;
@@ -327,15 +328,41 @@ app.post('/chat', async (req, res) => {
                 version: state.version
             });
 
-            await stateManager.addMessage(session_id, 'user', message);
+            await stateManager.addMessage(session_id, 'user', message || '[Image Search]');
 
-            // Legacy AI-Based Tool Selection (Commented for easily revert)
-            // const selection = await selectTools(message, state.conversation_history, state);
+            const isVisualSearch = !!req.body.image;
+            let selection;
+            let forceVisualSearchTool = null;
 
-            // New Pure-Deterministic (Zero-AI) Pipeline
-            const selection = await resolveDeterministic(message, state);
+            if (isVisualSearch) {
+                console.log(`[Server] 📸 Visual search detected. Short-circuiting pipeline.`);
+                logDebug('SERVER:VISUAL_SEARCH_SHORT_CIRCUIT', {
+                    _desc: 'Visual search detected — short-circuiting pipeline to force product search',
+                    _example: 'User sent image → bypass resolveDeterministic, force product.search IMAGE',
+                    imageLength: req.body.image?.length || 0
+                });
+                selection = {
+                    intent: 'product_search',
+                    confidence: 1.0,
+                    tools: []
+                };
+                forceVisualSearchTool = {
+                    tool: 'product.search',
+                    params: {
+                        image: req.body.image,
+                        search_mode: 'IMAGE',
+                        limit: 5
+                    },
+                    reason: 'User sent an image for visual search'
+                };
+            } else {
+                // New Pure-Deterministic (Zero-AI) Pipeline
+                selection = await resolveDeterministic(message, state);
+            }
 
             let toolsSelected = selection.tools || [];
+            if (forceVisualSearchTool) toolsSelected = [forceVisualSearchTool];
+
             const intent = selection.intent || 'unknown';
             const suppressWhatsAppUI = !!selection?.result?.isMultiIntent;
 
@@ -431,7 +458,7 @@ app.post('/chat', async (req, res) => {
             let pausedForMicrostate = false;
             if (activeMicrostateBeforeStack) {
                 console.log(`[Server] 🔒 Microstate already active (${activeMicrostateBeforeStack.type}) - skipping stack continuation`);
-            } else if (stackData?.remaining_intents?.length > 0) {
+            } else if (stackData?.remaining_intents?.length > 0 && !isVisualSearch) {
                 console.log(`[Server] 📚 Executing ${stackData.remaining_intents.length} remaining stack intents`);
 
                 while (stackData && stackData.remaining_intents && stackData.remaining_intents.length > 0) {
@@ -579,7 +606,7 @@ app.post('/chat', async (req, res) => {
                 // Evaluates whether returned products match the user's intent.
                 // Bypassed for engineered UI tokens (e.g. __nav:more__, __filter__)
                 // ═══════════════════════════════════════════════
-                const ENABLE_SENTINEL = true;
+                const ENABLE_SENTINEL = !isVisualSearch; // SKIP sentinel for visual search
                 const isEngineeredMessage = message && message.trim().startsWith('__');
 
                 const searchResultIndex = (!isEngineeredMessage && ENABLE_SENTINEL) ? consolidatedToolResults.findIndex(tr =>
@@ -690,7 +717,8 @@ app.post('/chat', async (req, res) => {
                 });
                 response = await generateResponseFromTools(message, consolidatedToolResults, state.conversation_history, {
                     intentNames: allIntentNames.length === 1 ? allIntentNames[0] : allIntentNames,
-                    conversationSummary: state.conversation_summary || null
+                    conversationSummary: state.conversation_summary || null,
+                    visual_search: isVisualSearch
                 });
             }
 
