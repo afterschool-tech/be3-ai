@@ -146,8 +146,19 @@ function getMergedDcoConfig(intentNames) {
 function assemblePrompt(intentNames, toolResultsSummary, options = {}) {
     const dco = getMergedDcoConfig(intentNames);
 
-    if (options.visual_search && !dco.segments.includes('visual_search')) {
-        dco.segments.push('visual_search');
+    // --- VISUAL SEARCH DCO PRUNING ---
+    if (options.visual_search) {
+        // Force visual_search segment
+        if (!dco.segments.includes('visual_search')) {
+            dco.segments.push('visual_search');
+        }
+
+        // PRUNING: If products are found, remove generic grounding and availability 
+        // to prevent the LLM from second-guessing visual matches.
+        const hasProducts = toolResultsSummary.includes('"products"') || toolResultsSummary.includes('"results"');
+        if (hasProducts) {
+            dco.segments = dco.segments.filter(s => s !== 'grounding' && s !== 'availability');
+        }
     }
 
     // 1. Build prompt from selected segments

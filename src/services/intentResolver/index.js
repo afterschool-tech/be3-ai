@@ -785,10 +785,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const textsToAnalyze = statements.map(s => s.original || s.text);
         try {
             const axios = require('axios');
+            const TRANSFORMER_URL = process.env.TRANSFORMER_URL || 'http://localhost:3009';
             const transformerStart = Date.now();
-            const transformerResponse = await axios.post('http://localhost:3009/analyze', {
+            const transformerResponse = await axios.post(`${TRANSFORMER_URL}/analyze`, {
                 texts: textsToAnalyze
-            }, { timeout: 2000 });
+            }, { timeout: 10000 });
             const transformerDuration = Date.now() - transformerStart;
 
             if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {

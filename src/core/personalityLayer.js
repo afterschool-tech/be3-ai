@@ -195,6 +195,8 @@ function summarizeToolResultsForLLM(results) {
                 base.search_mode = 'similar';
                 if (rr.similar_to_name) base.similar_to_name = rr.similar_to_name;
                 if (rr.similar_to) base.similar_to = rr.similar_to;
+            } else if (rr.mode === 'IMAGE' || rr.search_mode === 'image') {
+                base.search_mode = 'image';
             }
         }
 
@@ -283,6 +285,7 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
                 ...tr,
                 result: {
                     ...tr.result,
+                    mode: tr.result.mode || tr.result.search_mode || null,
                     products: (Array.isArray(limitedProducts) ? limitedProducts : []).map(p => {
                         if (isCartView) {
                             return {

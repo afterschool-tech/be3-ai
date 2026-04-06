@@ -1,3 +1,4 @@
+require('dotenv').config();
 const readline = require('readline');
 const path = require('path');
 
@@ -126,9 +127,10 @@ ${C.dim}Stage: 4b (Schema Resolver)${C.reset}
 
                 try {
                     const axios = require('axios');
-                    const transformerResponse = await axios.post('http://localhost:3009/classify', {
+                    const TRANSFORMER_URL = process.env.TRANSFORMER_URL || 'http://localhost:3009';
+                    const transformerResponse = await axios.post(`${TRANSFORMER_URL}/classify`, {
                         text: cleanedText
-                    }, { timeout: 1000 });
+                    }, { timeout: 10000 });
 
                     if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
                         for (const sem of transformerResponse.data.results) {

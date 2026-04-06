@@ -3,6 +3,7 @@
  * Compares extraction results with and without Stage 0.5 Transformer context.
  */
 
+require('dotenv').config();
 const path = require('path');
 const axios = require('axios');
 const readline = require('readline');
@@ -17,7 +18,8 @@ const storeContext = require('../src/context/storeContext');
 const idfMap = intentRegistry.buildIdfMap();
 
 // Configuration
-const TRANSFORMER_URL = 'http://localhost:3009/analyze';
+const BASE_URL = process.env.TRANSFORMER_URL || 'http://localhost:3009';
+const TRANSFORMER_URL = `${BASE_URL}/analyze`;
 
 // Colors for display
 const C = {
@@ -40,7 +42,7 @@ async function getSemanticContext(text) {
     try {
         const response = await axios.post(TRANSFORMER_URL, {
             text: text
-        }, { timeout: 2000 });
+        }, { timeout: 10000 });
 
         return {
             available: true,

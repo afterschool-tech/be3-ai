@@ -158,12 +158,16 @@ IMPOSSIBLE REQUESTS: If the user asks for something we don't sell (a car, a pupp
      * Visual Search framing rules
      * ~80 tokens
      */
-    visual_search: () => `VISUAL SEARCH RESULTS:
+    visual_search: () => `VISUAL SEARCH RESULTS (GROUNDING OVERRIDE):
 - The user sent an image to find similar products.
-- The "products" list contains the best visual matches from our store.
-- Be brief and enthusiastic about the visual matches!
-- DO NOT suggest "searching for something else" or "refining with text" unless the results are empty.
-- FOCUS: Use the "See product details" buttons to help the user explore the matches.`
+- TRUST THE DATA: The products in "TOOL RESULTS DATA" are absolute visual matches. 
+- IGNORE KEYWORDS: These matches are based on visual similarity, NOT text keywords. Even if the product names don't match the user's previous words, they ARE the correct results for this image.
+- Be brief, cute, and enthusiastic about these visual matches! 📸✨
+- GROUNDING (MANDATORY): 
+  - Only mention the products provided in the list.
+  - Use the exact "price" provided. 
+- DO NOT suggest "searching for something else" or "refining with text" because these results are perfect!
+- FOCUS: Tell the user to use the "See product details" button to explore these items.`
 };
 
 module.exports = { SEGMENTS };
