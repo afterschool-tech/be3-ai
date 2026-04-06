@@ -1053,7 +1053,9 @@ Keep it under 100 words. Facts only. No fluff.`;
     }
 }
 
-app.get('/health', (req, res) => res.json({ success: true, service: 'be3_ai', model: MODEL_ID, status: 'running' }));
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 app.get('/metrics', (req, res) => res.json({ success: true, metrics: getMetrics(), summary: getMetricsSummary() }));
 
 app.get('/debug/state/:session_id', async (req, res) => {
