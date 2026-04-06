@@ -32,15 +32,22 @@ async function initRedis() {
     }
 
     try {
-        client = redis.createClient({
-            socket: {
-                host: REDIS_CONFIG.host,
-                port: REDIS_CONFIG.port,
-                reconnectStrategy: REDIS_CONFIG.retryStrategy
-            },
-            password: REDIS_CONFIG.password,
-            database: REDIS_CONFIG.db
-        });
+        // Support unified REDIS_URL (Upstash/Cloud) or legacy host/port config
+        const url = process.env.REDIS_URL;
+        
+        if (url) {
+            client = redis.createClient({ url });
+        } else {
+            client = redis.createClient({
+                socket: {
+                    host: REDIS_CONFIG.host,
+                    port: REDIS_CONFIG.port,
+                    reconnectStrategy: REDIS_CONFIG.retryStrategy
+                },
+                password: REDIS_CONFIG.password,
+                database: REDIS_CONFIG.db
+            });
+        }
 
         client.on('error', (err) => {
             console.error('[Redis] Error:', err.message);
