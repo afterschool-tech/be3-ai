@@ -225,7 +225,7 @@ const vendorTools = {
             const globalButtons = [];
 
             // Prepend the new decoupled product details button
-            globalButtons.push({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
+            globalButtons.push({ id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️', priority: 110 });
 
             // If exactly one product, allow immediate add to cart
             if (products.length === 1) {

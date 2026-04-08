@@ -323,7 +323,7 @@ const productTools = {
                     whatsapp: {
                         type: 'button',
                         buttons: [
-                            { id: '__nav:results__', title: 'See product details' },
+                            { id: '__nav:results__', title: 'Shop these items 🛍️' },
                             seeMoreBtn
                         ]
                     }
@@ -354,7 +354,7 @@ const productTools = {
                     whatsapp: {
                         type: 'button',
                         buttons: [
-                            { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
+                            { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
                             seeMoreBtn
                         ]
                     }
@@ -1319,7 +1319,7 @@ async function handleSearchResults(searchResult, params, context, snapshotId, ca
         }
     }
 
-    globalButtons.unshift({ id: `__nav:cards:${snapshotId}__`, title: 'See product details', priority: 110 });
+    globalButtons.unshift({ id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️', priority: 110 });
     globalButtons.push(...facetButtons);
 
     return {
