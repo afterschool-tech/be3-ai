@@ -3,7 +3,7 @@ const { logDebug } = require('../utils/debugLogger');
 const { OpenAI } = require("openai");
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const MODEL_ID = "llama-3.3-70b-versatile";
+const MODEL_ID = process.env.TEST_MODEL || "llama-3.3-70b-versatile";
 const FALLBACK_MODEL_ID = "llama-3.1-70b-versatile";
 
 const client = new OpenAI({

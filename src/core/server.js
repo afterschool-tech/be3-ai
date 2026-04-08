@@ -914,6 +914,31 @@ app.post('/chat', async (req, res) => {
                 productCardCount: productCardPayload?.cards?.length || 0
             });
 
+            // Add helper text for WA clients (rendered by be3-WA).
+            // This gives the AI service control over the UI hint space instead of hardcoded bot text.
+            const SHOP_THESE_ITEMS_TITLE = 'Shop these items 🛍️';
+            const MORE_INFO_TITLE = 'More info';
+            const helperForShopTheseItems = '👉 Tap “Shop These Items 🛍️” to view details and buy';
+            const helperForMoreInfo = '👉 Tap “More info” to see full details or compare with related products';
+
+            try {
+                if (whatsappButtons && Array.isArray(whatsappButtons.buttons)) {
+                    const titles = whatsappButtons.buttons.map(b => String(b?.title ?? b?.text ?? '')).filter(Boolean);
+                    if (titles.includes(SHOP_THESE_ITEMS_TITLE)) {
+                        whatsappButtons.helper_text = helperForShopTheseItems;
+                    }
+                }
+
+                if (productCardPayload && Array.isArray(productCardPayload.cards)) {
+                    const hasMoreInfo = productCardPayload.cards.some(card =>
+                        Array.isArray(card?.buttons) && card.buttons.some(b => String(b?.title ?? b?.text ?? '') === MORE_INFO_TITLE)
+                    );
+                    if (hasMoreInfo) {
+                        productCardPayload.helper_text = helperForMoreInfo;
+                    }
+                }
+            } catch (_) { }
+
             // Prevent stale tool UI payloads (buttons/cards/etc) from leaking via the `results` array.
             // Some clients render buttons directly off tool results (not just whatsapp_buttons).
             // We only want the UI elements from THIS turn's tools to be present in their respective results.
