@@ -1058,6 +1058,49 @@ app.get('/health', (req, res) => {
 });
 app.get('/metrics', (req, res) => res.json({ success: true, metrics: getMetrics(), summary: getMetricsSummary() }));
 
+// ─── Debug log retrieval endpoints ───────────────────────────────────────────
+const { getRunLogs, getAllRunIds, deleteRunLogs, clearAllLogs } = require('../utils/debugLogger');
+
+/** List all run IDs recorded in Redis */
+app.get('/logs', async (req, res) => {
+    try {
+        const runIds = await getAllRunIds();
+        res.json({ success: true, count: runIds.length, runIds });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/** Fetch all log entries for a specific pipeline run */
+app.get('/logs/:runId', async (req, res) => {
+    try {
+        const entries = await getRunLogs(req.params.runId);
+        res.json({ success: true, runId: req.params.runId, count: entries.length, entries });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/** Delete a single run's logs */
+app.delete('/logs/:runId', async (req, res) => {
+    try {
+        await deleteRunLogs(req.params.runId);
+        res.json({ success: true, message: `Logs for ${req.params.runId} deleted` });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/** Wipe ALL debug logs and the master index */
+app.delete('/logs', async (req, res) => {
+    try {
+        const cleared = await clearAllLogs();
+        res.json({ success: true, message: `Cleared ${cleared} run(s)` });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.get('/debug/state/:session_id', async (req, res) => {
     try {
         const state = await stateManager.getState(req.params.session_id);

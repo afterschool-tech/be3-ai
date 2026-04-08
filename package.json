@@ -8,7 +8,9 @@
         "dev": "nodemon server.js",
         "repl:pipeline": "node src/services/intentResolver/pipelineREPL.js",
         "test": "jest __pipeline_tests__",
-        "repl": "node tests/repl_intent_resolver.js"
+        "repl": "node tests/repl_intent_resolver.js",
+        "logs:download": "node scripts/download-logs.js",
+        "logs:download:prod": "node scripts/download-logs.js --host https://be3-ai.onrender.com"
     },
     "dependencies": {
         "axios": "^1.13.5",

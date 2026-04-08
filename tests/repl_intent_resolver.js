@@ -1,3 +1,4 @@
+require('dotenv').config(); // must be first — loads DEBUG, DEBUG_REDIS_URL etc. before any module reads process.env
 console.log('💎 REPL ID: ALPHA-10-SEC');
 /**
  * REPL Commands:
@@ -413,11 +414,19 @@ async function initializeSession() {
     accumulatedExecutionResults = [];
     conversationHistory = [];
 }
-
 // ═══════════════════════════════════════════════════
 //  REPL
 // ═══════════════════════════════════════════════════
 async function main() {
+    // Connect to Redis first — same as server.js does at startup.
+    // Without this, getClient() returns null and ALL state silently falls to in-memory cache.
+    const redisClient = require('../src/state/redis');
+    try {
+        await redisClient.initRedis();
+    } catch (e) {
+        console.warn(`${C.yellow}  ⚠ Redis unavailable — state will use in-memory fallback: ${e.message}${C.reset}`);
+    }
+
     console.log(`
 ${C.bold}${C.cyan}╔═══════════════════════════════════════════════╗
 ║     Hybrid Intent Resolver — Phase 18 REPL     ║
