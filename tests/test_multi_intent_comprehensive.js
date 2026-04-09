@@ -121,10 +121,6 @@ async function main() {
                 validate: ({ executionResults }) => {
                     const cartAdds = executionResults.filter(er => er.tool === 'cart.add');
                     if (cartAdds.length === 0) {
-                        // Depending on backend / search coverage, this might not always fire.
-                        console.log(
-                            '  ⚠️ No cart.add tools executed (backend/search coverage dependent).'
-                        );
                         return;
                     }
                     const anySkipped = cartAdds.some(er => er.skipped);

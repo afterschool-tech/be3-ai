@@ -1390,6 +1390,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             reconciledFromContext: stmt.reconciledFromContext || false,
             extractedParams: stmt.extractedParams || {},
             pipelineEntities: stmt.pipelineEntities,
+            statementText: stmt.statementText,
             _ported_from: stmt._ported_from
         };
     });

@@ -2,17 +2,31 @@ const { Pool } = require('pg');
 const fs = require('fs');
 require('dotenv').config();
 
-const pool = new Pool({
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'saas_ecommerce',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '343434',
-});
+const poolConfig = process.env.DB_SOURCE === 'cloud' 
+    ? { 
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false } // Required for Neon
+      }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 5432,
+        database: process.env.DB_NAME || 'saas_ecommerce',
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || '343434',
+    };
+
+const pool = new Pool(poolConfig);
 
 async function buildComprehensiveContext() {
     try {
-        console.log('🚀 Building Comprehensive Store Context...\n');
+        const connectionLabel = process.env.DB_SOURCE === 'cloud' ? '☁️  CLOUD (Neon)' : '💻 LOCAL';
+        const hostInfo = process.env.DB_SOURCE === 'cloud' 
+            ? (process.env.DATABASE_URL?.match(/@([^/]+)/)?.[1] || 'URL Provided') 
+            : (process.env.DB_HOST || 'localhost');
+
+        console.log(`🚀 Building Comprehensive Store Context...`);
+        console.log(`📡 Source: ${connectionLabel}`);
+        console.log(`🔗 Host: ${hostInfo}\n`);
 
         // ===== 1. HIERARCHICAL CATEGORIES =====
         console.log('📂 Fetching categories with parent-child relationships...');

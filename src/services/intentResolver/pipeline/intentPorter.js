@@ -14,6 +14,20 @@ const { logDebug } = require('../../../utils/debugLogger');
 const purchaseVerbs = ['buy', 'purchase', 'get', 'grab', 'take', 'order', 'add', 'cart', 'cop', 'take it', 'want', 'need'];
 const discoveryVerbs = ['show', 'see', 'find', 'search', 'look', 'browse', 'details', 'info', 'specs', 'check out'];
 
+function hasDiscoveryPhrasing(intent) {
+    const keywords = (intent?.matchedKeywords || []).map(k => String(k || '').toLowerCase());
+    if (keywords.some(k => discoveryVerbs.includes(k))) return true;
+
+    const t = String(intent?.statementText || '').toLowerCase();
+    if (!t) return false;
+    // Heuristic: common discovery patterns
+    const patterns = [
+        /\b(show|see|find|search|look|browse|details|info|specs|check out)\b/i,
+        /\b(what do you have|let me see|can i see|do you sell|do you get|you get)\b/i
+    ];
+    return patterns.some(re => re.test(t));
+}
+
 function getResolvedProductIdsFromStage2(stage2Resolutions) {
     if (!Array.isArray(stage2Resolutions) || stage2Resolutions.length === 0) return [];
     const ids = [];
@@ -89,7 +103,7 @@ async function portIntents(intents, state) {
                                 metrics.entityCount === 0 && 
                                 metrics.transformerGap < 0.1;
 
-        if (isExtremelyWeak && intent.intentName !== 'conversation') {
+        if (isExtremelyWeak && intent.intentName !== 'conversation' && !hasDiscoveryPhrasing(intent)) {
             logDebug('PIPELINE:STAGE7.5_DEGRADE_TO_CONVERSATION', {
                 _desc: 'Intent degradation — Extremely weak signal ported to conversation',
                 originalIntent: intent.intentName,
@@ -116,16 +130,6 @@ async function portIntents(intents, state) {
                     _ported_from: out._ported_from,
                     hasPortedFrom: '_ported_from' in out
                 });
-                logDebug('PIPELINE:STAGE7.5_PORT_AFTER_ADD', {
-                    _desc: 'Intent port after add — port product_search to add_to_cart when following add',
-                    _example: '"add samsung" then "also iphone" → port second to add_to_cart',
-                    from: 'product_search',
-                    to: 'add_to_cart',
-                    reason: 'naked product_search after add_to_cart',
-                    product: intent.parameters?.product_name || intent.parameters?.products?.[0],
-                    statementText: (intent.statementText || '').slice(0, 60)
-                });
-                console.log(`[IntentPorter] 🚀 Porting search -> add_to_cart (after add: "${(intent.parameters?.product_name || intent.parameters?.products?.[0] || '').toString().slice(0, 40)}")`);
             }
         }
 
@@ -135,9 +139,7 @@ async function portIntents(intents, state) {
 
         // Existing: product_search + purchase verb + reference_map
         if (out.intentName === 'product_search') {
-            const keywords = (out.matchedKeywords || []).map(k => k.toLowerCase());
-            const hasDiscoveryVerb = keywords.some(k => discoveryVerbs.includes(k));
-            if (hasDiscoveryVerb) {
+            if (hasDiscoveryPhrasing(out)) {
                 result.push(out);
                 continue;
             }
@@ -177,6 +179,7 @@ async function portIntents(intents, state) {
                 continue;
             }
 
+            const keywords = (out.matchedKeywords || []).map(k => String(k || '').toLowerCase());
             const hasPurchaseVerb = keywords.some(k => purchaseVerbs.includes(k));
             if (!hasPurchaseVerb) {
                 result.push(out);
@@ -205,10 +208,8 @@ async function portIntents(intents, state) {
                         // Single product - safe to port
                         knownId = userQueryResult;
                         knownIdSource = 'user_query_map';
-                        console.log(`[IntentPorter] ✅ Found in user_query_map: "${productName}" → ${knownId}`);
                     } else {
                         // Multiple products - don't port (ambiguous)
-                        console.log(`[IntentPorter] ⚠️ Found in user_query_map but ambiguous (${userQueryResult.split(',').length} products): "${productName}"`);
                     }
                 }
             }
@@ -235,33 +236,30 @@ async function portIntents(intents, state) {
                     if (key.includes(queryLower) || queryLower.includes(key.replace(/_/g, ' '))) {
                         knownId = value;
                         knownIdSource = 'reference_map_substring';
-                        console.log(`[IntentPorter] ✅ Found match via substring: "${productName}" matches reference map key "${key}"`);
                         break;
                     }
                 }
             }
 
-            console.log(`[IntentPorter] 🔍 Checking purchase verb porting for "${productName}":`, {
-                hasPurchaseVerb: true,
-                productName,
-                productSlug,
-                rawLower,
-                knownId: knownId || 'NOT_FOUND',
-                knownIdSource: knownIdSource || 'none',
-                referenceMapKeys: Object.keys(referenceMap).slice(0, 10)
-            });
             if (knownId) {
-                logDebug('PIPELINE:STAGE7.5_INTENT_PORTING', {
-                    _desc: 'Intent porting — product_search → add_to_cart when product in user_query_map/reference_map',
-                    _example: '"i want to buy drawer" after search → add_to_cart with product_id',
+                const pObj = lastSearchResults.find(p => (p?.id === knownId || p?.handle === knownId)) || null;
+                const confirmContext = pObj ? {
+                    product: pObj?.name || pObj?.title || null,
+                    price: pObj?.price_display || pObj?.price || null,
+                    vendor: pObj?.vendor || pObj?.metadata?.vendor || null
+                } : null;
+
+                logDebug('PIPELINE:STAGE7.5_INTENT_PORTING_GATED', {
+                    _desc: 'Intent porting (Gated) — product_search → add_to_cart when product in user_query_map/reference_map',
+                    _example: '"i want to buy drawer" after search → confirm → add_to_cart',
                     from: 'product_search',
                     to: 'add_to_cart',
                     reason: 'Product Known in Session History',
                     product: productName,
                     slug: productSlug,
-                    productId: knownId
+                    productId: knownId,
+                    requireConfirmation: true
                 });
-                console.log(`[IntentPorter] 🚀 Porting search -> add_to_cart (Product Known: ${productName})`);
                 const portedIntent = {
                     ...out,
                     intentName: 'add_to_cart',
@@ -269,15 +267,12 @@ async function portIntents(intents, state) {
                     parameters: {
                         ...out.parameters,
                         product_id: knownId,
-                        products: [knownId]
+                        products: [knownId],
+                        _require_confirmation: true,
+                        _confirm_context: confirmContext
                     },
                     _ported_from: 'product_search'
                 };
-                console.log(`[IntentPorter] ✅ Set _ported_from on reference_map ported intent:`, {
-                    intentName: portedIntent.intentName,
-                    _ported_from: portedIntent._ported_from,
-                    hasPortedFrom: '_ported_from' in portedIntent
-                });
                 result.push(portedIntent);
             } else {
                 result.push(out);
