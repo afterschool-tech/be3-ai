@@ -14,21 +14,21 @@
 
 require('dotenv').config();
 const https = require('https');
-const http  = require('http');
-const fs    = require('fs');
-const path  = require('path');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const args      = process.argv.slice(2);
-const hostFlag  = args.indexOf('--host');
-const BASE_URL  = hostFlag !== -1
+const args = process.argv.slice(2);
+const hostFlag = args.indexOf('--host');
+const BASE_URL = hostFlag !== -1
     ? args[hostFlag + 1]
     : `http://localhost:${process.env.PORT || 3005}`;
 
 // Any arg that isn't a flag or flag-value is treated as a runId filter
 const runIdFilter = args.filter((a, i) => !a.startsWith('--') && i !== hostFlag + 1);
 
-const OUT_DIR = path.join(__dirname, '../logs/runs');
+const OUT_DIR = path.join(__dirname, '../logs/test');
 if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // ─── HTTP helper ──────────────────────────────────────────────────────────────
@@ -78,10 +78,10 @@ function formatEntry(entry) {
 function buildLogFile(runId, entries) {
     // Find the RUN_START entry for the header timestamp
     const startEntry = entries.find(e => e._type === 'RUN_START');
-    const startTs    = startEntry?.timestamp || new Date().toISOString();
+    const startTs = startEntry?.timestamp || new Date().toISOString();
 
     const header = `=== DEBUG LOG START: ${startTs} | RUN ID: ${runId} ===\n\n`;
-    const body   = entries
+    const body = entries
         .map(formatEntry)
         .filter(Boolean)
         .join('\n');
@@ -129,13 +129,13 @@ async function main() {
             if (!res.success) throw new Error(res.error || 'Unknown error');
 
             const entries = res.entries || [];
-            
+
             // ─── Filename logic: run_<timestamp>_<runId>.log ────────────────
             const startEntry = entries.find(e => e._type === 'RUN_START');
-            const isoTs      = startEntry?.timestamp || new Date().toISOString();
-            const unixTs     = new Date(isoTs).getTime();
-            const fileName   = `run_${unixTs}_${runId}.log`;
-            
+            const isoTs = startEntry?.timestamp || new Date().toISOString();
+            const unixTs = new Date(isoTs).getTime();
+            const fileName = `run_${unixTs}_${runId}.log`;
+
             const content = buildLogFile(runId, entries);
             const outPath = path.join(OUT_DIR, fileName);
 
