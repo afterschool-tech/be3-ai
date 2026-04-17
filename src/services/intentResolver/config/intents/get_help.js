@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'get_help',
+    class: 'Support_Feedback',
+    intent: 'Assistance_Request',
 
     keywords: [
         'help', 'assist', 'support', 'guide', 'explain', 'manual', 'options', 'services',

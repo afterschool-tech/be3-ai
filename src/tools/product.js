@@ -45,10 +45,11 @@ const productTools = {
             search_mode: { type: 'string', description: 'The search mode to use. Set to "VECTOR" for pure semantic search.' },
             similar_to: { type: 'string', description: 'The Product ID or Handle to find products similar to.' },
             image: { type: 'string', description: 'Base64 encoded image data for visual search' },
-            clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' }
+            clause_words: { type: 'list', description: 'Internal: detected semantic clauses for labeling' },
+            allow_deep_fallbacks: { type: 'boolean', description: 'Internal: if true, allows dropping filters to find suggestions' }
         },
         handler: async (params, context) => {
-            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words } = params;
+            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -251,7 +252,23 @@ const productTools = {
                 }
 
                 if (vectorKickFallback && vectorKickFallback.products?.length > 0) {
-                    return await handleSearchResults(vectorKickFallback, params, context, snapshotId, null, null);
+                    const final = await handleSearchResults(vectorKickFallback, params, context, snapshotId, null, null, true);
+                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                    return {
+                        ...final,
+                        products: [],
+                        suggested_products: final.products,
+                        suggested_total: final.total,
+                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                        whatsapp_product_cards: undefined,
+                        whatsapp: {
+                            type: 'button',
+                            buttons: [
+                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
+                                seeMoreBtn
+                            ]
+                        }
+                    };
                 }
             }
 
@@ -271,94 +288,112 @@ const productTools = {
 
                 if (vectorFallback && vectorFallback.products?.length > 0) {
                     logDebug('TOOL:VECTOR_FALLBACK [product.search]', { _desc: 'Precision failed. Result found via Vector Search fallback.', query });
-                    return await handleSearchResults(vectorFallback, params, context, snapshotId, cat, catId);
+                    const final = await handleSearchResults(vectorFallback, params, context, snapshotId, cat, catId, true);
+                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                    return {
+                        ...final,
+                        products: [],
+                        suggested_products: final.products,
+                        suggested_total: final.total,
+                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                        whatsapp_product_cards: undefined,
+                        whatsapp: {
+                            type: 'button',
+                            buttons: [
+                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
+                                seeMoreBtn
+                            ]
+                        }
+                    };
                 }
             }
 
             // Fallback 2: Suggestion fallbacks (Relaxed searches)
-            const buildRelaxedCall = async (opts) => {
-                const { dropQuery, dropOtherFilters } = opts;
-                const sParams = new URLSearchParams({ per_page: limit, page: page, sort: sort, type: 'product' });
-                if (!dropQuery && query) sParams.append('q', query);
-                if (!dropOtherFilters) {
-                    if (price_min) sParams.append('price_min', price_min);
-                    if (price_max) sParams.append('price_max', price_max);
-                    if (tag) sParams.append('tag', tag);
-                    Object.entries(safeAttributes).forEach(([k, v]) => sParams.append(`attribute.${k}`, k === 'vendor' ? normalizeVendor(v) : v));
+            if (allow_deep_fallbacks) {
+                const buildRelaxedCall = async (opts) => {
+                    const { dropQuery, dropOtherFilters } = opts;
+                    const sParams = new URLSearchParams({ per_page: limit, page: page, sort: sort, type: 'product' });
+                    if (!dropQuery && query) sParams.append('q', query);
+                    if (!dropOtherFilters) {
+                        if (price_min) sParams.append('price_min', price_min);
+                        if (price_max) sParams.append('price_max', price_max);
+                        if (tag) sParams.append('tag', tag);
+                        Object.entries(safeAttributes).forEach(([k, v]) => sParams.append(`attribute.${k}`, k === 'vendor' ? normalizeVendor(v) : v));
+                    }
+                    if (catId) sParams.append('category_id', cat?.slug || catId);
+
+                    const res = await callBackendAPI(`/search?${sParams.toString()}`);
+                    if (!res.success) return null;
+                    const data = res.data || {};
+                    return {
+                        products: data.results || data.products || [],
+                        total: data.pagination?.total ?? data.total ?? 0,
+                        facets: data.facets,
+                        pagination: data.pagination
+                    };
+                };
+
+                // Attempt 1: Drop query, keep filters
+                const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
+                if (attempt1 && attempt1.products.length > 0) {
+                    const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
+
+                    logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
+                        _desc: 'No-result fallback — retry without query (keep filters)',
+                        original: { query, category, price_min, price_max, tag, attributes },
+                        fallback: { query: null },
+                        suggestedCount: final.products.length,
+                        total: attempt1.total
+                    });
+
+                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                    return {
+                        ...final,
+                        products: [],
+                        suggested_products: final.products,
+                        suggested_total: final.total,
+                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                        whatsapp_product_cards: undefined,
+                        whatsapp: {
+                            type: 'button',
+                            buttons: [
+                                { id: '__nav:results__', title: 'Shop these items 🛍️' },
+                                seeMoreBtn
+                            ]
+                        }
+                    };
                 }
-                if (catId) sParams.append('category_id', cat?.slug || catId);
 
-                const res = await callBackendAPI(`/search?${sParams.toString()}`);
-                if (!res.success) return null;
-                const data = res.data || {};
-                return {
-                    products: data.results || data.products || [],
-                    total: data.pagination?.total ?? data.total ?? 0,
-                    facets: data.facets,
-                    pagination: data.pagination
-                };
-            };
+                // Attempt 2: Drop everything but category
+                const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
+                if (attempt2 && attempt2.products.length > 0) {
+                    const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
 
-            // Attempt 1: Drop query, keep filters
-            const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
-            if (attempt1 && attempt1.products.length > 0) {
-                const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
+                    logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
+                        _desc: 'No-result fallback — retry without query and without other filters',
+                        original: { query, category, price_min, price_max, tag, attributes },
+                        fallback: { query: null, price_min: null, price_max: null, tag: null, attributes: {} },
+                        suggestedCount: final.products.length,
+                        total: attempt2.total
+                    });
 
-                logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                    _desc: 'No-result fallback — retry without query (keep filters)',
-                    original: { query, category, price_min, price_max, tag, attributes },
-                    fallback: { query: null },
-                    suggestedCount: final.products.length,
-                    total: attempt1.total
-                });
-
-                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
-                return {
-                    ...final,
-                    products: [],
-                    suggested_products: final.products,
-                    suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                    whatsapp_product_cards: undefined,
-                    whatsapp: {
-                        type: 'button',
-                        buttons: [
-                            { id: '__nav:results__', title: 'Shop these items 🛍️' },
-                            seeMoreBtn
-                        ]
-                    }
-                };
-            }
-
-            // Attempt 2: Drop everything but category
-            const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
-            if (attempt2 && attempt2.products.length > 0) {
-                const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
-
-                logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                    _desc: 'No-result fallback — retry without query and without other filters',
-                    original: { query, category, price_min, price_max, tag, attributes },
-                    fallback: { query: null, price_min: null, price_max: null, tag: null, attributes: {} },
-                    suggestedCount: final.products.length,
-                    total: attempt2.total
-                });
-
-                const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
-                return {
-                    ...final,
-                    products: [],
-                    suggested_products: final.products,
-                    suggested_total: final.total,
-                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                    whatsapp_product_cards: undefined,
-                    whatsapp: {
-                        type: 'button',
-                        buttons: [
-                            { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
-                            seeMoreBtn
-                        ]
-                    }
-                };
+                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+                    return {
+                        ...final,
+                        products: [],
+                        suggested_products: final.products,
+                        suggested_total: final.total,
+                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                        whatsapp_product_cards: undefined,
+                        whatsapp: {
+                            type: 'button',
+                            buttons: [
+                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
+                                seeMoreBtn
+                            ]
+                        }
+                    };
+                }
             }
 
             return { products: [], total: 0, message: "I couldn't find any products matching your search." };

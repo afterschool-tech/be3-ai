@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'update_cart_quantity',
+    class: 'Shopping_Management',
+    intent: 'Cart_Management',
 
     keywords: [
         'update', 'change', 'quantity', 'modify', 'bump', 'adjust', 'set'

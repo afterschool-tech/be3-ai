@@ -298,6 +298,7 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
     if (extracted.price_max) excludeSet.add(extracted.price_max.toString());
     if (extracted.price_min) excludeSet.add(extracted.price_min.toString());
 
+    const strippedHintWords = [];
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
             // Also include transformer_attribute_hint so that the attribute value (and the stripped 
@@ -306,15 +307,26 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
                 const entWords = String(ent.value).toLowerCase().split(/\s+/);
                 
                 if (ent.type === 'transformer_attribute_hint') {
-                    logDebug('PARAM:STRIP_ATTR_FROM_PRODUCT_NAME', {
-                        _desc: 'Stripping attribute hint words from product name fallback',
-                        attribute: ent.subType,
-                        strippedWords: entWords
-                    });
+                    strippedHintWords.push({ attribute: ent.subType, words: entWords });
                 }
                 
                 entWords.forEach(w => excludeSet.add(w));
             }
+        });
+    }
+
+    if (strippedHintWords.length > 0) {
+        // Deduplicate: collect unique words per attribute type
+        const byAttr = {};
+        for (const s of strippedHintWords) {
+            if (!byAttr[s.attribute]) byAttr[s.attribute] = new Set();
+            s.words.forEach(w => byAttr[s.attribute].add(w));
+        }
+        logDebug('PARAM:STRIP_ATTR_FROM_PRODUCT_NAME', {
+            _desc: 'Attribute hint words excluded from product name fallback',
+            excludedWords: Object.fromEntries(
+                Object.entries(byAttr).map(([attr, words]) => [attr, Array.from(words)])
+            )
         });
     }
 
@@ -421,13 +433,33 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
             });
 
             if (isBareCategory) {
-                extracted._blocked_bare_category = true;
-                // Category already captured upstream — product_name left unset so the
-                // missing_query microstate or category browse takes over naturally.
-                logDebug('PARAM:PIE_BARE_CATEGORY_DROPPED', {
-                    name: pieResults[0].name,
-                    reason: 'Exact category match — using category browse instead of keyword search'
-                });
+                // Only drop if entity extraction actually detected a category entity
+                // for this word. If no category entity exists, the word should stay as
+                // product_name — category detection was pre-empted by IntelliSense
+                // marking it as resolved_product.
+                const hasCategoryEntity = entities && entities.some(e => e.type === 'category');
+
+                if (hasCategoryEntity) {
+                    extracted._blocked_bare_category = true;
+                    // Category already captured upstream — product_name left unset so the
+                    // category browse takes over naturally.
+                    logDebug('PARAM:PIE_BARE_CATEGORY_DROPPED', {
+                        name: pieResults[0].name,
+                        reason: 'Exact category match — category entity detected upstream, using category browse instead of keyword search'
+                    });
+                } else {
+                    // No category entity detected — keep as product_name (search query)
+                    extracted.product_name = rawPieName;
+                    extracted._pie_product_name = rawPieName;
+                    if (pieResults[0].intel.resolvedId) {
+                        const rid = pieResults[0].intel.resolvedId;
+                        extracted._resolved_product_id = (rid && typeof rid === 'object') ? (rid.resolvedId || rid.id || rid.value) : rid;
+                    }
+                    logDebug('PARAM:PIE_BARE_CATEGORY_KEPT', {
+                        name: pieResults[0].name,
+                        reason: 'Bare category match but NO category entity detected upstream — keeping as search query'
+                    });
+                }
             } else {
                 extracted.product_name = rawPieName;
                 if (pieResults[0].intel.resolvedId) {
@@ -896,6 +928,39 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
         } else {
             combinedBase.product_name = baseFromEntities.product_name;
         }
+    }
+
+    // ── PIE LIFECYCLE SUMMARY ──
+    // Comprehensive single log showing PIE's full decision chain
+    {
+        const intelliProduct = baseFromEntities.product_name || null;
+        const pieProduct = _pie_product_name;
+        const finalProduct = combinedBase.product_name || null;
+        const bareCategoryDropped = deterministic._blocked_bare_category || false;
+
+        let outcome = 'no_product';
+        if (bareCategoryDropped) outcome = 'bare_category_dropped';
+        else if (pieProduct && intelliProduct && pieProduct !== intelliProduct) outcome = 'intellisense_override';
+        else if (pieProduct && !intelliProduct) outcome = 'pie_only';
+        else if (!pieProduct && intelliProduct) outcome = 'intellisense_only';
+        else if (pieProduct && intelliProduct) outcome = 'agreement';
+
+        const glueWords = (deterministic._pie_glue_words || []);
+        logDebug('PARAM:PIE_LIFECYCLE', {
+            _desc: 'PIE lifecycle — full extraction → decision chain',
+            _icon: '🔬',
+            _color: '#06b6d4',
+            intent: candidates?.[0]?.intentName || '?',
+            pieDiscovery: pieProduct,
+            intelliSenseProduct: intelliProduct,
+            finalProductName: finalProduct,
+            outcome,
+            bareCategoryDropped,
+            resolvedProductId: combinedBase._resolved_product_id || null,
+            categoryId: categoryId || null,
+            glueWords,
+            entityCount: (entities || []).length
+        });
     }
 
     // ... rest of logic

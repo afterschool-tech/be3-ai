@@ -270,6 +270,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 continue;
             }
 
+            const hintValues = [];
             for (const attrValue of attrValues) {
                 const attrValueLower = attrValue.toLowerCase();
                 const wordIdx = words.findIndex(w => w === attrValueLower);
@@ -283,14 +284,16 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     wordIndices: wordIdx !== -1 ? [wordIdx] : []
                 });
                 // NOTE: No consumed.add() — words stay free for facet detection
-
-                logDebug('ENTITY:SEMANTIC_ATTRIBUTE_HINT', {
-                    _desc: 'Transformer attribute hint — advisory only, word NOT consumed',
-                    attribute: attrType,
-                    value: attrValue,
-                    wordIndex: wordIdx
-                });
+                hintValues.push({ value: attrValue, wordIndex: wordIdx });
             }
+
+            // Single consolidated log per attribute type
+            logDebug('ENTITY:SEMANTIC_ATTRIBUTE_HINTS', {
+                _desc: 'Transformer attribute hints — advisory only, words NOT consumed',
+                attribute: attrType,
+                count: hintValues.length,
+                values: hintValues
+            });
         }
     }
 

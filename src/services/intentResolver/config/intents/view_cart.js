@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'view_cart',
+    class: 'Shopping_Management',
+    intent: 'Cart_Management',
 
     keywords: [
         'cart', 'basket', 'bag', 'summary', 'contents'

@@ -1,4 +1,4 @@
-const { normalizeCategory } = require('../../../../utils/normalization');
+// normalizeCategory import REMOVED — Section 6.4: microstate trigger no longer calls it
 
 /**
  * Intent: add_to_cart
@@ -7,6 +7,8 @@ const { normalizeCategory } = require('../../../../utils/normalization');
 
 module.exports = {
     name: 'add_to_cart',
+    class: 'Shopping_Management',
+    intent: 'Cart_Management',
 
     keywords: [
         'add', 'buy', 'get', 'purchase', 'put', 'cart', 'order', 'basket', 'want', 'need'
@@ -101,9 +103,21 @@ module.exports = {
                     return false;
                 }
 
-                const hasModelNumber = /\d/.test(name);
-                const resolvedCatId = normalizeCategory(name, null, hasModelNumber, { debug: true, initiator: 'add_to_cart' });
-                return !!resolvedCatId;
+                // HIERARCHICAL: normalizeCategory call ELIMINATED here (Section 6.4).
+                // PIE already checks for bare-category matches internally.
+                // If PIE flagged this name as a bare category (via _pie_bare_category),
+                // then we know it's a category, not a product.
+                if (params._pie_bare_category === true) {
+                    return true;
+                }
+
+                // If a category entity was already detected upstream in entity extraction,
+                // and the product name matches it, this is a category browse, not a product add.
+                if (params.category && params.category === name) {
+                    return true;
+                }
+
+                return false;
             },
             sandbox: 'soft',
             boostScore: 10.0,

@@ -10,6 +10,8 @@
 
 module.exports = {
     name: 'facet_list',
+    class: 'Discovery',
+    intent: 'Product_Research',
     keywords: ['what', 'which', 'available', 'list', 'show'],
     synonyms: [
         'what colors', 'what brands', 'what storage', 'available options',

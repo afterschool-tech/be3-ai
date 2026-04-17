@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'list_vendors',
+    class: 'Vendor_Intelligence',
+    intent: 'Vendor_Lookup',
 
     keywords: [
         'vendors', 'sellers', 'stores', 'shops', 'brands'

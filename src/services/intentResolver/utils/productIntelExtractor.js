@@ -339,7 +339,20 @@ function extractProductIntel(options) {
         text,
         inputEntities: entities.length,
         outputProducts: products.length,
-        products: products.map(p => p.name)
+        products: products.map(p => p.name),
+        wordSignals: wordMap.map(w => ({
+            word: w.word,
+            level: ['NOISE', 'TRAIT', 'CONTEXT', 'GLUE', 'PIVOT'][w.level] || w.level,
+            entities: w.entities.map(e => e.type).filter((v, i, a) => a.indexOf(v) === i)
+        })),
+        productDetails: products.map(p => ({
+            name: p.name,
+            confidence: p.confidence,
+            isResolved: p.isResolved,
+            brand: p.intel.brand?.value || null,
+            category: p.intel.category?.value || null,
+            resolvedFrom: p.intel.resolvedId?.source || null
+        }))
     });
 
     return products;

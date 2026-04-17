@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'start_checkout',
+    class: 'Shopping_Management',
+    intent: 'Checkout_Flow',
 
     keywords: [
         'checkout', 'pay', 'purchase', 'buy now', 'place order', 'billing', 'transaction', 'settle'

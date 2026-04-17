@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'vendor_contact',
+    class: 'Vendor_Intelligence',
+    intent: 'Vendor_Direct_Contact',
 
     keywords: [
         'contact', 'message', 'whatsapp', 'reach', 'talk', 'vendor', 'seller',

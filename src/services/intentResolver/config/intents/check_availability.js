@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'check_availability',
+    class: 'Shopping_Management',
+    intent: 'Checkout_Flow',
 
     keywords: [
         'available', 'in stock', 'stock', 'availability', 'exists', 'presence', 'inventory'

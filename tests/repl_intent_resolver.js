@@ -250,6 +250,30 @@ function printResult(result, executionResults = []) {
             const label = result.isMultiIntent ? `  Intent ${i + 1}` : '  Intent';
             console.log(`${C.cyan}${C.bold}${label}: ${intent.intentName}${C.reset} ${C.dim}(score: ${intent.score?.toFixed(2) || 'N/A'})${C.reset}`);
 
+            // Hierarchy display (Phase 3: micarch)
+            const stmtRes = result.statementResolutions?.[i];
+            if (stmtRes?.hierarchy) {
+                const h = stmtRes.hierarchy;
+                const l1 = h.class || '—';
+                const l2 = h.intent || '—';
+                const l3 = h.subIntent || '—';
+                const skip = h.classSkipped ? ` ${C.yellow}[hint]${C.reset}` : '';
+                const dur = h.duration ? `${C.dim}${h.duration}ms${C.reset}` : '';
+                console.log(`${C.magenta}    ┌ L1 Class:     ${C.bold}${l1}${C.reset}${skip}`);
+                console.log(`${C.magenta}    ├ L2 Intent:    ${C.bold}${l2}${C.reset}`);
+                console.log(`${C.magenta}    └ L3 SubIntent: ${C.bold}${l3}${C.reset} ${dur}`);
+            }
+
+            // Runner-up candidates
+            if (stmtRes?.candidates?.length > 1) {
+                console.log(`${C.dim}    Runners-up:${C.reset}`);
+                stmtRes.candidates.slice(1, 4).forEach(c => {
+                    // Pull bestMatch out if available, otherwise just name and score
+                    const bm = c.breakdown?.bestMatch ? ` (matched: "${c.breakdown.bestMatch}")` : '';
+                    console.log(`${C.dim}      - ${c.intentName} [score: ${c.score.toFixed(2)}]${bm}${C.reset}`);
+                });
+            }
+
             // Structural Diagnostic
             if (intent.parameters?._structuralTemplate) {
                 console.log(`${C.magenta}${C.dim}    [Structural Match] ${intent.parameters._structuralTemplate}${C.reset}`);

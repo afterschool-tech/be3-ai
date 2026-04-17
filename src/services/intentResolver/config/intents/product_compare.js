@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'product_compare',
+    class: 'Discovery',
+    intent: 'Product_Analysis',
 
     keywords: [
         'compare', 'comparison', 'versus', 'vs', 'side by side', 'contrast', 'differentiate', 'benchmark', 'differences'

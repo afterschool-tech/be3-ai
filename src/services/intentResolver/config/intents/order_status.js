@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'order_status',
+    class: 'Shopping_Management',
+    intent: 'Post_Purchase',
 
     keywords: [
         'track', 'status', 'tracking', 'delivery', 'shipping', 'location', 'arrival'

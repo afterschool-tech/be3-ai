@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'remove_from_cart',
+    class: 'Shopping_Management',
+    intent: 'Cart_Management',
 
     keywords: [
         'remove', 'delete', 'drop', 'take out'

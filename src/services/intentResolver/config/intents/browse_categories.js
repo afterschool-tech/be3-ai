@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'browse_categories',
+    class: 'Discovery',
+    intent: 'Product_Research',
 
     keywords: [
         'categories', 'departments', 'sections'

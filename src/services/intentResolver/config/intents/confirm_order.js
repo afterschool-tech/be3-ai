@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'confirm_order',
+    class: 'Shopping_Management',
+    intent: 'Checkout_Flow',
 
     keywords: [
         'confirm', 'finalize', 'approve'

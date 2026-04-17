@@ -50,6 +50,13 @@ const { resolveEngineeredToken, resolveGroupedOrdinal, resolveOrdinal } = requir
 const { callBackendAPI } = require('../../utils/apiClient');
 const { processProductList } = require('../../utils/productUtility');
 const { isConfirmation } = require('../../middleware/suggestionHelper');
+const transformerClient = require('./pipeline/transformerClient');
+const { getGates } = require('./config/stageGates');
+
+// ── Feature Flag: Hierarchical Intent Resolution (Phase 3: micarch) ──
+// When true, uses L1→L2→L3 sequential classification instead of batch /analyze.
+// Set to false to revert to legacy pipeline behavior.
+const USE_HIERARCHICAL = process.env.USE_HIERARCHICAL !== 'false'; // default ON
 
 /**
  * Helper: Reconcile a product name from its ID using available state context.
@@ -781,48 +788,55 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             _desc: 'Transformer context acquisition skipped [FLAG: skipTransformer]',
             reason: 'Manual bypass for comparison/testing'
         });
-    } else {
+    } else if (USE_HIERARCHICAL) {
+        // ── HIERARCHICAL MODE: Call /extract ONLY (entity extraction) ──
+        // Classification is handled by the per-statement L1→L2→L3 pipeline.
+        // We still need the transformer for clause/attribute/category extraction.
         const textsToAnalyze = statements.map(s => s.original || s.text);
         try {
             const axios = require('axios');
             const TRANSFORMER_URL = process.env.TRANSFORMER_URL || 'http://localhost:3009';
             const transformerStart = Date.now();
-            const transformerResponse = await axios.post(`${TRANSFORMER_URL}/analyze`, {
-                texts: textsToAnalyze
-            }, { timeout: 10000 });
+
+            // Call /extract for each statement (entity extraction only, no classification)
+            const extractResults = await Promise.all(textsToAnalyze.map(async (t) => {
+                const resp = await axios.post(`${TRANSFORMER_URL}/extract`, { text: t }, { timeout: 10000 });
+                return resp.data;
+            }));
             const transformerDuration = Date.now() - transformerStart;
 
-            if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
-                batchedSemanticContext = {
-                    results: transformerResponse.data.results,
-                    duration: transformerDuration,
-                    available: true
-                };
-            }
+            // Reshape into batchedSemanticContext format so downstream stages work unchanged.
+            // classification: [] ensures the old flat scores do NOT leak into the pipeline.
+            batchedSemanticContext = {
+                results: extractResults.map((r, idx) => ({
+                    text: textsToAnalyze[idx],
+                    classification: [],  // ← intentionally empty; hierarchical pipeline provides classification
+                    entities: r.entities || {},
+                    confidence: r.confidence || {}
+                })),
+                duration: transformerDuration,
+                available: true
+            };
 
-            logDebug('PIPELINE:STAGE0.5_BATCHED_TRANSFORMER', {
-                _desc: 'Batched transformer call — acquisition for all statements in one roundtrip',
+            logDebug('PIPELINE:STAGE0.5_HIERARCHICAL_EXTRACT', {
+                _desc: 'Hierarchical mode — entity-only /extract call (no flat classification). Classification deferred to L1→L2→L3.',
                 statementCount: textsToAnalyze.length,
                 duration: `${transformerDuration}ms`,
                 status: 'OK',
-                results: (batchedSemanticContext.results || []).map((r, idx) => ({
+                results: extractResults.map((r, idx) => ({
                     statement: textsToAnalyze[idx],
-                    topIntent: (r.classification || [])[0]?.intentName || 'NONE',
-                    entities: Object.keys(r.entities || {}).length,
+                    entityKeys: Object.keys(r.entities || {}),
                     confidence: r.confidence || {}
-                })),
-                raw_results: batchedSemanticContext.results
+                }))
             });
         } catch (err) {
-            logDebug('PIPELINE:STAGE0.5_BATCHED_TRANSFORMER', {
-                _desc: 'Batched transformer call — UNREACHABLE or timed out.',
+            logDebug('PIPELINE:STAGE0.5_HIERARCHICAL_EXTRACT', {
+                _desc: 'Hierarchical entity extraction — UNREACHABLE or timed out.',
                 status: 'UNREACHABLE',
                 error: err.message
             });
         }
     }
-
-    // ═══════════════════════════════════════════════
     // Stage 3a: Global Semantic Pre-pass
     // Runs ONCE per query to find all clauses/brands across the entire message.
     // These are "shielded" from the Category Scanner in each statement.
@@ -857,30 +871,138 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const statement = statements[i];
         let textForExtraction = statement.text;
 
-        // ── Stage 4a: Context resolution (pronouns, ordinals, brand refs) ──
-        // Resolve using state.reference_map only.
-        const { resolvedText: afterContext, resolutions } = contextResolver.resolveReferences(
-            statement.text, state, storeContext, skipResolve
-        );
+        // ── Stage 4b: Semantic Context Acquisition ──
+        // HIERARCHICAL: Run L1→L2→L3 classification for this statement BEFORE context resolution 
+        // to strictly allow the L2 gates to decide if context resolution should even run.
+        const initialCleanedText = cleanText(statement.text);
 
-        const cleanedText = cleanText(afterContext);
-        logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN [Statement ${i + 1}]`, {
-            _desc: 'Statement-level resolution & cleaning — resolve pronouns and normalize',
-            original: statement.text,
-            resolved: afterContext,
-            cleaned: cleanedText,
-            resolutions: resolutions,
-            changed: statement.text !== cleanedText
-        });
-
-        // ── Stage 4b: Map Batched Semantic Context ──
-        // Use results from Stage 0.5 (batched query)
+        // ── Stage 4b: Semantic Context Acquisition ──
+        // HIERARCHICAL: Run L1→L2→L3 classification for this statement
+        // LEGACY: Use results from Stage 0.5 (batched query)
         let localSemanticContext = null;
-        if (batchedSemanticContext?.results?.[i]) {
-            localSemanticContext = {
-                ...batchedSemanticContext.results[i],
-                available: true
-            };
+        let hierarchicalResult = null;
+        let stageGates = null;
+
+        if (USE_HIERARCHICAL && !state?.skipTransformer) {
+            try {
+                // Get class_hint from IntelliSense if available
+                const senseStmtHint = senseResult?.statements?.[i];
+                const classHint = senseStmtHint?.class_hint || null;
+
+                const classificationText = initialCleanedText;
+                
+                // Fallback to original text if stripping left nothing (e.g. user just typed "plastic bucket")
+                if (!classificationText) {
+                    classificationText = initialCleanedText;
+                }
+
+                hierarchicalResult = await transformerClient.classifyHierarchical(
+                    classificationText, classHint
+                );
+
+                // Add original text back to the result payload so downstream doesn't break
+                hierarchicalResult.text = initialCleanedText;
+                hierarchicalResult.classificationText = classificationText;
+
+                // Load stage gates based on resolved L2 intent
+                if (hierarchicalResult.intent) {
+                    stageGates = getGates(hierarchicalResult.intent);
+                }
+
+                // Build a localSemanticContext compatible with existing pipeline code
+                // by converting L3 scores to the same { classification: [...] } format
+                if (hierarchicalResult.l3 && hierarchicalResult.l3.scores.length > 0) {
+                    localSemanticContext = {
+                        available: true,
+                        classification: hierarchicalResult.l3.scores.map(s => ({
+                            intentName: s.name,
+                            score: s.score,
+                            bestMatch: s.bestMatch
+                        }))
+                    };
+                }
+
+                logDebug(`PIPELINE:STAGE4B_HIERARCHICAL [Statement ${i + 1}]`, {
+                    _desc: 'Hierarchical classification — L1→L2→L3 sequential narrowing',
+                    text_evaluated: hierarchicalResult.classificationText,
+                    class: hierarchicalResult.class,
+                    classSkipped: hierarchicalResult.classSkipped,
+                    intent: hierarchicalResult.intent,
+                    subIntent: hierarchicalResult.subIntent,
+                    totalDuration: `${hierarchicalResult.totalDuration}ms`,
+                    stageGates: stageGates ? {
+                        contextResolution: stageGates.contextResolution,
+                        entityExtraction: stageGates.entityExtraction,
+                        pie: stageGates.pie,
+                        searchContext: stageGates.searchContext
+                    } : 'none',
+                    l1: hierarchicalResult.l1 ? {
+                        winner: hierarchicalResult.l1.winner,
+                        scores: hierarchicalResult.l1.scores.map(s => ({
+                            name: s.name,
+                            score: s.score,
+                            bestMatch: s.bestMatch
+                        }))
+                    } : 'skipped (class_hint)',
+                    l2: hierarchicalResult.l2 ? {
+                        winner: hierarchicalResult.l2.winner,
+                        parent: hierarchicalResult.l2.parent,
+                        scores: hierarchicalResult.l2.scores.map(s => ({
+                            name: s.name,
+                            score: s.score,
+                            bestMatch: s.bestMatch
+                        }))
+                    } : null,
+                    l3: hierarchicalResult.l3 ? {
+                        winner: hierarchicalResult.l3.winner,
+                        parent: hierarchicalResult.l3.parent,
+                        scores: hierarchicalResult.l3.scores.map(s => ({
+                            name: s.name,
+                            score: s.score,
+                            bestMatch: s.bestMatch
+                        }))
+                    } : null
+                });
+            } catch (err) {
+                logDebug(`PIPELINE:STAGE4B_HIERARCHICAL_FAIL [Statement ${i + 1}]`, {
+                    _desc: 'Hierarchical classification failed — falling back to legacy semantic context',
+                    error: err.message
+                });
+            }
+        }
+
+        // ── Stage 4a: Context resolution (pronouns, ordinals, brand refs) ──
+        // Now obeys gates because it runs after Stage 4b successfully loaded stageGates.
+        let afterContext = statement.text;
+        let resolutions = [];
+
+        if (USE_HIERARCHICAL && stageGates && stageGates.contextResolution === false) {
+            logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN_SKIPPED [Statement ${i + 1}]`, {
+                _desc: 'Context resolution SKIPPED — disabled by hierarchical stage gate',
+                reason: 'stageGates.contextResolution = false'
+            });
+        } else {
+            const resolved = contextResolver.resolveReferences(
+                statement.text, state, storeContext, skipResolve
+            );
+            afterContext = resolved.resolvedText;
+            resolutions = resolved.resolutions;
+
+            logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN [Statement ${i + 1}]`, {
+                _desc: 'Statement-level resolution & cleaning — resolve pronouns and normalize',
+                original: statement.text,
+                resolved: afterContext,
+                changed: statement.text !== afterContext,
+                resolutions: resolutions
+            });
+        }
+
+        // Final cleaned text for downstream entity extraction / PIE
+        const cleanedText = cleanText(afterContext);
+
+        // localSemanticContext carries the hierarchical L3 scores down to the rest of the pipeline
+        if (!localSemanticContext) {
+            localSemanticContext = { available: false, classification: [] };
         }
 
         // ── Stage 2.5: Ambient Context Confidence Check ──
@@ -1018,15 +1140,33 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
 
         // (Stage 2.5 Ambient Injection moved to Stage 4.1)
-        const extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, localSemanticContext);
+        let extractionResult;
+        if (stageGates && stageGates.entityExtraction === false) {
+            extractionResult = {
+                entities: statementPreEntities, // Carry forward pre-entities (Intellisense) only
+                residualWords: cleanedText.split(/\s+/).filter(w => w.length > 0),
+                shape: ''
+            };
+            logDebug(`PIPELINE:STAGE4A_ENTITIES_SKIPPED [Statement ${i + 1}/${statements.length}]`, {
+                _desc: 'Entity extraction SKIPPED — disabled by hierarchical stage gate',
+                reason: 'stageGates.entityExtraction = false'
+            });
+        } else {
+            // In hierarchical mode, localSemanticContext has classification only (no entities).
+            // Entity extraction needs its own context from the batched /extract call.
+            const entitySemanticContext = (USE_HIERARCHICAL && batchedSemanticContext?.results?.[i])
+                ? { ...batchedSemanticContext.results[i], available: true }
+                : localSemanticContext;
 
-        logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
-            _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
-            text: cleanedText,
-            entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb })),
-            residualWords: extractionResult.residualWords,
-            shape: extractionResult.shape || ''
-        });
+            extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, entitySemanticContext);
+            logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
+                _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
+                text: cleanedText,
+                entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb })),
+                residualWords: extractionResult.residualWords,
+                shape: extractionResult.shape || ''
+            });
+        }
 
         // ── Stage 4.1: Late Ambient Context Injection ──
         // Use full extraction results (Stage 4A) to verify if a "Strong Entity" (Category/Product) 
@@ -1132,6 +1272,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     existing.breakdown.semantic = semanticPoints;
                     existing.breakdown.semanticRaw = rawSemantic;
                     existing.breakdown.semanticGapBonus = appliedBonus;
+                    existing.breakdown.bestMatch = sem.bestMatch;
                 } else {
                     // Transformer introduced a candidate not found by schemaResolver
                     finalCandidates.push({
@@ -1144,7 +1285,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             semantic: semanticPoints,
                             semanticRaw: rawSemantic,
                             semanticGapBonus: appliedBonus,
-                            deterministicAudit: []
+                            deterministicAudit: [],
+                            bestMatch: sem.bestMatch
                         }
                     });
                 }
@@ -1165,6 +1307,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 semantic: winner.breakdown.semantic.toFixed(2),
                 semanticRaw: winner.breakdown.semanticRaw?.toFixed(2),
                 semanticGapBonus: winner.breakdown.semanticGapBonus?.toFixed(2) || "0.00",
+                bestMatch: winner.breakdown.bestMatch || null,
                 audit: winner.breakdown.deterministicAudit
             } : null,
             candidates: finalCandidates.slice(0, 5).map(c => ({
@@ -1174,6 +1317,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 semantic: c.breakdown?.semantic?.toFixed(2),
                 semanticRaw: c.breakdown?.semanticRaw?.toFixed(2),
                 semanticGapBonus: c.breakdown?.semanticGapBonus?.toFixed(2) || "0.00",
+                bestMatch: c.breakdown?.bestMatch || null,
                 audit: c.breakdown?.deterministicAudit
             }))
         });
@@ -1197,16 +1341,18 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 5: Parameter extraction (AI + Deterministic)
         // SCOPED AI: We pass null for the AI func here to keep this stage 
-        // 100% deterministic by default, even if IntelliSense is active.
+        // 100% deterministic by default if PIE is gated out.
+        const runPie = !stageGates || stageGates.pie !== false;
         const extractedParams = await parameterExtractor.extractParameters(
-            cleanedText, candidates, (state.enableAiFallback ? aiQueryFn : null), storeContext, resolutions, extractionResult.entities,
+            cleanedText, candidates, (runPie && state.enableAiFallback ? aiQueryFn : null), storeContext, resolutions, extractionResult.entities,
             textForExtraction // rawText: pre-clean, comma-preserved — used by PIE for segmentation
         );
         logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
             _desc: 'Parameter extraction — map entities to intent slots, structural match, regex',
             _example: '"add 2 samsung phones" → product_name:samsung phones, quantity:2',
             text: statement.text,
-            aiUsed: !!aiQueryFn,
+            aiUsed: !!(runPie && state.enableAiFallback && aiQueryFn),
+            skippedByGate: !runPie,
             extractedParams
         });
 
@@ -1253,7 +1399,16 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 signalDensity,
                 entityCount,
                 transformerGap
-            }
+            },
+            // Hierarchy metadata (Phase 3: micarch)
+            hierarchy: hierarchicalResult ? {
+                class: hierarchicalResult.class,
+                intent: hierarchicalResult.intent,
+                subIntent: hierarchicalResult.subIntent,
+                classSkipped: hierarchicalResult.classSkipped,
+                duration: hierarchicalResult.totalDuration
+            } : null,
+            stageGates: stageGates || null
         });
 
         // [TEST] Residual chunk analysis — background, log-only, product_search with residuals
@@ -1471,6 +1626,16 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         if (searchCtx) {
             for (const intent of intents) {
                 if (!READ_INTENTS.includes(intent.intentName)) continue;
+
+                // Respect the stage gate from hierarchical classification
+                if (intent.stageGates && intent.stageGates.contextResolution === false) {
+                    logDebug('PIPELINE:STAGE8A_CONTEXT_SKIPPED', {
+                        _desc: 'Context Resolution SKIPPED — disabled by hierarchical stage gate',
+                        intent: intent.intentName,
+                        reason: 'stageGates.contextResolution = false'
+                    });
+                    continue;
+                }
 
                 const params = intent.parameters || {};
                 let contextApplied = false;

@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'product_search',
+    class: 'Discovery',
+    intent: 'Product_Research',
 
     keywords: [
         'search', 'find', 'show', 'discovery', 'explore', 'inspect', 'examine'
@@ -30,7 +32,8 @@ module.exports = {
         sort: { type: 'string', required: false, description: 'Sort order' },
         limit: { type: 'int', required: false, default: 5, description: 'Number of results' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
-        attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' }
+        attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' },
+        allow_deep_fallbacks: { type: 'boolean', required: false, default: false, description: 'Internal: suppress deep fallbacks (Drop-Query/Drop-Filter)' }
     },
 
     slotTags: ['[clause]', '[product]', '[category]', '[price]'],
@@ -48,7 +51,8 @@ module.exports = {
         sort: 'sort',
         limit: 'limit',
         attributes: 'attributes',
-        clause_words: 'clause_words'
+        clause_words: 'clause_words',
+        allow_deep_fallbacks: 'allow_deep_fallbacks'
     },
 
     minProducts: 1,

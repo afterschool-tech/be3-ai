@@ -557,6 +557,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const isLowSignal = signalDensity < MIN_SIGNAL_DENSITY && signalCount === 0;
 
     if (isLowSignal) {
+        const gatedIntents = [];
         for (const candidate of scored) {
             if (candidate.score > 0) {
                 const originalScore = candidate.score;
@@ -565,22 +566,28 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     value: candidate.score - originalScore,
                     reason: `Signal Density Gate: ${signalDensity.toFixed(2)} density (0 actions, 0 keyword hits) → halved`
                 });
-
-                logDebug('SCORING:SIGNAL_DENSITY_GATE', {
-                    _type: 'SIGNAL_DENSITY',
-                    _icon: '🚧',
-                    _color: '#f59e0b',
-                    _desc: 'Signal Density Gating — entity-derived boosts halved due to zero intentional signal',
+                gatedIntents.push({
                     intent: candidate.intentName,
-                    signalDensity: signalDensity.toFixed(2),
-                    actionCount: actionEntities.length,
-                    keywordHits: nonSearchHitIntents.size,
-                    entityCount,
-                    originalScore: originalScore.toFixed(2),
-                    gatedScore: candidate.score.toFixed(2),
+                    before: originalScore.toFixed(2),
+                    after: candidate.score.toFixed(2),
                     reduction: (originalScore - candidate.score).toFixed(2)
                 });
             }
+        }
+
+        if (gatedIntents.length > 0) {
+            logDebug('SCORING:SIGNAL_DENSITY_GATE', {
+                _type: 'SIGNAL_DENSITY',
+                _icon: '🚧',
+                _color: '#f59e0b',
+                _desc: 'Signal Density Gating — entity-derived boosts halved due to zero intentional signal',
+                signalDensity: signalDensity.toFixed(2),
+                actionCount: actionEntities.length,
+                keywordHits: nonSearchHitIntents.size,
+                entityCount,
+                gatedCount: gatedIntents.length,
+                gated: gatedIntents
+            });
         }
     }
 

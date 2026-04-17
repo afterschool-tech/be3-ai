@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'product_similar',
+    class: 'Discovery',
+    intent: 'Product_Analysis',
 
     keywords: [
         'similar to',

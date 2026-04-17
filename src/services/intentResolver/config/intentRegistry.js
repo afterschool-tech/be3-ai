@@ -122,4 +122,59 @@ function buildIdfMap() {
     return idfMap;
 }
 
-module.exports = { getAll, get, getNames, buildKeywordMap, getAllKeywords, buildIdfMap };
+// ═══════════════════════════════════════════════
+// Hierarchy-aware lookups (Phase 1: micarch)
+// Uses the `class` and `intent` fields added to each intent config.
+// ═══════════════════════════════════════════════
+
+/**
+ * Get all intents belonging to a specific class.
+ * @param {string} className - e.g., 'Discovery'
+ * @returns {Object} - Map of intentName → intent config
+ */
+function getByClass(className) {
+    return Object.fromEntries(
+        Object.entries(intents).filter(([_, i]) => i.class === className)
+    );
+}
+
+/**
+ * Get all intents (sub-intents) belonging to a specific L2 intent group.
+ * @param {string} intentGroupName - e.g., 'Cart_Management'
+ * @returns {Object} - Map of subIntentName → intent config
+ */
+function getByIntent(intentGroupName) {
+    return Object.fromEntries(
+        Object.entries(intents).filter(([_, i]) => i.intent === intentGroupName)
+    );
+}
+
+/**
+ * Get the class for a given sub-intent name.
+ * @param {string} subIntentName - e.g., 'add_to_cart'
+ * @returns {string|null} - Class name or null
+ */
+function getClass(subIntentName) {
+    return intents[subIntentName]?.class || null;
+}
+
+/**
+ * Get the L2 intent group for a given sub-intent name.
+ * @param {string} subIntentName - e.g., 'add_to_cart'
+ * @returns {string|null} - Intent group name or null
+ */
+function getIntent(subIntentName) {
+    return intents[subIntentName]?.intent || null;
+}
+
+/**
+ * Get all sub-intent names within a given L2 intent group.
+ * @param {string} intentGroupName - e.g., 'Cart_Management'
+ * @returns {string[]} - Array of sub-intent names
+ */
+function getSubIntentNames(intentGroupName) {
+    return Object.keys(intents).filter(name => intents[name]?.intent === intentGroupName);
+}
+
+module.exports = { getAll, get, getNames, buildKeywordMap, getAllKeywords, buildIdfMap, getByClass, getByIntent, getClass, getIntent, getSubIntentNames };
+

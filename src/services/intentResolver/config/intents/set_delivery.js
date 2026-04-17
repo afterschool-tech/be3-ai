@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'set_delivery',
+    class: 'Shopping_Management',
+    intent: 'Checkout_Flow',
 
     keywords: [
         'delivery', 'shipping', 'express', 'standard', 'address', 'location', 'delivered'

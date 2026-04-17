@@ -117,7 +117,6 @@ ${C.dim}Stage: 4b (Schema Resolver)${C.reset}
                 // 4b. Schema Resolution
                 const resolution = resolveIntent(extractionResult, cleanedText, idfMap, dummyStoreContext);
 
-                // --- Transformer Integration ---
                 let finalCandidates = resolution.candidates.map(c => ({
                     intentName: c.intentName,
                     score: c.score,
@@ -125,27 +124,37 @@ ${C.dim}Stage: 4b (Schema Resolver)${C.reset}
                     breakdown: { deterministic: c.score, semantic: 0 }
                 }));
 
+                // --- Transformer Integration (Hierarchical: L1→L2→L3) ---
                 try {
-                    const axios = require('axios');
-                    const TRANSFORMER_URL = process.env.TRANSFORMER_URL || 'http://localhost:3009';
-                    const transformerResponse = await axios.post(`${TRANSFORMER_URL}/classify`, {
-                        text: cleanedText
-                    }, { timeout: 10000 });
+                    const transformerClient = require('./pipeline/transformerClient');
+                    const hierarchical = await transformerClient.classifyHierarchical(cleanedText);
 
-                    if (transformerResponse.data && Array.isArray(transformerResponse.data.results)) {
-                        for (const sem of transformerResponse.data.results) {
-                            const semanticPoints = (sem.score || 0) * 10.0;
-                            const existing = finalCandidates.find(c => c.intentName === sem.intentName);
-                            if (existing) {
-                                existing.score += semanticPoints;
-                                existing.breakdown.semantic = semanticPoints;
-                            } else {
-                                finalCandidates.push({
-                                    intentName: sem.intentName,
-                                    score: semanticPoints,
-                                    matchedKeywords: ['semantic'],
-                                    breakdown: { deterministic: 0, semantic: semanticPoints }
-                                });
+                    if (hierarchical.class) {
+                        console.log(`\n${C.bold}${C.white}Hierarchical Classification:${C.reset}`);
+                        const l1Score = hierarchical.l1?.scores?.[0]?.score?.toFixed(3) || 'hint';
+                        const l2Score = hierarchical.l2?.scores?.[0]?.score?.toFixed(3) || 'N/A';
+                        const l3Score = hierarchical.l3?.scores?.[0]?.score?.toFixed(3) || 'N/A';
+                        console.log(`  ${C.cyan}L1 Class:${C.reset}     ${C.bold}${hierarchical.class}${C.reset} ${C.dim}(${l1Score})${C.reset}${hierarchical.classSkipped ? ` ${C.yellow}[hint]${C.reset}` : ''}`);
+                        console.log(`  ${C.cyan}L2 Intent:${C.reset}    ${C.bold}${hierarchical.intent || '—'}${C.reset} ${C.dim}(${l2Score})${C.reset}`);
+                        console.log(`  ${C.cyan}L3 SubIntent:${C.reset} ${C.bold}${hierarchical.subIntent || '—'}${C.reset} ${C.dim}(${l3Score})${C.reset}`);
+                        console.log(`  ${C.dim}Duration: ${hierarchical.totalDuration}ms${C.reset}`);
+
+                        // Inject L3 scores as semantic points
+                        if (hierarchical.l3 && hierarchical.l3.scores) {
+                            for (const sem of hierarchical.l3.scores) {
+                                const semanticPoints = (sem.score || 0) * 10.0;
+                                const existing = finalCandidates.find(c => c.intentName === sem.name);
+                                if (existing) {
+                                    existing.score += semanticPoints;
+                                    existing.breakdown.semantic = semanticPoints;
+                                } else {
+                                    finalCandidates.push({
+                                        intentName: sem.name,
+                                        score: semanticPoints,
+                                        matchedKeywords: ['semantic'],
+                                        breakdown: { deterministic: 0, semantic: semanticPoints }
+                                    });
+                                }
                             }
                         }
                     }

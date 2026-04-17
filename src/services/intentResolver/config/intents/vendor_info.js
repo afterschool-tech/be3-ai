@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'vendor_info',
+    class: 'Vendor_Intelligence',
+    intent: 'Vendor_Lookup',
 
     keywords: [
         'vendor', 'seller', 'store', 'about', 'details', 'info', 'merchant', 'business', 'profile', 'location'

@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'give_feedback',
+    class: 'Support_Feedback',
+    intent: 'Platform_Feedback',
 
     keywords: [
         'feedback', 'rate', 'review', 'complaint', 'complain'

@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'cancel_order',
+    class: 'Shopping_Management',
+    intent: 'Post_Purchase',
 
     keywords: [
         'cancel', 'abort', 'revoke', 'kill', 'stop', 'remove', 'abandon'

@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'browse_collection',
+    class: 'Discovery',
+    intent: 'Product_Research',
 
     keywords: [
         'collection', 'new arrivals', 'best sellers', 'trending', 'featured'

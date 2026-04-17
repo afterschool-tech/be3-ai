@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'get_product_details',
+    class: 'Discovery',
+    intent: 'Product_Analysis',
 
     keywords: [
         'details', 'info', 'information', 'specs', 'specifications', 'features', 'more',

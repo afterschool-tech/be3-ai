@@ -5,6 +5,8 @@
 
 module.exports = {
     name: 'list_orders',
+    class: 'Shopping_Management',
+    intent: 'Post_Purchase',
 
     keywords: [
         'history', 'purchases', 'bought', 'past', 'previous'

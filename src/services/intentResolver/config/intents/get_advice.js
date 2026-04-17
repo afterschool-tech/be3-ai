@@ -6,6 +6,8 @@
 
 module.exports = {
     name: 'get_advice',
+    class: 'Discovery',
+    intent: 'Product_Research',
 
     keywords: [
         'advice', 'should', 'ought', 'recommend', 'suggest', 'guidance', 'advisor',
@@ -25,15 +27,17 @@ module.exports = {
     parameters: {
         category: { type: 'string', required: false, description: 'Category the user needs advice about' },
         need: { type: 'string', required: false, description: 'Specific need or use case (e.g. "gaming", "budget", "a gift")' },
-        query: { type: 'string', required: false, description: 'The full advice query from the user' }
+        query: { type: 'string', required: false, description: 'The full advice query from the user' },
+        search_mode: { type: 'string', required: false, default: 'VECTOR', description: 'Internal tool routing mode' }
     },
 
-    toolName: 'conversation.getAdvice',
+    toolName: 'product.search',
 
     paramMap: {
         category: 'category',
         need: 'need',
-        query: 'query'
+        query: 'query',
+        search_mode: 'search_mode'
     },
 
     minProducts: 0,

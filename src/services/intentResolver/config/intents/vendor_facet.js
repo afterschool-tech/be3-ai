@@ -8,6 +8,8 @@
 
 module.exports = {
     name: 'vendor_facet',
+    class: 'Vendor_Intelligence',
+    intent: 'Vendor_Catalog_Exploration',
 
     keywords: [
         'who sells', 'which store', 'which vendor', 'what vendors', 'what stores',
