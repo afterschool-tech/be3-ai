@@ -26,9 +26,16 @@ module.exports = {
 
     parameters: {
         category: { type: 'string', required: false, description: 'Category the user needs advice about' },
+        product_name: { type: 'string', required: false, description: 'Specific items to get advice about (from residual words)' },
         need: { type: 'string', required: false, description: 'Specific need or use case (e.g. "gaming", "budget", "a gift")' },
         query: { type: 'string', required: false, description: 'The full advice query from the user' },
-        search_mode: { type: 'string', required: false, default: 'VECTOR', description: 'Internal tool routing mode' }
+        search_mode: { type: 'string', required: false, default: 'VECTOR', description: 'Internal tool routing mode' },
+        price_min: { type: 'number', required: false },
+        price_max: { type: 'number', required: false },
+        attributes: { type: 'dict', required: false },
+        allow_deep_fallbacks: { type: 'boolean', required: false, default: true },
+        is_partial_match: { type: 'boolean', required: false },
+        _category_words: { type: 'string', required: false }
     },
 
     toolName: 'product.search',
@@ -37,7 +44,14 @@ module.exports = {
         category: 'category',
         need: 'need',
         query: 'query',
-        search_mode: 'search_mode'
+        product_name: 'query',
+        search_mode: 'search_mode',
+        price_min: 'price_min',
+        price_max: 'price_max',
+        attributes: 'attributes',
+        allow_deep_fallbacks: 'allow_deep_fallbacks',
+        is_partial_match: 'is_partial_match',
+        _category_words: '_category_words'
     },
 
     minProducts: 0,

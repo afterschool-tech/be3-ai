@@ -533,11 +533,12 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 });
             }
 
-            // --- SEMANTIC KICKSTART HARMONIZATION ---
-            // If the category won solely via Hint, Depth, or Semantic bonuses (zero lexical match),
-            // we downgrade it to a SEMANTIC_KICKSTART source. This ensures the search engine
-            // treats it as a guess and triggers fallback search if no products are found.
+            // --- MATCH QUALITY STRATIFICATION ---
+            // 1. Pure Semantic Guess: Category identified solely by Transformer vibe or hint.
+            // 2. Partial Match: Deterministic match found via internal substring (Tier 2).
+            // 3. Certain Match: Deterministic match found via exact token or affix (Tier 3/4).
             const isPureSemanticGuess = (catMeta?.lexScore || 0) === 0;
+            const isPartialMatch = Number(catMeta?.lexTier || 0) === 2;
 
             if (isPureSemanticGuess) {
                 entities.push({
@@ -547,11 +548,34 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     source: 'SEMANTIC_KICKSTART',
                     matchMeta: catMeta,
                     quality: 0.35,
+                    is_kickstart: true,
                     wordIndices: [-1],
                     consumedWordIndices: [],
                     _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
                 });
                 // Note: We do NOT add to 'consumed' set for pure guesses.
+            } else if (isPartialMatch) {
+                // PARTIAL MATCH (Tier 2 Substring overlap)
+                // We record the detection but do NOT consume the words.
+                // This keeps words like "son" available for the search engine if "Personal Care" is wrong.
+                entities.push({
+                    type: 'category',
+                    value: phrase,
+                    id: catId,
+                    is_partial_match: true,
+                    source: 'storeContext.CATEGORIES_PARTIAL',
+                    matchMeta: catMeta,
+                    quality: categoryQuality,
+                    wordIndices: matchedWordIndices,
+                    consumedWordIndices: [], // No consumption for partials
+                    _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
+                });
+                
+                logDebug('ENTITY:PARTIAL_MATCH_DETECTED', {
+                    _desc: 'Category match flagged as PARTIAL (Tier 2 substring) — word consumption bypassed.',
+                    phrase,
+                    tier: 2
+                });
             } else {
                 entities.push({
                     type: 'category',

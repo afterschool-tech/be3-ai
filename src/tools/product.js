@@ -35,6 +35,7 @@ const productTools = {
             query: { type: 'string', description: 'Search keywords' },
             category: { type: 'string', description: 'Category name or slug' },
             is_kickstart: { type: 'boolean', description: 'Internal: semantic kickstart fallback mode' },
+            is_partial_match: { type: 'boolean', description: 'Internal: tentative category match from internal substring' },
             price_min: { type: 'number', description: 'Minimum price' },
             price_max: { type: 'number', description: 'Maximum price' },
             limit: { type: 'number', description: 'Max results (default 5)' },
@@ -49,7 +50,7 @@ const productTools = {
             allow_deep_fallbacks: { type: 'boolean', description: 'Internal: if true, allows dropping filters to find suggestions' }
         },
         handler: async (params, context) => {
-            const { query, category, is_kickstart, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
+            const { query, category, is_kickstart, is_partial_match, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -61,16 +62,20 @@ const productTools = {
 
             let catId = normalizeCategory(category, null, false, { initiator: 'product_tool_search', debug: true });
             const catKey = catId ? Object.keys(context.CATEGORIES || {}).find(k => context.CATEGORIES[k].id === catId) : null;
-            const cat = catKey ? context.CATEGORIES[catKey] : null;
+            let cat = catKey ? context.CATEGORIES[catKey] : null;
 
-            // --- STAGE 0: Context-First Check ---
-            if (cat && cat.total_count === 0 && !is_kickstart) {
-                return {
-                    products: [],
-                    total: 0,
-                    facets: {},
-                    message: `We currently don't have any products in the **${cat.label}** section.`
-                };
+            // --- STAGE 0: Partial Category Guard ---
+            // If a category was only a partial/substring match (e.g. "son" -> "Personal Care"),
+            // we drop it for high-discovery search modes (Vector, Similarity) to let the
+            // semantic query do the heavy lifting across the whole store.
+            if (is_partial_match && (search_mode === 'VECTOR' || search_mode === 'IMAGE' || similar_to)) {
+                const { logDebug } = require('../utils/debugLogger');
+                logDebug('TOOL:PARTIAL_CATEGORY_DROPPED', { 
+                    category: cat?.label, 
+                    reason: 'is_partial_match active during Vector/Similarity search' 
+                });
+                catId = null;
+                cat = null;
             }
 
             // --- STAGE 0.2: Pure Vector / Similarity / Image Mode ---
@@ -105,7 +110,8 @@ const productTools = {
                         // Fallback to unfiltered similarity if filtered returns nothing
                         if (!vectorResult || vectorResult.products.length === 0) {
                             logDebug('TOOL:SIMILAR_FALLBACK_UNFILTERED [product.search]', { similar_to: resolvedSimilarityId });
-                            vectorResult = await performSimilarSearch(resolvedSimilarityId, limit);
+                            const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                            vectorResult = await performSimilarSearch(resolvedSimilarityId, limit, null, fallbackQuery); // Passing fallthrough query
                         }
                     }
                 } else if (query) {
@@ -115,7 +121,8 @@ const productTools = {
                     // Fallback to unfiltered vector if filtered returns nothing
                     if (!vectorResult || vectorResult.products.length === 0) {
                         logDebug('TOOL:VECTOR_FALLBACK_UNFILTERED [product.search]', { query });
-                        vectorResult = await performVectorSearch(query, limit, catId);
+                        const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                        vectorResult = await performVectorSearch(fallbackQuery, limit, null); // Pass null to actually remove the category filter!
                     }
                 }
 
@@ -192,9 +199,9 @@ const productTools = {
                 return await handleSearchResults({ products, total, facets: searchData.facets, pagination: searchData.pagination }, params, context, snapshotId, cat, catId);
             }
 
-            // --- Kickstart Fallback (unscoped retry when semantic category was injected) ---
+            // --- Discovery/Kickstart Fallback (unscoped retry if results are empty and relaxed search is allowed) ---
             let didKickstartFallback = false;
-            if (is_kickstart && query) {
+            if ((is_kickstart || is_partial_match || allow_deep_fallbacks) && query && total === 0) {
                 didKickstartFallback = true;
                 const { logDebug: kickLogDebug } = require('../utils/debugLogger');
 
@@ -215,7 +222,8 @@ const productTools = {
                     page: page,
                     sort: sort
                 });
-                kickSearchParams.append('q', query);
+                const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                kickSearchParams.append('q', fallbackQuery);
                 if (price_min) kickSearchParams.append('price_min', price_min);
                 if (price_max) kickSearchParams.append('price_max', price_max);
                 if (tag) kickSearchParams.append('tag', tag);

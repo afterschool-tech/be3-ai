@@ -67,7 +67,8 @@ const ACTION_TO_INTENTS = {
  * @param {Object} storeContext - Store context
  * @returns {Object} { winner, candidates, fallbackUsed }
  */
-function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
+function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}, options = {}) {
+    const ignoreKeywords = options.ignoreKeywords || false;
     const { entities, residualWords } = extractionResult;
     const allIntents = intentRegistry.getAll();
 
@@ -134,6 +135,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
     const entityParams = {};  // paramName → entity value
     const entityTypes = new Set();
     const actionEntities = [];
+    const resolvedProducts = entities.filter(e => e.type === 'resolved_product');
 
     for (const entity of entities) {
         if (entity.type === 'action') {
@@ -224,7 +226,16 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
         // 3a. Schema Fit: Check each parameter against extracted entities
         for (const [paramName, paramDef] of Object.entries(params)) {
-            const entity = entityParams[paramName];
+            let entity = entityParams[paramName];
+
+            // Generic Context-Ownership Rule:
+            // If a product-like parameter is empty but we have a resolved product (from context/structural pass),
+            // allow the context-resolved product to take ownership of the slot.
+            // This satisfies required slots for intents like add_to_cart or product_analysis.
+            if (!entity && (paramName === 'product_name' || paramName === 'products' || paramName === 'item') && resolvedProducts.length > 0) {
+                entity = resolvedProducts[0];
+            }
+
             if (entity) {
                 // Strict Type Rule: Categories belong in category slots.
                 // Never allow a category entity to masquerade as a required product name.
@@ -274,7 +285,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3c. Action Verb Boost: If action verbs suggest this intent
-        if (actionSuggestedIntents.has(intentName)) {
+        if (!ignoreKeywords && actionSuggestedIntents.has(intentName)) {
             // Add the IDF of the matching action verb(s)
             for (const action of actionEntities) {
                 const suggested = ACTION_TO_INTENTS[action.category] || [];
@@ -286,31 +297,35 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3d. IDF Keyword Match (beyond action verbs): Check intent keywords against text words
-        for (const kw of (intent.keywords || [])) {
-            if (typeof kw !== 'string') continue;
-            const kwLower = kw.toLowerCase();
-            const isMultiWord = kwLower.includes(' ');
-            const matched = isMultiWord
-                ? textLower.includes(kwLower)  // Multi-word: substring match against full text
-                : textWords.includes(kwLower); // Single-word: token match
-            if (matched && !matchedKeywords.includes(kwLower)) {
-                const kwIdf = idfMap[kwLower] || 0.5;
-                if (intentName === 'vendor_contact') console.log(`[SchemaResolver] Match for vendor_contact: "${kwLower}" in words: [${textWords.join(', ')}] with IDF ${kwIdf}`);
-                // Boost for exact keyword matches (especially for test/debug intents)
-                const exactMatch = kwLower === textWords.join(' ').trim();
-                const exactMatchBoost = exactMatch ? 3.0 : 0;
-                // Multi-word keyword phrases get a higher boost (they are more specific signals)
-                const phraseBoost = isMultiWord ? 1.5 : 0;
-                applyModifier(kwIdf + exactMatchBoost + phraseBoost, `Keyword match: "${kwLower}"${exactMatch ? ' (Exact match +3.0)' : ''}${isMultiWord ? ' (Phrase +1.5)' : ''}`);
-                matchedKeywords.push(kwLower);
+        if (!ignoreKeywords) {
+            for (const kw of (intent.keywords || [])) {
+                if (typeof kw !== 'string') continue;
+                const kwLower = kw.toLowerCase();
+                const isMultiWord = kwLower.includes(' ');
+                const matched = isMultiWord
+                    ? textLower.includes(kwLower)  // Multi-word: substring match against full text
+                    : textWords.includes(kwLower); // Single-word: token match
+                if (matched && !matchedKeywords.includes(kwLower)) {
+                    const kwIdf = idfMap[kwLower] || 0.5;
+                    if (intentName === 'vendor_contact') console.log(`[SchemaResolver] Match for vendor_contact: "${kwLower}" in words: [${textWords.join(', ')}] with IDF ${kwIdf}`);
+                    // Boost for exact keyword matches (especially for test/debug intents)
+                    const exactMatch = kwLower === textWords.join(' ').trim();
+                    const exactMatchBoost = exactMatch ? 3.0 : 0;
+                    // Multi-word keyword phrases get a higher boost (they are more specific signals)
+                    const phraseBoost = isMultiWord ? 1.5 : 0;
+                    applyModifier(kwIdf + exactMatchBoost + phraseBoost, `Keyword match: "${kwLower}"${exactMatch ? ' (Exact match +3.0)' : ''}${isMultiWord ? ' (Phrase +1.5)' : ''}`);
+                    matchedKeywords.push(kwLower);
+                }
             }
         }
 
         // 3e. Multi-word synonym match (bonus for phrase-level matches)
-        for (const syn of (intent.synonyms || [])) {
-            if (syn.includes(' ') && text.toLowerCase().includes(syn.toLowerCase())) {
-                applyModifier(1.5, `Synonym phrase: "${syn}"`);
-                matchedKeywords.push(syn);
+        if (!ignoreKeywords) {
+            for (const syn of (intent.synonyms || [])) {
+                if (syn.includes(' ') && text.toLowerCase().includes(syn.toLowerCase())) {
+                    applyModifier(1.5, `Synonym phrase: "${syn}"`);
+                    matchedKeywords.push(syn);
+                }
             }
         }
 
@@ -387,9 +402,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
         }
 
         // 3i. Discovery vs Identity Bias Correction
-        if (entityParams['brand'] || entityParams['category']) {
+        if (!ignoreKeywords && (entityParams['brand'] || entityParams['category'])) {
             const categoryQuality = getCategoryQuality() || 1.0;
-            if (intentName === 'product_search' || intentName === 'discovery_sentinel') {
+            if (intentName === 'product_search' || intentName === 'discovery_sentinel' || intentName === 'browse_collection') {
                 applyModifier(1.5 * categoryQuality, `Discovery boost (Category/Brand)`);
             }
             if (intentName === 'vendor_identity' && !actionSuggestedIntents.has('info')) {
@@ -501,7 +516,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
 
             const hasAmbientContext = extractionResult.entities.some(e => e.source === 'AMBIENT_CONTEXT');
 
-            if (intentName === 'product_search') {
+            if (!ignoreKeywords && intentName === 'product_search') {
                 // Only boost if this is NOT a keyword for another intent AND no product is resolved from context
                 // GATED: Also skip if we already have AMBIENT_CONTEXT entities (prevents misfires)
                 if (!isKeywordForOtherIntent && !residualSupportsOtherIntent && !hasResolvedProduct && !hasAmbientContext) {
@@ -513,7 +528,7 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}) {
                     });
                 }
             }
-            if (intentName === 'vendor_identity') applyModifier(-1.0, 'Orphan Product identity penalty');
+            if (!ignoreKeywords && intentName === 'vendor_identity') applyModifier(-1.0, 'Orphan Product identity penalty');
         }
 
         // [Similarity Dominance Rule]: Same pattern as Compare Dominance (3f).

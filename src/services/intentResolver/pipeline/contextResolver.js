@@ -22,6 +22,13 @@ const AMBIGUOUS_REFERENCE_WORDS = new Set([
     'them', 'those', 'these'  // can be relative/demonstrative or temporal marker
 ]);
 
+const POINTER_WORDS = new Set([
+    ...AMBIGUOUS_REFERENCE_WORDS,
+    'first', 'second', 'third', 'fourth', 'fifth', 'last',
+    'the_first_one', 'the_second_one', 'the_third_one', 'the_last_one',
+    'all_of_them', 'both_of_them', 'the_ones_on_the_left', 'the_ones_on_the_right'
+]);
+
 /**
  * Check if an ambiguous reference should NOT be resolved (relative pronoun or temporal marker).
  * Returns true if we should SKIP resolution.
@@ -118,9 +125,16 @@ function resolveIdToName(productId, state) {
 /**
  * Resolves references in text using state data (reference_map).
  * Scans for known reference patterns, replaces with product names.
+ * 
+ * @param {string} text 
+ * @param {object} state 
+ * @param {object} storeContext 
+ * @param {string[]} skipWords 
+ * @param {'structural'|'specific'|'all'} type - Which tier to resolve
+ * 
  * Returns { resolvedText, resolutions[] }.
  */
-function resolveReferences(text, state, storeContext, skipWords = []) {
+function resolveReferences(text, state, storeContext, skipWords = [], type = 'all') {
     if (!state || (!state.reference_map)) {
         console.log(`[ContextResolver] resolveReferences: no state, passing through`);
         return { resolvedText: text, resolutions: [] };
@@ -164,6 +178,11 @@ function resolveReferences(text, state, storeContext, skipWords = []) {
 
         const phrase = matched.toLowerCase();
         const refKey = phrase.replace(/ /g, '_');
+
+        // TIER FILTERING
+        const isPointer = POINTER_WORDS.has(phrase) || POINTER_WORDS.has(refKey);
+        if (type === 'structural' && !isPointer) return matched;
+        if (type === 'specific' && isPointer) return matched;
 
         // FALLBACK: Long-term State (reference_map)
         const productIdOrName = referenceMap[refKey] || referenceMap[phrase];

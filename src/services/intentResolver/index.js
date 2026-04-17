@@ -773,6 +773,28 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         source: manualStatements.length > 0 ? 'INTELLISENSE' : 'DETERMINISTIC'
     });
 
+    // ── Stage 3.1: Selective Structural Context Resolution (Pre-Classification) ──
+    // Resolves pronouns, ordinals, and collectives BEFORE hitting the transformer
+    // so the classifier sees concrete product names instead of linguistic pointers.
+    const structuralResolutions = [];
+    statements.forEach(statement => {
+        const resolved = contextResolver.resolveReferences(
+            statement.text, state, storeContext, skipResolve, 'structural'
+        );
+        if (resolved.resolvedText !== statement.text) {
+            logDebug('PIPELINE:STAGE3.1_STRUCTURAL_RESOLVE', {
+                _desc: 'Pre-classification structural resolution (pointers/ordinals)',
+                original: statement.text,
+                resolved: resolved.resolvedText,
+                resolutions: resolved.resolutions
+            });
+            statement.text = resolved.resolvedText;
+            // Attach resolutions to the statement so Stage 4a can build upon them
+            statement.structuralResolutions = resolved.resolutions;
+            structuralResolutions.push(...resolved.resolutions);
+        }
+    });
+
     // ═══════════════════════════════════════════════
     // Stage 0.5: Unified Transformer Context Acquisition
     // Fires ONCE per query, right after preprocessing.
@@ -971,29 +993,31 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }
         }
 
-        // ── Stage 4a: Context resolution (pronouns, ordinals, brand refs) ──
-        // Now obeys gates because it runs after Stage 4b successfully loaded stageGates.
+        // ── Stage 4a: Context resolution (Specific Entities: Brand/Product Refs) ──
+        // Resolves deferred nouns (e.g. "iphone", "infinix") after the classification
+        // has had a chance to see them as brands/categories.
         let afterContext = statement.text;
-        let resolutions = [];
+        let resolutions = statement.structuralResolutions || [];
 
         if (USE_HIERARCHICAL && stageGates && stageGates.contextResolution === false) {
             logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN_SKIPPED [Statement ${i + 1}]`, {
-                _desc: 'Context resolution SKIPPED — disabled by hierarchical stage gate',
+                _desc: 'Post-classification context resolution SKIPPED — disabled by hierarchical stage gate',
                 reason: 'stageGates.contextResolution = false'
             });
         } else {
             const resolved = contextResolver.resolveReferences(
-                statement.text, state, storeContext, skipResolve
+                statement.text, state, storeContext, skipResolve, 'specific'
             );
             afterContext = resolved.resolvedText;
-            resolutions = resolved.resolutions;
+            resolutions = [...resolutions, ...resolved.resolutions];
 
-            logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN [Statement ${i + 1}]`, {
-                _desc: 'Statement-level resolution & cleaning — resolve pronouns and normalize',
+            logDebug(`PIPELINE:STAGE4A_SPECIFIC_RESOLVE [Statement ${i + 1}]`, {
+                _desc: 'Post-classification specific entity resolution (brands/products)',
                 original: statement.text,
                 resolved: afterContext,
                 changed: statement.text !== afterContext,
-                resolutions: resolutions
+                resolutions: resolved.resolutions,
+                combinedCount: resolutions.length
             });
         }
 
@@ -1142,8 +1166,19 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // (Stage 2.5 Ambient Injection moved to Stage 4.1)
         let extractionResult;
         if (stageGates && stageGates.entityExtraction === false) {
+            // New: Ensure structural resolutions (pronouns/ordinals) are converted 
+            // into entities even when the main extractor is skipped.
+            const resolvedEntities = (statement.structuralResolutions || []).map(res => ({
+                type: 'resolved_product',
+                value: res.resolved,
+                collapsed: res.collapsed,
+                productId: res.productId,
+                source: 'context_resolution',
+                wordIndices: [] // Global/structural
+            }));
+
             extractionResult = {
-                entities: statementPreEntities, // Carry forward pre-entities (Intellisense) only
+                entities: [...statementPreEntities, ...resolvedEntities],
                 residualWords: cleanedText.split(/\s+/).filter(w => w.length > 0),
                 shape: ''
             };
@@ -1196,7 +1231,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
 
         // Stage 4b: Schema Resolution (replaces candidateDetector + intentScorer)
-        const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext);
+        const ignoreKeywords = !!localSemanticContext?.available;
+        const resolution = resolveIntent(extractionResult, cleanedText, idfMap, storeContext, { ignoreKeywords });
         const signalDensity = resolution.signalDensity;
         const entityCount = resolution.entityCount;
 

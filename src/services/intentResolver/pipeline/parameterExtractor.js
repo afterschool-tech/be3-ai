@@ -300,6 +300,15 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
 
     const strippedHintWords = [];
     if (entities && entities.length > 0) {
+        // Find supported attributes for the current category to avoid stripping words for unsupported hints
+        const supportedAttributes = new Set();
+        if (categoryId && storeContext.CATEGORIES) {
+            const catObj = Object.values(storeContext.CATEGORIES).find(c => c.id === categoryId);
+            if (catObj) {
+                (catObj.attributes || []).forEach(a => supportedAttributes.add(a.toLowerCase()));
+            }
+        }
+
         entities.forEach(ent => {
             // Also include transformer_attribute_hint so that the attribute value (and the stripped 
             // bench words like "size" in "medium size") are stripped from the product name fallback.
@@ -307,6 +316,15 @@ function extractDeterministic(text, candidates = [], storeContext = {}, resoluti
                 const entWords = String(ent.value).toLowerCase().split(/\s+/);
                 
                 if (ent.type === 'transformer_attribute_hint') {
+                    const attrKey = ent.subType.toLowerCase();
+                    // CATEGORY GUARD: Only exclude words if this attribute is actually supported by the category
+                    // OR if there is no category yet (generic search).
+                    const isSupported = !categoryId || supportedAttributes.has(attrKey);
+                    
+                    if (!isSupported) {
+                        return; // Skip stripping these words; they belong in the product name!
+                    }
+                    
                     strippedHintWords.push({ attribute: ent.subType, words: entWords });
                 }
                 
@@ -720,10 +738,14 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
-            if (ent.type === 'category' && !baseFromEntities.category) baseFromEntities.category = ent.id || ent.categoryId || ent.value;
+            if (ent.type === 'category' && !baseFromEntities.category) {
+                baseFromEntities.category = ent.id || ent.categoryId || ent.value;
+                baseFromEntities._category_words = ent.value;
+            }
             // Semantic category kickstart marker:
             // entityExtractor marks category with source='SEMANTIC_KICKSTART' when determinism had no free words.
             // We propagate this flag so downstream tools can run a high-confidence global fallback.
+            if (ent.type === 'category' && ent.is_partial_match) baseFromEntities.is_partial_match = true;
             if (ent.type === 'category' && ent.source === 'SEMANTIC_KICKSTART') baseFromEntities.is_kickstart = true;
             if (ent.type === 'vendor' && !baseFromEntities.vendor) baseFromEntities.vendor = ent.value;
             if (ent.type === 'brand' && !baseFromEntities.brand) baseFromEntities.brand = ent.value;

@@ -33,7 +33,9 @@ module.exports = {
         limit: { type: 'int', required: false, default: 5, description: 'Number of results' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' },
-        allow_deep_fallbacks: { type: 'boolean', required: false, default: false, description: 'Internal: suppress deep fallbacks (Drop-Query/Drop-Filter)' }
+        allow_deep_fallbacks: { type: 'boolean', required: false, default: true, description: 'Internal: relax searches if results are empty' },
+        is_partial_match: { type: 'boolean', required: false },
+        _category_words: { type: 'string', required: false, description: 'Internal: raw text used to match category' }
     },
 
     slotTags: ['[clause]', '[product]', '[category]', '[price]'],
@@ -46,13 +48,15 @@ module.exports = {
         product_name: 'query',
         category: 'category',
         is_kickstart: 'is_kickstart',
+        is_partial_match: 'is_partial_match',
         price_min: 'price_min',
         price_max: 'price_max',
         sort: 'sort',
         limit: 'limit',
         attributes: 'attributes',
         clause_words: 'clause_words',
-        allow_deep_fallbacks: 'allow_deep_fallbacks'
+        allow_deep_fallbacks: 'allow_deep_fallbacks',
+        _category_words: '_category_words'
     },
 
     minProducts: 1,
