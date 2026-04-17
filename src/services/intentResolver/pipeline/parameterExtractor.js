@@ -162,6 +162,7 @@ function sanitizeAttributeHints(hints, categoryId, storeContext) {
         });
     }
 
+
     // ════════════════════════════════════════════
     // Step 3: Same-Value Tie-Breaking
     // ════════════════════════════════════════════
@@ -176,17 +177,14 @@ function sanitizeAttributeHints(hints, categoryId, storeContext) {
     const afterStep3 = [];
     for (const [cleanValue, groupHints] of Object.entries(groups)) {
         if (groupHints.length <= 1) {
-            // Single hint for this value → passes automatically
             afterStep3.push(...groupHints);
             continue;
         }
 
-        // Multiple attributes claim the same value — tie-break by stripped word count
         const maxStripped = Math.max(...groupHints.map(h => h._strippedWords.length));
         const minStripped = Math.min(...groupHints.map(h => h._strippedWords.length));
 
         if (maxStripped === minStripped) {
-            // Equal stripped count → all survive
             afterStep3.push(...groupHints);
             logDebug('PARAM:HINT_SANITIZE_STEP3_TIE', {
                 _desc: 'Same-value tie-break — equal stripped word counts, all survive',
@@ -195,11 +193,9 @@ function sanitizeAttributeHints(hints, categoryId, storeContext) {
                 strippedCount: maxStripped
             });
         } else {
-            // Winner(s): those with the most stripped words
             const winners = groupHints.filter(h => h._strippedWords.length === maxStripped);
             const losers = groupHints.filter(h => h._strippedWords.length < maxStripped);
             afterStep3.push(...winners);
-
             logDebug('PARAM:HINT_SANITIZE_STEP3_RESOLVED', {
                 _desc: 'Same-value tie-break — attribute with more stripped words wins',
                 cleanValue,
@@ -209,8 +205,50 @@ function sanitizeAttributeHints(hints, categoryId, storeContext) {
         }
     }
 
-    return afterStep3;
+    // ════════════════════════════════════════════
+    // Step 4: Category Gating (Redundancy Check)
+    // ════════════════════════════════════════════
+    // Standalone attribute hints (transformer guesses) are rejected if their value
+    // is already captured by the category name/slug. This prevents redundant
+    // backend filters like category=iphones AND brand=iphone.
+    // NOTE: Clauses are sovereign and bypass this check (they are processed before hints).
+    let afterStep4 = afterStep3;
+    if (categoryId && storeContext?.CATEGORIES) {
+        const catEntry = Object.entries(storeContext.CATEGORIES).find(([, c]) => c.id === categoryId);
+        if (catEntry) {
+            const catLabel = (catEntry[1].label || '').toLowerCase();
+            const catSlug = (catEntry[0] || '').toLowerCase();
+            const catWords = new Set([...catLabel.split(/\s+/), ...catSlug.split(/[\s-]+/)].filter(w => w.length > 1));
+
+            const catTextCombined = `${catLabel} ${catSlug}`.toLowerCase();
+
+            afterStep4 = afterStep3.filter(hint => {
+                const hintValue = hint._cleanValue.toLowerCase();
+                const hintWords = hintValue.split(/\s+/);
+                
+                // If the entire hint string is a substring of the combined category name/slug,
+                // or if every word in the hint is present in the category text (handling plurals like iphone -> iphones).
+                const isRedundant = catTextCombined.includes(hintValue) || 
+                                    hintWords.every(w => catTextCombined.includes(w));
+                                    
+                if (isRedundant) {
+                    logDebug('PARAM:HINT_SANITIZE_STEP4_REJECTED', {
+                        _desc: 'Category gating — standalone attribute hint is redundant with category name/slug',
+                        attribute: hint.subType,
+                        value: hint._cleanValue,
+                        category: catLabel,
+                        reason: 'Value already captured by category'
+                    });
+                    return false;
+                }
+                return true;
+            });
+        }
+    }
+
+    return afterStep4;
 }
+
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stripTokenFromText = (text, tokenLower) => {

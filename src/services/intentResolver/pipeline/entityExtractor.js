@@ -193,19 +193,27 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
 
             // Prefer explicit wordIndices when available (e.g. from IntelliSense multi-word products);
             // fall back to localIdx + wordCount synthesis for pre-pass entities.
-            let indices;
+            let indices = [];
+            let isPhantom = false;
+
             if (Array.isArray(preEnt.wordIndices) && preEnt.wordIndices.length > 0) {
                 indices = preEnt.wordIndices.filter(idx => idx >= 0 && idx < words.length);
+            } else if (localIdx < 0) {
+                // ── Phantom Semantic Entities ──
+                // Transformer injected clauses apply to the whole statement, not a specific word.
+                // We mark it as phantom so it doesn't get dropped or try to consume indices.
+                isPhantom = true;
             } else {
                 const wordCount = preEnt.wordCount || 1;
-                if (localIdx === undefined || localIdx < 0 || localIdx >= words.length) continue;
+                if (localIdx === undefined || localIdx >= words.length) continue;
                 indices = Array.from({ length: Math.min(wordCount, words.length - localIdx) }, (_, i) => localIdx + i);
             }
-            if (indices.length === 0) continue;
-            if (localIdx === undefined) localIdx = Math.min(...indices);
+
+            if (indices.length === 0 && !isPhantom) continue;
+            if (localIdx === undefined && !isPhantom) localIdx = Math.min(...indices);
 
             // Only skip if the VERY FIRST word is already consumed
-            if (consumed.has(localIdx)) {
+            if (!isPhantom && consumed.has(localIdx)) {
                 // For resolved_product: even if entity is skipped, shield ALL its word indices
                 // from the category scanner. We don't want product words leaking into N-gram scan.
                 if (preEnt.type === 'resolved_product') {

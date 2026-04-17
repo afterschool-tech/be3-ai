@@ -859,33 +859,89 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
         }
     }
-    // Stage 3a: Global Semantic Pre-pass
-    // Runs ONCE per query to find all clauses/brands across the entire message.
-    // These are "shielded" from the Category Scanner in each statement.
+    // Stage 3a: Statement-Aware Global Pre-pass
+    // Runs for each statement BEFORE the main loop to find all clauses/brands.
+    // This ensures that clauses are strictly scoped to their respective statements
+    // while still maintaining priority over downstream category scanning.
     // ═══════════════════════════════════════════════
-    // Construct a merged semantic context from the first batched result (covers the full query
-    // for single-statement inputs; for multi-statement, clause detection is word-level anyway).
-    const mergedSemanticContext = batchedSemanticContext?.results?.[0]
-        ? { ...batchedSemanticContext.results[0], available: true }
-        : null;
+    // NOTE: resolveClausesGlobal is ALWAYS run regardless of Transformer availability,
+    // as it also performs deterministic brand/clause detection from the store context.
+    // Semantic context is provided as a bonus when the Transformer has results.
 
-    const { globalEntities, categoryHints: globalCategoryHints } = resolveClausesGlobal(afterFuzzy, [], mergedSemanticContext);
-    logDebug('PIPELINE:STAGE3A_PREPASS', {
-        _desc: 'Global Semantic Pre-pass — clauses/brands detected across entire query before statement loop',
-        _example: '"show me cheap infinix phones" → cheap(clause), infinix(brand) detected globally',
-        entityCount: globalEntities.length,
-        entities: globalEntities.map(e => ({
-            type: e.type,
-            value: e.value,
-            clauseId: e.clauseId,
-            source: e.source,
-            globalWordIndex: e.globalWordIndex
-        })),
-        categoryHints: globalCategoryHints
-    });
+    // ── Helper: Reshape /extract response into the {key, score} format expected by resolveClausesGlobal ──
+    // The /extract endpoint returns entities as arrays of slug strings (e.g., clause: ["apple_product"])
+    // and stores confidence scores separately (e.g., confidence["clause:apple_product"] = 0.89).
+    // resolveClausesGlobal Step 2.5 expects objects with {key, score} / {value, score}.
+    function reshapeExtractEntities(rawResult) {
+        if (!rawResult) return null;
+        const entities = rawResult.entities || {};
+        const confidence = rawResult.confidence || {};
+        const shaped = {};
 
-    // Build global word list for index reconciliation
-    const globalWords = afterFuzzy.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        // clause: ["apple_product"] → [{ key: "apple_product", score: 0.89 }]
+        if (Array.isArray(entities.clause)) {
+            shaped.clause = entities.clause.map(key => ({
+                key,
+                score: confidence[`clause:${key}`] || 0
+            }));
+        }
+
+        // category: ["iphones", "smartphones"] → [{ key: "iphones", score: 0.88 }]
+        if (Array.isArray(entities.category)) {
+            shaped.category = entities.category.map(key => ({
+                key,
+                score: confidence[`category:${key}`] || 0
+            }));
+        }
+
+        // attribute: { brand: ["iphone"] } → { brand: [{ value: "iphone", score: 0.84 }] }
+        if (entities.attribute && typeof entities.attribute === 'object') {
+            shaped.attribute = {};
+            for (const [attrKey, values] of Object.entries(entities.attribute)) {
+                if (Array.isArray(values)) {
+                    shaped.attribute[attrKey] = values.map(v => ({
+                        value: v,
+                        score: confidence[`attribute:${attrKey}:${v}`] || 0
+                    }));
+                }
+            }
+        }
+
+        return shaped;
+    }
+
+    const statementLevelEntities = [];
+    const statementLevelCategoryHints = [];
+    for (let idx = 0; idx < statements.length; idx++) {
+        const statement = statements[idx];
+        const rawResult = batchedSemanticContext?.available ? batchedSemanticContext.results?.[idx] : null;
+
+        // Reshape raw /extract result into the format resolveClausesGlobal expects
+        const shapedEntities = rawResult ? reshapeExtractEntities(rawResult) : null;
+        const semContext = shapedEntities
+            ? { entities: shapedEntities, available: true }
+            : null;
+
+        // Resolve clauses/brands for THIS statement only
+        const { globalEntities, categoryHints } = resolveClausesGlobal(statement.text, [], semContext);
+        statementLevelEntities[idx] = globalEntities;
+        statementLevelCategoryHints[idx] = categoryHints || [];
+
+        logDebug('PIPELINE:STAGE3A_PREPASS_STATEMENT', {
+            _desc: `Statement-level Pre-pass [Part ${idx + 1}]`,
+            text: statement.text,
+            entityCount: globalEntities.length,
+            hasTransformerContext: !!semContext,
+            entities: globalEntities.map(e => ({
+                type: e.type,
+                value: e.value,
+                clauseId: e.clauseId,
+                source: e.source
+            }))
+        });
+    }
+
+
 
     const resolvedStatements = [];
 
@@ -1037,41 +1093,27 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             confidenceGap = topScore - secondScore;
         }
 
-        const statementPreEntities = []; // Entities pre-extracted (IntelliSense/Global)
+        const statementPreEntities = []; // Entities pre-extracted (IntelliSense/Statement Pre-pass)
 
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
 
-        // ── Stage 3d: Reconcile Global Pre-pass entities to this statement ──
-        // PRIORITY: Clause/brand entities are pushed FIRST so they get word-level
-        // consumption priority over IntelliSense products. This prevents "cheap"
-        // from being absorbed into "cheap smartphones" as a product name.
-        const localWords = cleanedText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-
-        for (const gEnt of globalEntities) {
-            // Find the global word in the local statement words
-            const globalWord = globalWords[gEnt.globalWordIndex];
-            if (!globalWord) continue;
-
-            const localIdx = localWords.indexOf(globalWord);
-            if (localIdx !== -1) {
-                statementPreEntities.push({
-                    ...gEnt,
-                    localWordIndex: localIdx
-                });
-            }
-        }
-
-        if (statementPreEntities.length > 0) {
-            logDebug(`PIPELINE:STAGE3D_RECONCILE [Statement ${i + 1}]`, {
-                _desc: 'Reconcile global pre-pass entities to local statement indices',
-                _example: 'Global "cheap" at index 2 → local index 1 in statement "cheap phones"',
-                globalEntityCount: globalEntities.length,
-                reconciledCount: statementPreEntities.length,
-                reconciled: statementPreEntities.map(e => ({
+        // ── Stage 3d: Inject Statement-Level Pre-pass Entities ──
+        // Entities were resolved per-statement in Stage 3a above using each statement's own
+        // text and Transformer result. No global-index reconciliation needed — entities
+        // are already local. Clauses/brands are pushed FIRST so they get word-level
+        // consumption priority over IntelliSense products.
+        const localStatementEntities = statementLevelEntities[i] || [];
+        if (localStatementEntities.length > 0) {
+            statementPreEntities.push(...localStatementEntities);
+            logDebug(`PIPELINE:STAGE3D_INJECT [Statement ${i + 1}]`, {
+                _desc: 'Statement-level pre-pass entities injected — clauses/brands pinned to this statement only',
+                count: localStatementEntities.length,
+                entities: localStatementEntities.map(e => ({
+                    type: e.type,
                     value: e.value,
-                    globalIdx: e.globalWordIndex,
-                    localIdx: e.localWordIndex
+                    clauseId: e.clauseId,
+                    globalWordIndex: e.globalWordIndex
                 }))
             });
         }
@@ -1193,7 +1235,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 ? { ...batchedSemanticContext.results[i], available: true }
                 : localSemanticContext;
 
-            extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, globalCategoryHints, entitySemanticContext);
+            extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, statementLevelCategoryHints[i] || [], entitySemanticContext);
             logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
                 _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
                 text: cleanedText,

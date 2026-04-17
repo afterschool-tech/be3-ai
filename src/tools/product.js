@@ -222,7 +222,8 @@ const productTools = {
                     page: page,
                     sort: sort
                 });
-                const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                let fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+
                 kickSearchParams.append('q', fallbackQuery);
                 if (price_min) kickSearchParams.append('price_min', price_min);
                 if (price_max) kickSearchParams.append('price_max', price_max);
@@ -253,11 +254,15 @@ const productTools = {
 
                 // 2) If still nothing, try vector WITHOUT category_id (keep filters first, then unfiltered)
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
-                let vectorKickFallback = await performVectorSearch(query, limit, null, extraParams);
+                fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+
+
+                let vectorKickFallback = await performVectorSearch(fallbackQuery, limit, null, extraParams);
                 if (!vectorKickFallback || vectorKickFallback.products?.length === 0) {
-                    kickLogDebug('TOOL:PRODUCT_KICKSTART_VECTOR_UNFILTERED [product.search]', { query });
-                    vectorKickFallback = await performVectorSearch(query, limit, null);
+                    kickLogDebug('TOOL:PRODUCT_KICKSTART_VECTOR_UNFILTERED [product.search]', { query: fallbackQuery });
+                    vectorKickFallback = await performVectorSearch(fallbackQuery, limit, null);
                 }
+
 
                 if (vectorKickFallback && vectorKickFallback.products?.length > 0) {
                     const final = await handleSearchResults(vectorKickFallback, params, context, snapshotId, null, null, true);
@@ -286,13 +291,16 @@ const productTools = {
             // Fallback 1: Vector Search (Primary Fallback)
             if (query && !search_mode && !similar_to && !didKickstartFallback) {
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+
                 // Try with filters first
-                let vectorFallback = await performVectorSearch(query, limit, catId, extraParams);
+                let vectorFallback = await performVectorSearch(fallbackQuery, limit, catId, extraParams);
 
                 // If filtered fails, try unfiltered
                 if (!vectorFallback || vectorFallback.products?.length === 0) {
-                    vectorFallback = await performVectorSearch(query, limit, catId);
+                    vectorFallback = await performVectorSearch(fallbackQuery, limit, catId);
                 }
+
 
                 if (vectorFallback && vectorFallback.products?.length > 0) {
                     logDebug('TOOL:VECTOR_FALLBACK [product.search]', { _desc: 'Precision failed. Result found via Vector Search fallback.', query });
