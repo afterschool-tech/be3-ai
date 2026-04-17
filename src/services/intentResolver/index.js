@@ -2286,7 +2286,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const tools = toolMapper.mapToTools(intentsToProcess.map(i => ({
         intentName: i.intentName,
         parameters: i.parameters || {},
-        _ported_from: i._ported_from // Preserve _ported_from for tool mapping
+        _ported_from: i._ported_from, // Preserve _ported_from for tool mapping
+        statementText: i.statementText
     })));
 
     logDebug('PIPELINE:STAGE8_TOOL_MAPPING', {

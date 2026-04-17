@@ -104,7 +104,8 @@ function mapToTool(resolvedIntent) {
                 [expansionParam]: (expansionValues.length === 1 && toolParams[expansionParam]) ? toolParams[expansionParam] : val
             },
             reason: resolvedIntent.intentName,
-            portedFrom
+            portedFrom,
+            statementText: resolvedIntent.statementText
         }));
     }
 
@@ -113,7 +114,8 @@ function mapToTool(resolvedIntent) {
         tool: intent.toolName,
         params: toolParams,
         reason: resolvedIntent.intentName,
-        portedFrom
+        portedFrom,
+        statementText: resolvedIntent.statementText
     }];
 }
 

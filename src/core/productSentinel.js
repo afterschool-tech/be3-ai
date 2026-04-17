@@ -14,7 +14,8 @@
  *   (fallback count, semantic scores, entity detection confidence).
  */
 
-const { queryAI: queryGroqAI, MODEL_ID: GROQ_MODEL_ID } = require('./hfAiService');
+const { queryAI: queryGroqAI } = require('./hfAiService');
+const SENTINEL_MODEL_ID = "llama-3.1-8b-instant";
 const { logDebug } = require('../utils/debugLogger');
 
 // Gate flag — set to true to always run, false to disable.
@@ -84,7 +85,7 @@ async function evaluateProductRelevance(userMessage, products, conversationSumma
             0.1,        // low temperature — deterministic
             1,          // single retry
             { response_format: { type: 'json_object' } },
-            GROQ_MODEL_ID
+            SENTINEL_MODEL_ID
         );
 
         const parsed = JSON.parse(response.trim());

@@ -30,7 +30,8 @@ const storeContext = require('../src/context/storeContext');
 const { CLAUSES } = require('../src/context/clauses');
 const axios = require('axios');
 const { generateResponseFromTools } = require('../src/core/personalityLayer');
-const { extractImages } = require('../src/utils/imageInjector');
+const { extractImages, injectImages } = require('../src/utils/imageInjector');
+const { evaluateProductRelevance } = require('../src/core/productSentinel');
 
 // ═══════════════════════════════════════════════════
 //  Constants & Config
@@ -745,7 +746,8 @@ ${C.dim} Commands:
                     const nextTools = toolMapper.mapToTools([{
                         intentName: nextIntent.intentName,
                         parameters: nextIntent.parameters || {},
-                        _ported_from: nextIntent._ported_from
+                        _ported_from: nextIntent._ported_from,
+                        statementText: nextIntent.statementText
                     }]);
 
                     console.log(`${C.yellow}📚 Executing: ${nextIntent.intentName}${C.reset}`);
@@ -796,10 +798,117 @@ ${C.dim} Commands:
                 }
             }
 
+            // ═══════════════════════════════════════════════
+            // PRODUCT SENTINEL — REPL Port
+            // ═══════════════════════════════════════════════
+            const isEngineeredMessage = input && input.trim().startsWith('__');
+            let consolidatedToolResults = [...accumulatedExecutionResults];
+
+            if (!isEngineeredMessage) {
+                for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
+                    const tr = consolidatedToolResults[trIdx];
+                    if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0) {
+                        
+                        const statementTextToEval = tr.statementText || input;
+                        const sentinelVerdict = await evaluateProductRelevance(statementTextToEval, tr.result.products, state.conversation_summary);
+                        
+                        if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
+                            logDebug('REPL:SENTINEL_REJECTED', {
+                                _desc: 'Sentinel rejected products as irrelevant',
+                                vector_query: sentinelVerdict.vector_query
+                            });
+
+                            const sentinelTools = [{
+                                tool: 'product.search',
+                                params: { query: sentinelVerdict.vector_query, search_mode: 'VECTOR', limit: 5 },
+                                reason: `Sentinel re-search: original products rejected as irrelevant`
+                            }];
+
+                            const sentinelResults = await executeTools(sentinelTools, TEST_SESSION_ID);
+                            await injectImages(sentinelResults, stateManager);
+
+                            const newSearchResult = sentinelResults.find(t => t && t.tool === 'product.search' && t.result);
+
+                            if (newSearchResult && newSearchResult.result) {
+                                const final = newSearchResult.result;
+                                const newProducts = final.products || [];
+                                const originalWhatsappButtons = final.whatsapp?.buttons || [];
+                                const snapshotId = Date.now().toString(36);
+                                await stateManager.setSearchSnapshot(TEST_SESSION_ID, snapshotId, {
+                                    results: newProducts,
+                                    query: sentinelVerdict.vector_query
+                                });
+
+                                const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
+
+                                newSearchResult.result = {
+                                    ...final,
+                                    products: [],
+                                    suggested_products: newProducts,
+                                    suggested_total: final.total || newProducts.length,
+                                    suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                                    whatsapp_product_cards: undefined,
+                                    whatsapp: {
+                                        type: 'button',
+                                        buttons: [
+                                            { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
+                                            seeMoreBtn
+                                        ].filter(Boolean)
+                                    }
+                                };
+                                newSearchResult.statementText = tr.statementText;
+
+                                consolidatedToolResults.splice(trIdx, 1, newSearchResult);
+                                accumulatedExecutionResults.splice(trIdx, 1, newSearchResult);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ═══════════════════════════════════════════════
+            // SNAPSHOT AGGREGATOR — REPL Port
+            // ═══════════════════════════════════════════════
+            const searchResultsAgg = consolidatedToolResults.filter(tr => tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp);
+            
+            if (searchResultsAgg.length > 1) {
+                const combinedProducts = [];
+                for (const sr of searchResultsAgg) {
+                    const items = sr.result.products?.length > 0 ? sr.result.products : (sr.result.suggested_products || []);
+                    combinedProducts.push(...items.slice(0, 5));
+                }
+                
+                if (combinedProducts.length > 0) {
+                    const megaSnapshotId = 'mega_' + Date.now().toString(36);
+                    await stateManager.setSearchSnapshot(TEST_SESSION_ID, megaSnapshotId, {
+                        results: combinedProducts,
+                        query: 'Combined Multi-Intent Search'
+                    });
+                    
+                    let isFirst = true;
+                    for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
+                        const tr = consolidatedToolResults[trIdx];
+                        if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp) {
+                            if (isFirst) {
+                                tr.result.whatsapp = {
+                                    type: 'button',
+                                    buttons: [
+                                        { id: `__nav:cards:${megaSnapshotId}__`, title: 'Shop these items 🛍️' }
+                                    ]
+                                };
+                                isFirst = false;
+                            } else {
+                                tr.result.whatsapp = undefined;
+                            }
+                        }
+                    }
+                }
+            }
+
             // End-of-turn consolidated output (old behavior):
             // print a single summary that includes EVERY tool run (initial + stack),
             // then print the synthesized Bot reply.
-            const consolidated = [...accumulatedExecutionResults];
+            const consolidated = consolidatedToolResults;
             printResult(result, consolidated);
             const reply = buildSimpleReply(input, result, consolidated);
             

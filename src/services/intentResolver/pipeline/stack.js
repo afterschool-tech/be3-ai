@@ -32,7 +32,8 @@ async function executeIntentStack(intents, state, storeContext, sessionId) {
         const tools = toolMapper.mapToTools([{
             intentName: intents[0].intentName,
             parameters: intents[0].parameters || {},
-            _ported_from: intents[0]._ported_from
+            _ported_from: intents[0]._ported_from,
+            statementText: intents[0].statementText
         }]);
         return { intents, tools, isMultiIntent: false };
     }
@@ -64,7 +65,8 @@ async function executeIntentStack(intents, state, storeContext, sessionId) {
     const tools = toolMapper.mapToTools([{
         intentName: firstIntent.intentName,
         parameters: firstIntent.parameters || {},
-        _ported_from: firstIntent._ported_from
+        _ported_from: firstIntent._ported_from,
+        statementText: firstIntent.statementText
     }]);
 
     logDebug('STACK:EXECUTE_FIRST', {
@@ -134,7 +136,8 @@ async function resumeIntentStack(userId, state, storeContext) {
     const tools = toolMapper.mapToTools([{
         intentName: nextIntent.intentName,
         parameters: nextIntent.parameters || {},
-        _ported_from: nextIntent._ported_from
+        _ported_from: nextIntent._ported_from,
+        statementText: nextIntent.statementText
     }]);
 
     // Update stack

@@ -609,97 +609,142 @@ app.post('/chat', async (req, res) => {
                 const ENABLE_SENTINEL = !isVisualSearch; // SKIP sentinel for visual search
                 const isEngineeredMessage = message && message.trim().startsWith('__');
 
-                const searchResultIndex = (!isEngineeredMessage && ENABLE_SENTINEL) ? consolidatedToolResults.findIndex(tr =>
-                    tr && (tr.tool === 'product.search' || tr.tool === 'product_search') &&
-                    tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0
-                ) : -1;
+                if (!isEngineeredMessage && ENABLE_SENTINEL) {
+                    for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
+                        const tr = consolidatedToolResults[trIdx];
+                        if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0) {
+                            
+                            const statementTextToEval = tr.statementText || message;
+                            const sentinelVerdict = await evaluateProductRelevance(statementTextToEval, tr.result.products, state.conversation_summary);
+                            
+                            if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
+                                logDebug('SERVER:SENTINEL_REJECTED', {
+                                    _desc: 'Sentinel rejected products as irrelevant — re-executing product.search with vector query',
+                                    _icon: '🔄',
+                                    vector_query: sentinelVerdict.vector_query,
+                                    rejected_product_count: tr.result.products.length,
+                                    rejected_products: tr.result.products.slice(0, 8).map(p => ({
+                                        name: p?.name || p?.title || 'unknown',
+                                        price: p?.price ?? null
+                                    }))
+                                });
 
-                if (searchResultIndex >= 0) {
-                    const searchResult = consolidatedToolResults[searchResultIndex];
-                    const sentinelVerdict = await evaluateProductRelevance(message, searchResult.result.products, state.conversation_summary);
+                                // Re-execute product.search through the tool pipeline (first-class results)
+                                const sentinelTools = [{
+                                    tool: 'product.search',
+                                    params: { query: sentinelVerdict.vector_query, search_mode: 'VECTOR', limit: 5 },
+                                    reason: `Sentinel re-search: original products rejected as irrelevant`
+                                }];
 
-                    if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
-                        logDebug('SERVER:SENTINEL_REJECTED', {
-                            _desc: 'Sentinel rejected products as irrelevant — re-executing product.search with vector query',
-                            _icon: '🔄',
-                            vector_query: sentinelVerdict.vector_query,
-                            rejected_product_count: searchResult.result.products.length,
-                            rejected_products: searchResult.result.products.slice(0, 8).map(p => ({
-                                name: p?.name || p?.title || 'unknown',
-                                price: p?.price ?? null
-                            }))
-                        });
+                                const sentinelResults = await executeTools(sentinelTools, session_id);
+                                await injectImages(sentinelResults, stateManager);
 
-                        // Re-execute product.search through the tool pipeline (first-class results)
-                        const sentinelTools = [{
-                            tool: 'product.search',
-                            params: {
-                                query: sentinelVerdict.vector_query,
-                                search_mode: 'VECTOR',
-                                limit: 5
-                            },
-                            reason: `Sentinel re-search: original products rejected as irrelevant`
-                        }];
+                                const newSearchResult = sentinelResults.find(t => t && t.tool === 'product.search' && t.result);
 
-                        const sentinelResults = await executeTools(sentinelTools, session_id);
-                        await injectImages(sentinelResults, stateManager);
+                                if (newSearchResult && newSearchResult.result) {
+                                    // Move new products to suggested_products (prevents sentinel loop)
+                                    const final = newSearchResult.result;
+                                    const newProducts = final.products || [];
+                                    const originalWhatsappButtons = final.whatsapp?.buttons || [];
+                                    const snapshotId = Date.now().toString(36);
+                                    // PERSIST: Save the vector results to a search snapshot so __nav:cards can reveal them
+                                    await stateManager.setSearchSnapshot(session_id, snapshotId, {
+                                        results: newProducts,
+                                        query: sentinelVerdict.vector_query
+                                    });
 
-                        const newSearchResult = sentinelResults.find(tr =>
-                            tr && tr.tool === 'product.search' && tr.result
-                        );
+                                    const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
 
-                        if (newSearchResult && newSearchResult.result) {
-                            // Move new products to suggested_products (prevents sentinel loop)
-                            const final = newSearchResult.result;
-                            const newProducts = final.products || [];
-                            const originalWhatsappButtons = final.whatsapp?.buttons || [];
-                            const snapshotId = Date.now().toString(36);
-                            // PERSIST: Save the vector results to a search snapshot so __nav:cards can reveal them
-                            await stateManager.setSearchSnapshot(session_id, snapshotId, {
-                                results: newProducts,
-                                query: sentinelVerdict.vector_query
-                            });
+                                    newSearchResult.result = {
+                                        ...final,
+                                        products: [],
+                                        suggested_products: newProducts,
+                                        suggested_total: final.total || newProducts.length,
+                                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
+                                        whatsapp_product_cards: undefined, // clear inline cards so UI uses suggestion flow
+                                        whatsapp: {
+                                            type: 'button',
+                                            buttons: [
+                                                { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
+                                                seeMoreBtn
+                                            ].filter(Boolean)
+                                        }
+                                    };
+                                    newSearchResult.statementText = tr.statementText; // preserve it
 
-                            const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
+                                    logDebug('SERVER:SENTINEL_RESEARCH_COMPLETE', {
+                                        _desc: 'Sentinel re-search complete — new results placed in suggested_products (products=[])',
+                                        _icon: '📦',
+                                        vector_query: sentinelVerdict.vector_query,
+                                        suggested_product_count: newProducts.length,
+                                        suggested_products: newProducts.slice(0, 8).map(p => ({
+                                            name: p?.name || p?.title || 'unknown',
+                                            price: p?.price ?? null
+                                        }))
+                                    });
 
-                            newSearchResult.result = {
-                                ...final,
-                                products: [],
-                                suggested_products: newProducts,
-                                suggested_total: final.total || newProducts.length,
-                                suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                                whatsapp_product_cards: undefined, // clear inline cards so UI uses suggestion flow
-                                whatsapp: {
-                                    type: 'button',
-                                    buttons: [
-                                        { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
-                                        seeMoreBtn
-                                    ].filter(Boolean)
+                                    // Replace the old product.search result entirely
+                                    consolidatedToolResults.splice(trIdx, 1, newSearchResult);
+
+                                    // Also update the toolResults array so buttons/cards extraction uses the new data
+                                    const oldToolIdx = toolResults.findIndex(t => t === tr);
+                                    if (oldToolIdx >= 0) {
+                                        toolResults.splice(oldToolIdx, 1, newSearchResult);
+                                    } else {
+                                        toolResults.push(newSearchResult);
+                                    }
                                 }
-                            };
+                            }
+                        }
+                    }
+                }
 
-                            logDebug('SERVER:SENTINEL_RESEARCH_COMPLETE', {
-                                _desc: 'Sentinel re-search complete — new results placed in suggested_products (products=[])',
-                                _icon: '📦',
-                                vector_query: sentinelVerdict.vector_query,
-                                suggested_product_count: newProducts.length,
-                                suggested_products: newProducts.slice(0, 8).map(p => ({
-                                    name: p?.name || p?.title || 'unknown',
-                                    price: p?.price ?? null
-                                }))
-                            });
-
-                            // Replace the old product.search result entirely
-                            consolidatedToolResults.splice(searchResultIndex, 1, newSearchResult);
-
-                            // Also update the toolResults array so buttons/cards extraction uses the new data
-                            const oldToolIdx = toolResults.findIndex(tr =>
-                                tr && (tr.tool === 'product.search' || tr.tool === 'product_search')
-                            );
-                            if (oldToolIdx >= 0) {
-                                toolResults.splice(oldToolIdx, 1, newSearchResult);
-                            } else {
-                                toolResults.push(newSearchResult);
+                // ═══════════════════════════════════════════════
+                // SNAPSHOT AGGREGATOR — Multi-Intent UI Reconciler
+                // ═══════════════════════════════════════════════
+                const searchResultsAgg = consolidatedToolResults.filter(tr => tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp);
+                
+                if (searchResultsAgg.length > 1) {
+                    const combinedProducts = [];
+                    // Collect products from each search sequentially (user preference)
+                    for (const sr of searchResultsAgg) {
+                        const items = sr.result.products?.length > 0 ? sr.result.products : (sr.result.suggested_products || []);
+                        combinedProducts.push(...items.slice(0, 5));
+                    }
+                    
+                    if (combinedProducts.length > 0) {
+                        const megaSnapshotId = 'mega_' + Date.now().toString(36);
+                        await stateManager.setSearchSnapshot(session_id, megaSnapshotId, {
+                            results: combinedProducts,
+                            query: 'Combined Multi-Intent Search'
+                        });
+                        
+                        logDebug('SERVER:SNAPSHOT_AGGREGATOR', {
+                            _desc: 'Merged multiple search results into a single Mega-Snapshot for a unified UI button',
+                            megaSnapshotId,
+                            totalProducts: combinedProducts.length,
+                            searchesMerged: searchResultsAgg.length
+                        });
+                        
+                        let isFirst = true;
+                        for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
+                            const tr = consolidatedToolResults[trIdx];
+                            if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp) {
+                                if (isFirst) {
+                                    // The first search acts as the anchor and holds the Mega button
+                                    tr.result.whatsapp = {
+                                        type: 'button',
+                                        buttons: [
+                                            { id: `__nav:cards:${megaSnapshotId}__`, title: 'Shop these items 🛍️' }
+                                        ]
+                                    };
+                                    // We explicitly strip out __nav:more and faceted buttons 
+                                    // to disable pagination across multiple squashed results
+                                    isFirst = false;
+                                } else {
+                                    // Subsequent searches have their UI stripped so they don't spawn duplicate buttons
+                                    tr.result.whatsapp = undefined;
+                                }
                             }
                         }
                     }

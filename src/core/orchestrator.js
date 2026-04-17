@@ -137,7 +137,8 @@ async function executeTools(toolsSelected, sessionId) {
                 success: result && !result.error,
                 reason: toolCall.reason,
                 ported: !!toolCall.portedFrom,
-                portedFrom: toolCall.portedFrom || undefined
+                portedFrom: toolCall.portedFrom || undefined,
+                statementText: toolCall.statementText || (toolCall.pipelineContext && toolCall.pipelineContext.statementText) || undefined
             };
 
             // Debug: log ported tools
