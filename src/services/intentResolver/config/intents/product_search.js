@@ -33,7 +33,7 @@ module.exports = {
         limit: { type: 'int', required: false, default: 5, description: 'Number of results' },
         clause_words: { type: 'list', required: false, description: 'Detected semantic clauses' },
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' },
-        allow_deep_fallbacks: { type: 'boolean', required: false, default: true, description: 'Internal: relax searches if results are empty' },
+        allow_deep_fallbacks: { type: 'boolean', required: false, default: false, description: 'Internal: relax searches if results are empty' },
         is_partial_match: { type: 'boolean', required: false },
         _category_words: { type: 'string', required: false, description: 'Internal: raw text used to match category' }
     },

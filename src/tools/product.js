@@ -50,7 +50,14 @@ const productTools = {
             allow_deep_fallbacks: { type: 'boolean', description: 'Internal: if true, allows dropping filters to find suggestions' }
         },
         handler: async (params, context) => {
-            const { query, category, is_kickstart, is_partial_match, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
+            let { query, category, is_kickstart, is_partial_match, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
+            
+            // Normalize query: if it's an array, join it. Ensure it's always a string.
+            if (Array.isArray(query)) {
+                query = query.join(' ');
+            }
+            query = String(query || '').trim();
+
             const safeAttributes = attributes || {};
 
             const snapshotId = crypto.randomBytes(4).toString('hex');
@@ -110,7 +117,7 @@ const productTools = {
                         // Fallback to unfiltered similarity if filtered returns nothing
                         if (!vectorResult || vectorResult.products.length === 0) {
                             logDebug('TOOL:SIMILAR_FALLBACK_UNFILTERED [product.search]', { similar_to: resolvedSimilarityId });
-                            const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                            const fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
                             vectorResult = await performSimilarSearch(resolvedSimilarityId, limit, null, fallbackQuery); // Passing fallthrough query
                         }
                     }
@@ -121,7 +128,7 @@ const productTools = {
                     // Fallback to unfiltered vector if filtered returns nothing
                     if (!vectorResult || vectorResult.products.length === 0) {
                         logDebug('TOOL:VECTOR_FALLBACK_UNFILTERED [product.search]', { query });
-                        const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                        const fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
                         vectorResult = await performVectorSearch(fallbackQuery, limit, null); // Pass null to actually remove the category filter!
                     }
                 }
@@ -222,7 +229,7 @@ const productTools = {
                     page: page,
                     sort: sort
                 });
-                let fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                let fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
                 kickSearchParams.append('q', fallbackQuery);
                 if (price_min) kickSearchParams.append('price_min', price_min);
@@ -254,7 +261,7 @@ const productTools = {
 
                 // 2) If still nothing, try vector WITHOUT category_id (keep filters first, then unfiltered)
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
-                fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
 
                 let vectorKickFallback = await performVectorSearch(fallbackQuery, limit, null, extraParams);
@@ -291,7 +298,7 @@ const productTools = {
             // Fallback 1: Vector Search (Primary Fallback)
             if (query && !search_mode && !similar_to && !didKickstartFallback) {
                 const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
-                const fallbackQuery = (params._category_words ? `${params._category_words} ${query || ''}` : query || '').trim();
+                const fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
                 // Try with filters first
                 let vectorFallback = await performVectorSearch(fallbackQuery, limit, catId, extraParams);
