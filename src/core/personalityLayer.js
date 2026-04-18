@@ -91,14 +91,20 @@ function summarizeToolResultsForLLM(results) {
         if (Array.isArray(rr.suggested_products) && rr.suggested_products.length > 0) {
             base.suggestion_message = rr.suggestion_message || null;
             base.suggested_total = rr.suggested_total ?? rr.suggested_products.length;
-            base.suggested_products = rr.suggested_products.slice(0, MAX_PRODUCTS_FOR_LLM).map(p => ({
-                id: p?.id || p?.handle || p?.product_id || null,
-                name: p?.name || p?.title || null,
-                price: p?.price ?? null,
-                vendor: p?.vendor || p?.metadata?.vendor || null,
-                whatsapp_link: p?.whatsapp_link || null,
-                checkout_url: p?.checkout_url || null
-            }));
+            base.is_fallback = !!rr.is_fallback;
+            base.is_sentinel = !!rr.is_sentinel;
+
+            // Only provide product details to the LLM if it's NOT a fallback (e.g. Sentinel)
+            if (!rr.is_fallback) {
+                base.suggested_products = rr.suggested_products.slice(0, MAX_PRODUCTS_FOR_LLM).map(p => ({
+                    id: p?.id || p?.handle || p?.product_id || null,
+                    name: p?.name || p?.title || null,
+                    price: p?.price ?? null,
+                    vendor: p?.vendor || p?.metadata?.vendor || null,
+                    whatsapp_link: p?.whatsapp_link || null,
+                    checkout_url: p?.checkout_url || null
+                }));
+            }
         }
 
         // Cart view items: preserve full line items for grounded cart responses.

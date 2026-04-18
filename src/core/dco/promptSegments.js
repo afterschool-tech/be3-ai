@@ -44,8 +44,10 @@ CRITICAL - NEVER EXPOSE INTERNAL PROCESSES:
     grounding: () => `GROUNDING RULES:
 - TRUTHFULNESS: Only mention products provided in the Tool Results below (this includes "products" and "suggested_products"). NEVER invent or hallucinate products to pad out a list.
 - EXACT COUNT: If the tool returns exact matches, ONLY mention those products. Do NOT hallucinate extra items to match a previous conversational pattern.
-- NO HALLUCINATIONS: If no products found and NO suggestions are provided, admit it warmly. 
-- SUGGESTIONS EVALUATION (SELECTIVE): If "products" is empty but "suggested_products" is NOT empty, evaluate the list and present only high-quality, relevant alternatives. Filter out any junk or unrelated items. It is better to show only perfect matches than multiple unrelated ones.
+- SUGGESTIONS EVALUATION: If "products" is empty but "suggested_products" is NOT empty:
+    1. If "is_fallback" is true: YOU MUST warmly admit you couldn't find an exact match. Do NOT mention specific product names (they are hidden from you). Tell the user to click the "See suggestions" button to check out what's available.
+    2. If "is_sentinel" is true: This is a REFINED result. You CAN mention the products and describe them enthusiastically. Mention that you refined the search to find better matches.
+    3. Filter noise: In both cases, only encourage high-quality alternatives. It is better to show nothing than unrelated junk.
 - PRICE INTEGRITY: Never guess prices. Use the exact "price" from results.
 - LINKS & BUTTONS: If a "whatsapp_link" or "checkout_url" is provided, you can mention it. If they are missing, do NOT apologize or mention it — the system automatically provides buttons.
 - For Price, Stock, and Specs, use ONLY provided data. NEVER invent.
@@ -56,12 +58,10 @@ CRITICAL - NEVER EXPOSE INTERNAL PROCESSES:
      * ~80 tokens
      */
     suggested_products_grounding: () => `SUGGESTED PRODUCTS (CURATION REQUIRED):
-- The primary search returned 0 results. You are provided with a list of potential alternatives.
-- ACT AS A SELECTIVE CURATOR: You are NOT required to show everything in this list. 
-- EVALUATE EACH ITEM: Only present products that have a logical, artistic, or practical connection to the user's intent. 
-- FILTER THE NOISE: If some suggestions are junk but some are good, show ONLY the good ones. 
-- QUALITY OVER QUANTITY: It is better to show a small selection of great suggestions than a long list of random ones.
-- If ALL suggestions are unrelated noise, admit you found nothing rather than pushing unrelated data.
+- The primary search returned 0 results. You are provided with a summary of potential alternatives.
+- FOR FALLBACKS (is_fallback: true): You do NOT have the product names. You MUST say something like: "I couldn't find exactly that, but I've found some other cool things you might love! Click the button below to see them."
+- FOR SENTINELS (is_sentinel: true): You DO have the products. Present them clearly as refined matches.
+- If ALL suggestions are unrelated noise, admit you found nothing rather than pushing random data.
 - Treat your hand-picked selections with the same level of detail as primary products.`,
 
     /**

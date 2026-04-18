@@ -90,7 +90,7 @@ const productTools = {
                 const { logDebug } = require('../utils/debugLogger');
                 let vectorResult = null;
                 let resolvedSimilarityId = null; // hoisted so annotation block can access it
-                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                const extraParams = { page, price_min, price_max, tag, attributes: safeAttributes };
 
                 if (search_mode === 'IMAGE' && image) {
                     logDebug('TOOL:IMAGE_SEARCH_MODE [product.search]', { imageLength: image.length, limit, hasFilters: true });
@@ -260,7 +260,7 @@ const productTools = {
                 }
 
                 // 2) If still nothing, try vector WITHOUT category_id (keep filters first, then unfiltered)
-                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                const extraParams = { page, price_min, price_max, tag, attributes: safeAttributes };
                 fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
 
@@ -284,10 +284,10 @@ const productTools = {
                         whatsapp: {
                             type: 'button',
                             buttons: [
-                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
-                                seeMoreBtn
+                                { id: `__nav:cards:${snapshotId}__`, title: 'See suggestions', priority: 100 }
                             ]
-                        }
+                        },
+                        is_fallback: true
                     };
                 }
             }
@@ -297,7 +297,7 @@ const productTools = {
 
             // Fallback 1: Vector Search (Primary Fallback)
             if (query && !search_mode && !similar_to && !didKickstartFallback) {
-                const extraParams = { price_min, price_max, tag, attributes: safeAttributes };
+                const extraParams = { page, price_min, price_max, tag, attributes: safeAttributes };
                 const fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
                 // Try with filters first
@@ -323,10 +323,10 @@ const productTools = {
                         whatsapp: {
                             type: 'button',
                             buttons: [
-                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
-                                seeMoreBtn
+                                { id: `__nav:cards:${snapshotId}__`, title: 'See suggestions', priority: 100 }
                             ]
-                        }
+                        },
+                        is_fallback: true
                     };
                 }
             }
@@ -380,10 +380,10 @@ const productTools = {
                         whatsapp: {
                             type: 'button',
                             buttons: [
-                                { id: '__nav:results__', title: 'Shop these items 🛍️' },
-                                seeMoreBtn
+                                { id: `__nav:results:${snapshotId}__`, title: 'See suggestions', priority: 100 }
                             ]
-                        }
+                        },
+                        is_fallback: true
                     };
                 }
 
@@ -411,10 +411,10 @@ const productTools = {
                         whatsapp: {
                             type: 'button',
                             buttons: [
-                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️' },
-                                seeMoreBtn
+                                { id: `__nav:cards:${snapshotId}__`, title: 'See suggestions', priority: 100 }
                             ]
-                        }
+                        },
+                        is_fallback: true
                     };
                 }
             }
@@ -435,8 +435,9 @@ const productTools = {
             try {
                 // Try targeted snapshot first
                 const snap = await stateManager.getSearchSnapshot(context.sessionId, snapshot_id);
-                if (snap && Array.isArray(snap.results) && snap.results.length > 0) {
-                    cachedProducts = snap.results;
+                const resultsFromSnap = snap?.filters?.results || snap?.results;
+                if (Array.isArray(resultsFromSnap) && resultsFromSnap.length > 0) {
+                    cachedProducts = resultsFromSnap;
                 } else {
                     // Fallback to active state
                     const state = await stateManager.getState(context.sessionId);

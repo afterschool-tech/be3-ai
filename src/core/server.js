@@ -23,6 +23,7 @@ const stack = require('../services/intentResolver/pipeline/stack');
 const { evaluateProductRelevance } = require('./productSentinel');
 const { getMainSystemPrompt, getToolSystemPrompt, getLogicSystemPrompt, getPersonalityRewritePrompt } = require('./personalities');
 const { logDebug, startRun } = require('../utils/debugLogger');
+const { buildProductCards, buildFacetRefinerButtons } = require('../utils/storefrontWhatsAppUx');
 const fs = require('fs');
 
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://localhost:3000';
@@ -364,7 +365,6 @@ app.post('/chat', async (req, res) => {
             if (forceVisualSearchTool) toolsSelected = [forceVisualSearchTool];
 
             const intent = selection.intent || 'unknown';
-            const suppressWhatsAppUI = !!selection?.result?.isMultiIntent;
 
             // --- CONTEXTUAL CHECKOUT INJECTION ---
             // If the user wants to checkout but their cart is empty, check if they are actively viewing a product.
@@ -388,7 +388,6 @@ app.post('/chat', async (req, res) => {
                 _example: 'add_to_cart → cart.add with product_id',
                 intent,
                 confidence: selection.confidence,
-                suppressWhatsAppUI,
                 toolCount: toolsSelected.length,
                 toolsSelected: toolsSelected
             });
@@ -506,7 +505,8 @@ app.post('/chat', async (req, res) => {
                     const nextTools = require('../services/intentResolver/pipeline/toolMapper').mapToTools([{
                         intentName: nextIntent.intentName,
                         parameters: nextIntent.parameters || {},
-                        _ported_from: nextIntent._ported_from
+                        _ported_from: nextIntent._ported_from,
+                        statementText: nextIntent.statementText
                     }]);
 
                     console.log(`[Server] 📚 Executing stack intent: ${nextIntent.intentName}`);
@@ -648,27 +648,35 @@ app.post('/chat', async (req, res) => {
                                     const originalWhatsappButtons = final.whatsapp?.buttons || [];
                                     const snapshotId = Date.now().toString(36);
                                     // PERSIST: Save the vector results to a search snapshot so __nav:cards can reveal them
-                                    await stateManager.setSearchSnapshot(session_id, snapshotId, {
-                                        results: newProducts,
-                                        query: sentinelVerdict.vector_query
+                                    await stateManager.setSearchSnapshot(session_id, snapshotId, sentinelTools[0].params);
+
+                                    // Standard UX construction (Cards + Facets)
+                                    const cardsPayload = buildProductCards(newProducts);
+                                    const { clauseButtons, valueButtons } = buildFacetRefinerButtons({
+                                        facets: final.facets,
+                                        attributes: final.attributes,
+                                        snapshotId
                                     });
 
                                     const seeMoreBtn = originalWhatsappButtons.find(b => b.id && b.id.startsWith('__nav:more'));
 
                                     newSearchResult.result = {
                                         ...final,
-                                        products: [],
-                                        suggested_products: newProducts,
+                                        products: [], // RE-HIDE: Suggestions stay behind button
+                                        suggested_products: newProducts, // Keep for context
                                         suggested_total: final.total || newProducts.length,
                                         suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                                        whatsapp_product_cards: undefined, // clear inline cards so UI uses suggestion flow
+                                        whatsapp_product_cards: undefined, // RE-HIDE: No immediate cards
                                         whatsapp: {
                                             type: 'button',
                                             buttons: [
-                                                { id: `__nav:cards:${snapshotId}__`, title: 'See product details' },
+                                                { id: `__nav:cards:${snapshotId}__`, title: 'Shop these items 🛍️', priority: 100 }, // RESTORED with high priority
+                                                ...clauseButtons,
+                                                ...valueButtons,
                                                 seeMoreBtn
                                             ].filter(Boolean)
-                                        }
+                                        },
+                                        is_sentinel: true
                                     };
                                     newSearchResult.statementText = tr.statementText; // preserve it
 
@@ -729,13 +737,16 @@ app.post('/chat', async (req, res) => {
                         let isFirst = true;
                         for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
                             const tr = consolidatedToolResults[trIdx];
-                            if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp) {
+                            if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && (tr.result.whatsapp || tr.result.whatsapp_product_cards)) {
+                                // Strip the product cards from ALL searches so they don't break the Mega Button flow
+                                tr.result.whatsapp_product_cards = undefined;
+                                
                                 if (isFirst) {
                                     // The first search acts as the anchor and holds the Mega button
                                     tr.result.whatsapp = {
                                         type: 'button',
                                         buttons: [
-                                            { id: `__nav:cards:${megaSnapshotId}__`, title: 'Shop these items 🛍️' }
+                                            { id: `__nav:cards:${megaSnapshotId}__`, title: 'Shop these items 🛍️', priority: 100 }
                                         ]
                                     };
                                     // We explicitly strip out __nav:more and faceted buttons 
@@ -862,7 +873,7 @@ app.post('/chat', async (req, res) => {
             // Otherwise, a microstate prompt's controls (More/Cancel/etc) can leak into an unrelated
             // final tool response (e.g., after compare fulfillment).
             const ignoreMicrostateButtons = !directResponseResult;
-            const whatsappButtonResults = suppressWhatsAppUI ? [] : toolResults
+            const whatsappButtonResults = toolResults
                 .filter(tr => {
                     if (!ignoreMicrostateButtons) return true;
                     const toolName = String(tr?.tool || '');
@@ -873,7 +884,7 @@ app.post('/chat', async (req, res) => {
 
             // Product cards may come either from legacy `result.whatsapp` (transaction=product_card)
             // or from explicit `result.whatsapp_product_cards` (preferred for tools like product.search).
-            const whatsappProductCardResults = suppressWhatsAppUI ? [] : toolResults
+            const whatsappProductCardResults = toolResults
                 .map(tr => tr?.result?.whatsapp_product_cards)
                 .filter(w => w && w.type === 'button' && w.transaction === 'product_card');
 
@@ -951,7 +962,6 @@ app.post('/chat', async (req, res) => {
             logDebug('SERVER:WHATSAPP_BUTTON_EXTRACTION', {
                 _desc: 'WhatsApp button extraction — aggregate whatsapp_buttons from tool results',
                 _example: 'multiple tools each contribute a button; merged into one payload',
-                suppressWhatsAppUI,
                 buttonContributions: whatsappButtonResults.length,
                 hasButtons: !!whatsappButtons,
                 buttonCount: whatsappButtons?.buttons?.length || 0,
@@ -991,7 +1001,7 @@ app.post('/chat', async (req, res) => {
                 ? consolidatedToolResults.map(tr => {
                     // Check if this tool instance was newly executed in this request
                     const isNewInThisRequest = toolResults.some(newTr => newTr === tr);
-                    if ((suppressWhatsAppUI || !isNewInThisRequest) && tr.result) {
+                    if (!isNewInThisRequest && tr.result) {
                         const strippedResult = { ...tr.result };
                         delete strippedResult.whatsapp;
                         delete strippedResult.whatsapp_product_cards;
