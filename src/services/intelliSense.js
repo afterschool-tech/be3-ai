@@ -56,9 +56,13 @@ PATH_RECOMMENDATION:
 - CONVERSATIONAL: Use for pure greetings, gratitude, or social noise with NO products or action verbs.
 - STATE_RESOLUTION: Use for messages that ONLY contain pronouns or references to items on screen (e.g., "add it", "show more", "compare them").
 
+CLASS_HINT (per statement, optional but recommended):
+- Provide a coarse class hint when clear: "Discovery", "Shopping_Management", "Vendor_Intelligence", or "Support_Feedback".
+- If unclear, use null.
+
 OUTPUT_SCHEMA:
 {
-  "statements": [{"original":"string","text":"string","products":[{"name":"string","adjectives":["string"]}],"skip_resolve":["string"]}],
+  "statements": [{"original":"string","text":"string","products":[{"name":"string","adjectives":["string"]}],"skip_resolve":["string"],"class_hint":"Discovery|Shopping_Management|Vendor_Intelligence|Support_Feedback|null"}],
   "recommended_path": "FULL_PIPELINE|CONVERSATIONAL|STATE_RESOLUTION",
   "short_circuit_reason": "string",
   "confidence": number
@@ -67,6 +71,7 @@ OUTPUT_SCHEMA:
 
 // Tokens too generic to serve as grounding evidence
 const STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'from', 'that', 'this', 'its', 'are', 'was', 'has', 'have']);
+const ALLOWED_CLASS_HINTS = new Set(['Discovery', 'Shopping_Management', 'Vendor_Intelligence', 'Support_Feedback']);
 
 /**
  * Extract significant tokens from a string for grounding/vetting checks.
@@ -186,11 +191,23 @@ function vetResults(sourceText, parsed) {
             return found;
         });
 
+        // Optional class hint vetting
+        let vettedClassHint = null;
+        if (stmt.class_hint !== undefined && stmt.class_hint !== null) {
+            const rawHint = String(stmt.class_hint).trim();
+            if (ALLOWED_CLASS_HINTS.has(rawHint)) {
+                vettedClassHint = rawHint;
+            } else {
+                logs.push(`Dropped invalid class_hint: "${rawHint}"`);
+            }
+        }
+
         vettedStatements.push({
             original: stmtOriginal,
             text: stmtText,
             products: vettedProducts,
-            skip_resolve: vettedSkip
+            skip_resolve: vettedSkip,
+            class_hint: vettedClassHint
         });
     }
 
@@ -221,7 +238,7 @@ async function analyze(text, aiQueryFn) {
             {
                 role: 'assistant',
                 content: JSON.stringify({
-                    statements: [{ original: "how do i make moi moi please", text: "how do i make moi moi", products: [], skip_resolve: [] }],
+                    statements: [{ original: "how do i make moi moi please", text: "how do i make moi moi", products: [], skip_resolve: [], class_hint: "Discovery" }],
                     recommended_path: "FULL_PIPELINE",
                     short_circuit_reason: "Requires product/recipe search",
                     confidence: 0.98
@@ -233,7 +250,7 @@ async function analyze(text, aiQueryFn) {
             {
                 role: 'assistant',
                 content: JSON.stringify({
-                    statements: [{ original: "None of it because I'm not an Iphone Freak", text: "not an iphone freak", products: [], skip_resolve: ["it"] }],
+                    statements: [{ original: "None of it because I'm not an Iphone Freak", text: "not an iphone freak", products: [], skip_resolve: ["it"], class_hint: "Support_Feedback" }],
                     recommended_path: "CONVERSATIONAL",
                     short_circuit_reason: "Social commentary",
                     confidence: 0.85
@@ -245,7 +262,7 @@ async function analyze(text, aiQueryFn) {
             {
                 role: 'assistant',
                 content: JSON.stringify({
-                    statements: [{ original: "add it to cart", text: "add it to cart", products: [], skip_resolve: [] }],
+                    statements: [{ original: "add it to cart", text: "add it to cart", products: [], skip_resolve: [], class_hint: "Shopping_Management" }],
                     recommended_path: "STATE_RESOLUTION",
                     short_circuit_reason: "Direct reference to previous context",
                     confidence: 0.95

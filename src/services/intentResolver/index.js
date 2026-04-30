@@ -57,6 +57,9 @@ const { getGates } = require('./config/stageGates');
 // When true, uses L1→L2→L3 sequential classification instead of batch /analyze.
 // Set to false to revert to legacy pipeline behavior.
 const USE_HIERARCHICAL = process.env.USE_HIERARCHICAL !== 'false'; // default ON
+// Env-gated usage of IntelliSense class_hint during hierarchical L1 routing.
+// Default OFF for safe rollout.
+const USE_INTELLISENSE_CLASS_HINT = process.env.USE_INTELLISENSE_CLASS_HINT === 'true';
 
 /**
  * Helper: Reconcile a product name from its ID using available state context.
@@ -965,7 +968,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             try {
                 // Get class_hint from IntelliSense if available
                 const senseStmtHint = senseResult?.statements?.[i];
-                const classHint = senseStmtHint?.class_hint || null;
+                const hintedClass = senseStmtHint?.class_hint || null;
+                const classHint = USE_INTELLISENSE_CLASS_HINT ? hintedClass : null;
 
                 const classificationText = initialCleanedText;
                 
