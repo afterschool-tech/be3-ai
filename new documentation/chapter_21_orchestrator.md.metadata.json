@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 21 — Tool Orchestrator. Deep single-chapter documentation covering the boundary between resolution and execution, context object construction, the unresolved pronoun guard, the execution loop, circuit breaker logic, exception handling, and the results array shape. Includes code snippets to illustrate each concept.",
+  "updatedAt":  "2026-04-30T09:40:51.835752100Z"
+}

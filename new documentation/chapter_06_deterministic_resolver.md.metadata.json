@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 6 of the be3_ai pipeline documentation. Covers the deterministic resolver wrapper, the full resolveAndMap() entry logic including: LLM suggestion intercept, all Stage 0a-0h engineered token handlers in order, microstate routing (Stage 0), and the transition into the main NLU pipeline.",
+  "updatedAt":  "2026-04-30T08:54:07.438920Z"
+}

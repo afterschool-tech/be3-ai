@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 8 of the be3_ai pipeline documentation. Covers the main per-statement loop in resolveAndMap() — its structure, per-statement variables, the cleanText() preprocessing, hierarchical classification trigger, stage gate evaluation, context resolution modes, entity injection priority, confidenceGap computation, and the full stage ordering within each loop iteration.",
+  "updatedAt":  "2026-04-30T08:57:04.895558100Z"
+}

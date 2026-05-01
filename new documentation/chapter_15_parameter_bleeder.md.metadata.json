@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 15 — Parameter Bleeder. Explains the design motivation (why cross-intent inheritance is needed), the two inheritance modes (direct and array merge), the exact conditions for each mode, the product_compare special case and its minProducts guard, the nearest-first scan logic, the audit trail, and real conversational examples for each scenario.",
+  "updatedAt":  "2026-04-30T09:27:52.587447600Z"
+}

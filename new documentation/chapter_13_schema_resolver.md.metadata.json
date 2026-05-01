@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 13 of the be3_ai pipeline documentation. Covers the Schema Resolver and IDF Scoring system — the full Phase 1–6 scoring pipeline, ENTITY_TO_PARAM mapping, ACTION_TO_INTENTS mapping, schema fit calculation, IDF keyword scoring, all intent-specific signal rules (cart remove dominance, compare dominance, facet dominance, orphan noun rule, similarity dominance, discovery sentinel suppression), Signal Density Gating, and the final winner selection.",
+  "updatedAt":  "2026-04-30T09:11:28.900817100Z"
+}

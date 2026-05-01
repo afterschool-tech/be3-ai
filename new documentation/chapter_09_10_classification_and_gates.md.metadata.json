@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapters 9 and 10 of the be3_ai pipeline documentation. Chapter 9 covers the full L1→L2→L3 hierarchical classification system including the transformerClient, the taxonomy, the class_hint bypass, each level's scoring, and confidence rules. Chapter 10 covers all stage gate definitions, what each gate controls, and how they affect the per-statement pipeline execution.",
+  "updatedAt":  "2026-04-30T08:59:12.496029100Z"
+}

@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapters 15 and 16 of the be3_ai pipeline documentation combined into one file. Chapter 15 covers the Parameter Bleeder — cross-intent parameter inheritance for multi-intent messages, including the incomplete products merge logic for product_compare. Chapter 16 covers the Intent Porter — all porting rules including degradation to conversation, Phase 4 consecutive add_to_cart porting, Stage2 resolution porting, purchase verb + reference_map porting, the discovery phrasing guard, the question phrase guard, and the confirmation microstate pattern.",
+  "updatedAt":  "2026-04-30T09:17:46.472413700Z"
+}

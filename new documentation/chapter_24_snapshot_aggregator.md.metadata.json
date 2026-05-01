@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 24 — Snapshot Aggregator: Multi-Intent UI Reconciler. Deep single-chapter documentation covering the problem of multiple tools generating conflicting or overlapping UI payloads, how product cards are separated from action buttons, the priority-aware button merge algorithm (de-duplication, top-3 cap, stable tie-breaking), helper text injection for WhatsApp UX, stale UI payload stripping from historical tool results, the suggestion XML block extraction and state storage, the facet refiner button system, the final response shape, and tool history persistence during active stacks and microstates.",
+  "updatedAt":  "2026-04-30T09:50:04.258566400Z"
+}

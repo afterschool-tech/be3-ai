@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 26 — Personality Layer: Response Generation. Deep standalone chapter covering the layer's two-stage job (summarisation then generation), why summarisation happens before generation, every tool-specific summarisation rule in depth (product cap, cart view no-truncation, compare expanded_attributes preference, fallback vs sentinel suggested_products distinction, search_mode flag, vendor_breakdown), the optimized results pre-pass, how skipped/failed actions are detected, the DCO prompt assembly call, the Groq LLM call parameters and why temperature 0.4 was chosen, the empty response fallback chain, and the response trimming before delivery.",
+  "updatedAt":  "2026-04-30T09:53:13.037849400Z"
+}

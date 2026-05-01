@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 7 of the be3_ai pipeline documentation. Covers Stage 0.5 — Transformer entity extraction, including the /extract API call, reshapeExtractEntities(), the batchedSemanticContext shape, Stage 3a global clause pre-pass, and all graceful degradation paths.",
+  "updatedAt":  "2026-04-30T08:55:45.418267900Z"
+}

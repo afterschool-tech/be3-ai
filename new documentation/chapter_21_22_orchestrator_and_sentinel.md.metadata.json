@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep write of Chapters 21 and 22 of the be3_ai pipeline documentation. Chapter 21 covers the Tool Orchestrator — its role as the boundary between intent resolution and API execution, the execution loop, context object construction, the unresolved pronoun guard (Phase 1), circuit breaker logic, the distinction between critical and non-critical failures, exception handling, and the full results aggregation shape. Chapter 22 covers the Product Sentinel — the LLM relevance gate that fires after product searches, its exact activation conditions, the 60-token Groq prompt design and its rules, what vector_query means and how the re-search works, and the fail-open safety design.",
+  "updatedAt":  "2026-04-30T09:38:56.750287500Z"
+}

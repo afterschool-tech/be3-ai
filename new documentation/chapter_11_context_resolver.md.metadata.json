@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 11 of the be3_ai pipeline documentation. Covers the context resolver — how pronouns, ordinals, and brand references are resolved against state. Includes two-tier resolution (structural vs specific), the reference_map lookup, token collapsing, the three skip guards (skipWords, relative pronoun, brand collision), and how the reference_map is built by product.search.",
+  "updatedAt":  "2026-04-30T09:00:56.595229Z"
+}

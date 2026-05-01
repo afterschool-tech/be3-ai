@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 4 of the be3_ai pipeline documentation. Covers every engineered token type (nav, filter, facet, product, cart, order, shop namespaces), the token parser, snapshot-aware tokens, the microstate guard, and all response resolver utilities (yes/no, ordinal, grouped ordinal, selection, multi-selection).",
+  "updatedAt":  "2026-04-30T08:49:55.910114400Z"
+}

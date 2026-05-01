@@ -1249,30 +1249,72 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
         }
 
-        // ── Stage 4.1: Late Ambient Context Injection ──
-        // Use full extraction results (Stage 4A) to verify if a "Strong Entity" (Category/Product) 
-        // already exists. If not, inject ambient context to support vague follow-ups.
+        // gap kept for debug logging only — no longer used as an injection guardrail
         const semanticResults = localSemanticContext?.classification || [];
         const gap = (semanticResults[0]?.score || 0) - (semanticResults[1]?.score || 0);
 
-        const ambientResult = await resolveAmbientContext(cleanedText, extractionResult.entities, state);
-        if (ambientResult && ambientResult.pendingAmbient && (gap < 0.04 || extractionResult.entities.length === 0)) {
-            const injected = buildAmbientEntities(ambientResult.pendingAmbient, state, reconcileNameFromId);
-            extractionResult.entities.push(...injected);
-            logDebug(`PIPELINE:STAGE4.1_INJECT [Statement ${i + 1}]`, {
-                _desc: 'Ambient Context Injection — phantom entities added late (post-extraction)',
-                topicType: ambientResult.pendingAmbient.type,
-                injectedCount: injected.length,
-                entities: injected.map(e => e.type),
-                gap: gap.toFixed(4)
-            });
-        } else if (ambientResult && ambientResult.pendingAmbient) {
-            logDebug(`PIPELINE:STAGE4.1_INJECT_SKIP [Statement ${i + 1}]`, {
-                _desc: 'Ambient Context Injection SKIPPED — strong entities found or transformer is confident',
-                gap: gap.toFixed(4),
-                threshold: 0.04,
-                entityCount: extractionResult.entities.length,
-                topicType: ambientResult.pendingAmbient.type
+        // ── Stage 4.1: Late Ambient Context Injection ──
+        // Only runs for intents with entityExtraction=true (discovery intents building
+        // entities from scratch). Resolution-based intents (cart, analysis, checkout)
+        // get their context from the reference map, not ambient injection.
+        //
+        // Fires when resolveAmbientContext returns a pendingAmbient, which already
+        // implies no strong entity (category/product/resolved_product) was found.
+        // The gap guardrail has been removed — intent confidence is orthogonal to
+        // entity poverty and was silently blocking correct ambient injection.
+        if (stageGates && stageGates.entityExtraction === true) {
+            const ambientResult = await resolveAmbientContext(cleanedText, extractionResult.entities, state);
+            if (ambientResult && ambientResult.pendingAmbient) {
+                const injected = buildAmbientEntities(ambientResult.pendingAmbient, state, reconcileNameFromId);
+
+                // Conflict guard: user's explicit signals this turn always win over
+                // ambient context carried from prior turns. Three types are guarded:
+                //
+                // 1. attribute — per-code: user said color=blue → drop ambient color=red
+                //                         user said nothing about material → inject material=cotton
+                // 2. vendor    — singleton: user named a vendor → drop ambient vendor entirely
+                //                          (user is redirecting scope — don't lock them to prior vendor)
+                // 3. price     — singleton: user stated a price range → drop ambient price
+                //                          (user's budget constraint overrides prior search's range)
+
+                const explicitAttributeCodes = new Set(
+                    extractionResult.entities
+                        .filter(e => e.type === 'attribute' && e.attributeCode)
+                        .map(e => e.attributeCode)
+                );
+                const hasExplicitVendor = extractionResult.entities.some(e => e.type === 'vendor');
+                const hasExplicitPrice  = extractionResult.entities.some(e => e.type === 'price');
+
+                const safeInjected = injected.filter(e => {
+                    // Attribute conflict: per-code check
+                    if (e.type === 'attribute' && explicitAttributeCodes.has(e.attributeCode)) return false;
+                    // Vendor conflict: user named a vendor → ambient vendor is stale
+                    if (e.type === 'vendor' && hasExplicitVendor) return false;
+                    // Price conflict: user stated a price range → ambient price is stale
+                    if (e.type === 'price' && hasExplicitPrice) return false;
+                    return true;
+                });
+
+                extractionResult.entities.push(...safeInjected);
+                logDebug(`PIPELINE:STAGE4.1_INJECT [Statement ${i + 1}]`, {
+                    _desc: 'Ambient Context Injection — phantom entities added (no strong entity found, entityExtraction intent)',
+                    topicType: ambientResult.pendingAmbient.type,
+                    injectedCount: safeInjected.length,
+                    droppedConflicts: injected.length - safeInjected.length,
+                    entities: safeInjected.map(e => e.type),
+                    gap: gap.toFixed(4)
+                });
+            } else {
+                logDebug(`PIPELINE:STAGE4.1_INJECT_SKIP [Statement ${i + 1}]`, {
+                    _desc: 'Ambient Context Injection SKIPPED — strong entity already present in extraction result',
+                    entityCount: extractionResult.entities.length,
+                    topicType: ambientResult?.pendingAmbient?.type || 'n/a'
+                });
+            }
+        } else {
+            logDebug(`PIPELINE:STAGE4.1_INJECT_GATE [Statement ${i + 1}]`, {
+                _desc: 'Ambient Context Injection GATED — intent does not have entityExtraction=true',
+                entityExtraction: stageGates?.entityExtraction
             });
         }
 

@@ -926,10 +926,14 @@ class StateManager {
             referenceMap.the_products = ordinalList.join(',');
             referenceMap.all_of_them = ordinalList.join(',');
 
-            // Map singulars to first
-            referenceMap.it = ordinalList[0];
-            referenceMap.this = ordinalList[0];
-            referenceMap.that = ordinalList[0];
+            // Delete singular pronouns — multi-product context makes them ambiguous.
+            // 'it/this' would resolve to ordinalList[0] which is linguistically wrong
+            // when the user says 'do you have it in blue?' after seeing 5 caps.
+            // Deleting them lets ambient context carry the category forward instead.
+            delete referenceMap.it;
+            delete referenceMap.this;
+            delete referenceMap.this_one;
+            delete referenceMap.that_one;
             referenceMap.the_one = ordinalList[0];
 
             // Re-calc Relational references for the set
@@ -974,11 +978,14 @@ class StateManager {
                 referenceMap.all_of_them = pluralStr;
             }
 
-            // Singular Overwrite (Always points to latest)
-            referenceMap.it = id;
-            referenceMap.this = id;
-            referenceMap.that = id;
-            referenceMap.the_one = id;
+            // Singular Overwrite (Always points to latest single product)
+            // 'that' removed — too ambiguous as a discourse marker ("that aside", "that said")
+            // 'that_one' added — unambiguous product reference form
+            referenceMap.it       = id;
+            referenceMap.this     = id;
+            referenceMap.this_one = id;
+            referenceMap.that_one = id;
+            referenceMap.the_one  = id;
         }
 
         // --- ALWAYS: CUMULATIVE SLUGS ---

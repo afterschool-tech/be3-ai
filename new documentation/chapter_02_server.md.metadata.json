@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 2 of the be3_ai pipeline documentation. Covers every aspect of the /chat endpoint in server.js, including system commands, visual search, tool execution, stack continuation, Product Sentinel, response generation, sanitization, button aggregation, LLM suggestion extraction, and all HTTP endpoints.",
+  "updatedAt":  "2026-04-30T08:45:31.942967900Z"
+}

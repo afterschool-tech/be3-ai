@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 28 — Visual Search. Deep standalone chapter covering the complete visual search pipeline: image detection via req.body.image, full NLP pipeline bypass, the forced product.search tool with search_mode=IMAGE, why the sentinel is explicitly skipped for visual results, why the stack loop is suppressed, the DCO visual_search flag and its downstream effects (force-adding the visual_search segment, pruning grounding and availability), the visual_search DCO prompt segment and why it overrides standard grounding, image injection and display_images for visual results, and the UX flow the user experiences end-to-end.",
+  "updatedAt":  "2026-04-30T10:41:01.631532500Z"
+}

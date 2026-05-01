@@ -18,15 +18,21 @@ const {
 const { logDebug } = require('../../../utils/debugLogger');
 
 const AMBIGUOUS_REFERENCE_WORDS = new Set([
-    'it', 'this', 'that', 'then', 'the_one', 'the ones', 'ones',
-    'them', 'those', 'these'  // can be relative/demonstrative or temporal marker
+    'it', 'this', 'then', 'the_one', 'the ones', 'ones',
+    'them', 'those', 'these'  // 'that' removed — no longer a reference_map key;
+                              // bare 'that' is too often a discourse marker.
+                              // Use 'that one' (that_one) instead.
 ]);
 
 const POINTER_WORDS = new Set([
     ...AMBIGUOUS_REFERENCE_WORDS,
     'first', 'second', 'third', 'fourth', 'fifth', 'last',
     'the_first_one', 'the_second_one', 'the_third_one', 'the_last_one',
-    'all_of_them', 'both_of_them', 'the_ones_on_the_left', 'the_ones_on_the_right'
+    'all_of_them', 'both_of_them', 'the_ones_on_the_left', 'the_ones_on_the_right',
+    // 'that one' / 'that_one' — unambiguous product pointer form of 'that'
+    'that one', 'that_one',
+    // 'this one' / 'this_one' — explicit product pointer
+    'this one', 'this_one',
 ]);
 
 /**

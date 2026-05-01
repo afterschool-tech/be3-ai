@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 27 — Image Injection & WhatsApp UX. Deep standalone chapter covering why images are stripped from AI context but must be restored for the frontend, the recursive product traversal pattern, the suppress_images flag, the two-pass injection strategy (immediate after tool execution, then again after stack continuation), the extractImages function and display_images field, product card anatomy (id, ordinal, sponsor, three action buttons), the buildProductCards function, button ID engineering and why it encodes action type and product ID, helper text injection, the WhatsApp formatting constraints that drive the DCO formatting segment, and the full end-to-end image/card/button lifecycle.",
+  "updatedAt":  "2026-04-30T09:55:07.280715900Z"
+}

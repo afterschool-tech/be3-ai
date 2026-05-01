@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 12 of the be3_ai pipeline documentation. Covers the full entity extractor pipeline — Stage 0 token mask consumption, Stage 0b pre-detected entity ingestion, Stage 0c transformer attribute hints, vendor N-gram detection, action verb detection with facet target resolver, category N-gram scanning with tier-based winner selection, semantic kickstart fallback, regex patterns (order_id, price, quantity), residual word collection, and dynamic shape synthesis.",
+  "updatedAt":  "2026-04-30T09:02:52.056826200Z"
+}

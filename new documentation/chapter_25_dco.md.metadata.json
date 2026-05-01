@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 25 — DCO: Dynamic Context Orchestrator. Deep standalone chapter covering the design motivation (monolithic prompt problem), the composable segment registry, lazy intent config loading and caching, how each intent declares its own DCO config, all five multi-intent merging strategies in depth, the six-step assemblePrompt build pipeline, history windowing with summary injection, visual search pruning, the storeContext escalation levels, and how the token budget is managed per intent.",
+  "updatedAt":  "2026-04-30T09:51:53.360251800Z"
+}

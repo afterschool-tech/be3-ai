@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 22 — Product Sentinel: Relevance Gate. Deep single-chapter documentation covering the motivation (keyword search mismatch problem), the architecture (cheap 60-token Groq LLM call), the carefully scoped relevance and irrelevance rules in the prompt, the absolute vetting rule, what vector_query means and how re-search works, the fail-open safety design, and the future confidence-based activation plan. Includes code snippets.",
+  "updatedAt":  "2026-04-30T09:41:47.837330900Z"
+}

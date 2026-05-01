@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Complete reference table of all 31 L3 sub-intents mapped to their L2 intent group and all five stage gates (contextResolution, entityExtraction, PIE, categoryDetection, searchContext). Colour-coded analysis of which intents run resolution vs entity extraction, with notes on the fallback and vendor_only special gate values.",
+  "updatedAt":  "2026-04-30T10:52:47.567549200Z"
+}

@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapters 17 and 18 of the be3_ai pipeline documentation combined into one file. Chapter 17 covers the Parameter Normalizer — clause-to-attribute mapping (with composite key encoding), brand folding, vendor normalization, and the canonicalizeValue() function. Chapter 18 covers the Tool Mapper — paramMap translation, array expansion for multi-product calls, internal flag pass-through, default value injection, and the final tool call shape.",
+  "updatedAt":  "2026-04-30T09:19:58.242032200Z"
+}

@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 16 — Intent Porter & Safety Gating. Explains the design philosophy of post-scoring intent pivoting, the four porting rules in depth (degradation, Phase 4 consecutive cart, Stage2 resolution porting, reference/query map porting), all guard conditions and why each exists, the confirmation microstate pattern, the three-step product ID lookup chain, and the safety philosophy behind _require_confirmation.",
+  "updatedAt":  "2026-04-30T09:29:38.208819900Z"
+}

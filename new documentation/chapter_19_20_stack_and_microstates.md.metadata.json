@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapters 19 and 20 of the be3_ai pipeline documentation. Chapter 19 covers the Stack — deferred multi-intent sequential execution, the first-intent execute pattern, resumeIntentStack after microstate fulfillment, TTL expiration, and the ordinal re-resolution system. Chapter 20 covers the Microstate Runner — the full sandbox execution flow including termination, navigation tokens, response analysis, soft sandbox breakthrough, entity extraction, param building, fulfillment contract check, stack coordination on fulfillment, re-prompt and expiry handling, and all buildNewParams logic.",
+  "updatedAt":  "2026-04-30T09:22:16.505817500Z"
+}

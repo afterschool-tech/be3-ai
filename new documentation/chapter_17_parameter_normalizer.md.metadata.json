@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 17 — Parameter Normalizer. Covers the design rationale for post-extraction normalisation, the clause-to-attribute mapping pipeline in depth (three resolution levels: composite key encoding, raw attribute code fallback, global fallback), the facet target rebinding mechanism, the double mapping guard, brand folding, vendor normalisation with all its fallback paths, and the canonicalizeValue function's three matching strategies.",
+  "updatedAt":  "2026-04-30T09:30:44.838520200Z"
+}

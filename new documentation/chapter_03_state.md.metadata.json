@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 3 of the be3_ai pipeline documentation. Covers the full state management system including Redis/memory dual-layer storage, the complete DEFAULT_STATE schema, all state manager methods, microstate lifecycle, stack management, search context TTL, ambient topic tracking, and volatile user_query_map design.",
+  "updatedAt":  "2026-04-30T08:48:05.179216900Z"
+}

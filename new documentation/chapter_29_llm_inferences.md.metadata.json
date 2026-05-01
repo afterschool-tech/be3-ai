@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 29 — Every LLM Inference in the Pipeline. Deep standalone chapter cataloguing every LLM call made during a pipeline run: the AI service architecture (two providers: aiService/HuggingFace and hfAiService/Groq), self-healing model fallback, and a complete table and deep prose for each of the 8+ LLM inferences: IntelliSense pre-processor, legacy intent classifier, conversation summariser, conversational detector, suggestion acknowledgement checker, IntelliSense inside deterministic resolver, product sentinel, personality layer response, and the discovery tool's inference calls. For each: model, max tokens, temperature, retries, purpose, and when it fires.",
+  "updatedAt":  "2026-04-30T10:42:30.510348500Z"
+}

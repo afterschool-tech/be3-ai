@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 14 of the be3_ai pipeline documentation. Covers the Parameter Extractor — the hybrid deterministic+AI stage that fills intent parameters. Documents the full execution order: entity ingestion, transformer attribute hint collection and 4-step sanitization, safe token stripping, PIE (Product Intelligence Extractor) for product_name/products/product_segments, Intel Shield for deduplication, attribute key canonicalization, AI fallback prompt, and the final merge with priority rules.",
+  "updatedAt":  "2026-04-30T09:15:59.597591700Z"
+}

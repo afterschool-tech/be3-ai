@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 23 — Personality Layer. Deep single-chapter documentation covering the two-stage architecture (tool result summarisation then LLM generation), the summariseToolResultsForLLM function and why each tool gets bespoke summarisation logic, product truncation to MAX_PRODUCTS_FOR_LLM, the DCO (Dynamic Context Orchestrator) and its role in replacing the monolithic prompt, intent-aware DCO config loading, all composable prompt segments and when each fires, multi-intent DCO config merging strategies, history windowing, rescue context injection on failures, skipped action messaging, the visual_search pruning rule, and the Groq LLM call with token budget and fail-safe fallback.",
+  "updatedAt":  "2026-04-30T09:44:10.510957300Z"
+}

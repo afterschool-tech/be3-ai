@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 22 — The Tool Layer: All 11 Tools. Deep single-chapter documentation covering every tool module registered in TOOL_REGISTRY: product, cart (add/view/remove/updateQuantity), vendor, order, category, collection, attribute, discovery, conversation, and microstate tools. For each, explains what the tool does, the key logic decisions inside its handler, notable resolution strategies (e.g. resolveProduct, fuzzy cart item matching), state sync side effects, and what the tool returns. Includes code snippets.",
+  "updatedAt":  "2026-04-30T09:45:58.001255900Z"
+}

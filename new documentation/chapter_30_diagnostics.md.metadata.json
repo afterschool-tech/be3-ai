@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 30 — System Diagnostics: REPL, Metrics, Debug Logger. Deep standalone final chapter covering: the REPL integration (personalityLayer shared between server and REPL), dot-command system (.clearcache, .clearcart, .clearall) and what each does, the debug logger architecture (DEBUG env var, dedicated Redis separation from state Redis, startRun/logDebug design, fire-and-forget RPUSH, Redis list per run, master index, fallback to local files), the log retrieval API endpoints (/logs, /logs/:runId, DELETE), the metrics system (in-memory comparison between legacy and tool system, trackRequest, contextHits, getMetrics comparison output), the /health and /metrics endpoints, the debug state endpoints (/debug/state/:session_id), and the ai_steps.log file. Ends with a synthesis of how all diagnostics systems connect to create full pipeline observability.",
+  "updatedAt":  "2026-04-30T10:45:13.148009700Z"
+}

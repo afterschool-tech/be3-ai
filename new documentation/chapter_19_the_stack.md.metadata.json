@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 19 — The Stack: Deferred Multi-Intent Execution. Explains the fundamental problem of sequential dependency in multi-intent messages, why parallel execution is impossible, the first-intent execute pattern, the Redis-persisted stack structure, resumeIntentStack and how it advances the queue, the ordinal re-resolution problem and its solution, stack-scoped vs global search context, the UUID guard for stale partial resolutions, stack-microstate coordination, and TTL management.",
+  "updatedAt":  "2026-04-30T09:34:32.090901800Z"
+}

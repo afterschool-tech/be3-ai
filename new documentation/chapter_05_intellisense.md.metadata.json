@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Chapter 5 of the be3_ai pipeline documentation. Covers IntelliSense — the LLM pre-processor that splits, normalizes, classifies and vets user messages before the main pipeline runs. Includes the full SYSTEM_PROMPT, every vetting pass, short-circuit paths, few-shot examples, the model used, and graceful degradation.",
+  "updatedAt":  "2026-04-30T08:51:45.299204600Z"
+}

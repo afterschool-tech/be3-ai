@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 18 — Tool Mapper. Explains the architectural separation between intent vocabulary and tool vocabulary, the paramMap contract, how array vs string priority prevents overwriting resolved IDs, the expand mechanism for multi-product cart calls, internal flag pass-through and why it exists, default value injection, the safe expansion guard for microstates, and the complete shape of the final tool call object.",
+  "updatedAt":  "2026-04-30T09:33:16.302543Z"
+}

@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Deep rewrite of Chapter 20 — Microstates: Conversational Slot-Filling. Covers the design philosophy of the microstate system, the sandbox model (hard vs soft), the contract object and fulfillment mechanics, the full runner lifecycle (termination, navigation, breakthrough detection, response analysis, entity extraction, buildNewParams in depth, fulfillment execution, expiry), all feature types in depth (show_captured breadcrumbs, suggest_from_store with 3-button allocation, suggest_related_products with Phase A seed rotation and Phase B category-sibling traversal), re-prompt construction, validators and normalizers, and the confidence depletion system.",
+  "updatedAt":  "2026-04-30T09:36:33.793897300Z"
+}
