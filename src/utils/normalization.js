@@ -503,15 +503,35 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         let semanticBoost = 0;
         let semanticTier = 0;
         if (semanticContext?.available && semanticContext.entities?.category) {
-            // Match against category slug, ID, or label
-            const matchedKey = semanticContext.entities.category.find(
-                k => k === c.id || k === c.slug || k === c.label?.toLowerCase()
-            );
+            let matchedKey = null;
+            let score = 0.85;
+
+            // NEW: Support object mapping (Transformer v2) vs array (Legacy)
+            if (Array.isArray(semanticContext.entities.category)) {
+                // Legay Array or Reshaped Array [{key, ...}]
+                matchedKey = semanticContext.entities.category.find(k => {
+                    const key = (typeof k === 'object') ? (k.key || k.id) : k;
+                    return key === c.id || key === c.slug || key === c.label?.toLowerCase();
+                });
+                if (typeof matchedKey === 'object') {
+                    score = matchedKey.score || 0.85;
+                    matchedKey = matchedKey.key || matchedKey.id;
+                }
+            } else if (typeof semanticContext.entities.category === 'object') {
+                // Transformer Raw Object { [key]: [matchedWords] }
+                const entries = Object.entries(semanticContext.entities.category);
+                const match = entries.find(([key]) => 
+                    key === c.id || key === c.slug || key === c.label?.toLowerCase()
+                );
+                if (match) {
+                    matchedKey = match[0];
+                }
+            }
 
             if (matchedKey) {
                 // Look up confidence score in the map (keys are category:key)
                 const confKey = `category:${matchedKey}`;
-                const score = semanticContext.confidence?.[confKey] || 0.85;
+                score = score || semanticContext.confidence?.[confKey] || 0.85;
 
                 // Scale semantic score into pipeline points (multiplier = 50)
                 semanticBoost = score * 50;

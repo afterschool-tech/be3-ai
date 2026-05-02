@@ -290,7 +290,10 @@ function calculatePipelineConfidence(pd) {
         }
 
         // C3. Transformer ↔ Entity Extractor category agreement
-        const transformerCategories = [...(batchedSemanticContext?.results?.[0]?.entities?.category || [])];
+        const rawCats = batchedSemanticContext?.results?.[0]?.entities?.category;
+        const transformerCategories = Array.isArray(rawCats) 
+            ? [...rawCats] 
+            : (rawCats && typeof rawCats === 'object' ? Object.keys(rawCats) : []);
         const transformerConf = batchedSemanticContext?.results?.[0]?.confidence || {};
 
         if (categoryEntity && transformerCategories.length > 0) {

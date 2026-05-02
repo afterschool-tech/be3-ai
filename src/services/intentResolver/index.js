@@ -850,7 +850,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 status: 'OK',
                 results: extractResults.map((r, idx) => ({
                     statement: textsToAnalyze[idx],
-                    entityKeys: Object.keys(r.entities || {}),
+                    entities: r.entities || {},
                     confidence: r.confidence || {}
                 }))
             });
@@ -897,6 +897,22 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }));
         }
 
+        // vendor: { "apple": ["apple"] }
+        if (entities.vendor && typeof entities.vendor === 'object' && !Array.isArray(entities.vendor)) {
+            shaped.vendor = Object.entries(entities.vendor).flatMap(([key, words]) => 
+                words.map(matchedWord => ({
+                    key,
+                    matchedWord,
+                    score: confidence[`vendor:${key}`] || 0
+                }))
+            );
+        } else if (Array.isArray(entities.vendor)) {
+            shaped.vendor = entities.vendor.map(key => ({
+                key,
+                score: confidence[`vendor:${key}`] || 0
+            }));
+        }
+
         // attribute: { brand: ["iphone"] } → { brand: [{ value: "iphone", score: 0.84 }] }
         if (entities.attribute && typeof entities.attribute === 'object') {
             shaped.attribute = {};
@@ -926,7 +942,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             : null;
 
         // Resolve clauses/brands for THIS statement only
-        const { globalEntities, categoryHints } = resolveClausesGlobal(statement.text, [], semContext);
+        const { globalEntities, categoryHints } = resolveClausesGlobal(statement.text, [], semContext, statement.posTagMap);
         statementLevelEntities[idx] = globalEntities;
         statementLevelCategoryHints[idx] = categoryHints || [];
 
@@ -1239,7 +1255,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 ? { ...batchedSemanticContext.results[i], available: true }
                 : localSemanticContext;
 
-            extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, statementLevelCategoryHints[i] || [], entitySemanticContext);
+            extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, statementLevelCategoryHints[i] || [], entitySemanticContext, statement.posTagMap);
             logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
                 _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
                 text: cleanedText,

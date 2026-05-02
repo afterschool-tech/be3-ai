@@ -2,6 +2,7 @@ const path = require('path');
 const SemanticMatcher = require('../services/intentResolver/semanticLab/utils/SemanticMatcher');
 const { CLAUSES } = require('../context/clauses');
 const { logDebug } = require('./debugLogger');
+const { isDisqualified, phrasePassesPosGate, buildClauseWhitelist } = require('../services/intentResolver/pipeline/posAnalyzer');
 
 /**
  * Global Semantic Pre-pass (Stage 3)
@@ -92,7 +93,7 @@ const FILLERS = new Set([
  * @returns {Object} { globalEntities: [...], categoryHints: string[] }
  *   Each entity: { type, value, clauseId, clauseLabel, attribute, source, globalWordIndex, semanticScore }
  */
-function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
+function resolveClausesGlobal(text, resolutions = [], semanticContext = null, posTagMap = null) {
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const globalEntities = [];
     const consumed = new Set();
@@ -133,6 +134,21 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
             // Check brands first (higher priority)
             const brandMatch = BRAND_LOOKUP.get(phrase);
             if (brandMatch) {
+                // ── POS Gate ──
+                // A brand name must have at least one noun-like or adjective-like word.
+                // If ALL words are demonstrably verbs/adverbs, skip (e.g. "going" mistyped as brand).
+                if (posTagMap) {
+                    const clauseWl = buildClauseWhitelist();
+                    const phraseWords = words.slice(i, i + size);
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, clauseWl)) {
+                        logDebug('PREPASS:BRAND_POS_BLOCKED', {
+                            _desc: 'Brand match rejected by POS gate — all words are disqualifying POS',
+                            phrase,
+                            clauseId: brandMatch.clauseId
+                        });
+                        continue;
+                    }
+                }
                 globalEntities.push({
                     type: 'brand',
                     value: brandMatch.label,
@@ -151,6 +167,22 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
             // Check non-brand clauses
             const clauseMatch = CLAUSE_LOOKUP.get(phrase);
             if (clauseMatch) {
+                // ── POS Gate ──
+                // A clause word must be adjective-like or noun-like.
+                // Pure verbs/adverbs ("looking", "really") are blocked.
+                if (posTagMap) {
+                    const clauseWl = buildClauseWhitelist();
+                    const phraseWords = words.slice(i, i + size);
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, clauseWl)) {
+                        logDebug('PREPASS:CLAUSE_POS_BLOCKED', {
+                            _desc: 'Clause match rejected by POS gate — all words are disqualifying POS',
+                            phrase,
+                            clauseId: clauseMatch.clauseId,
+                            attribute: clauseMatch.attribute
+                        });
+                        continue;
+                    }
+                }
                 globalEntities.push({
                     type: 'clause',
                     value: clauseMatch.word,
@@ -216,6 +248,20 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
                     );
 
                     if (wordMatch) {
+                        // ── POS Gate on semantic anchor word ──
+                        // The word that triggered the semantic match must itself be a valid POS.
+                        // This prevents "looking" anchoring an affordable_price clause, etc.
+                        if (posTagMap) {
+                            const clauseWl = buildClauseWhitelist();
+                            if (isDisqualified(words[i], posTagMap, clauseWl)) {
+                                logDebug('PREPASS:SEMANTIC_ANCHOR_POS_BLOCKED', {
+                                    _desc: 'Semantic anchor word rejected by POS gate',
+                                    word: words[i],
+                                    clauseId: sm.id
+                                });
+                                break;
+                            }
+                        }
                         const entityType = clauseDef.attribute === 'brand' ? 'brand' : 'clause';
                         globalEntities.push({
                             type: entityType,
@@ -279,6 +325,20 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
                 // Transformer-only discovery: inject as new entity
                 const clauseDef = CLAUSES[key];
                 if (clauseDef) {
+                    // ── POS Gate on Transformer Match ──
+                    if (posTagMap && semClause.matchedWord) {
+                        const clauseWl = buildClauseWhitelist();
+                        const phraseWords = semClause.matchedWord.split(/\s+/);
+                        if (!phrasePassesPosGate(phraseWords, posTagMap, clauseWl)) {
+                            logDebug('PREPASS:TRANSFORMER_CLAUSE_POS_BLOCKED', {
+                                _desc: 'Transformer clause rejected by POS gate',
+                                matchedWord: semClause.matchedWord,
+                                clauseId: key
+                            });
+                            continue;
+                        }
+                    }
+
                     const entityType = clauseDef.attribute === 'brand' ? 'brand' : 'clause';
                     globalEntities.push({
                         type: entityType,
@@ -336,6 +396,28 @@ function resolveClausesGlobal(text, resolutions = [], semanticContext = null) {
     if (semanticContext?.available && semanticContext.entities?.category) {
         for (const semCat of semanticContext.entities.category) {
             const catKey = semCat.key || semCat.id;
+            
+            // ── POS Gate on Transformer Category Hint ──
+            if (posTagMap && semCat.matchedWord) {
+                const clauseWl = buildClauseWhitelist(); // Actually we need storeWhitelist for categories. 
+                // However, semanticClauseResolver doesn't have storeContext. 
+                // We'll skip the whitelist for hints, or use isDisqualified which is safer, but wait.
+                // Let's just use a loose POS check since hints only boost scores.
+                // Actually, I can build a store whitelist here if I have storeContext, but I don't.
+                // It's okay, let's just do a basic check or skip POS gate for hints.
+                // Let me use phrasePassesPosGate with a generic whitelist.
+                // Wait, if it's a category, we shouldn't block it if it's just a noun.
+                const phraseWords = semCat.matchedWord.split(/\s+/);
+                if (!phrasePassesPosGate(phraseWords, posTagMap, new Set())) {
+                    logDebug('PREPASS:TRANSFORMER_CATHINT_POS_BLOCKED', {
+                        _desc: 'Transformer category hint rejected by POS gate',
+                        matchedWord: semCat.matchedWord,
+                        catKey
+                    });
+                    continue;
+                }
+            }
+
             if (catKey) categoryHints.add(catKey);
         }
     }

@@ -21,6 +21,7 @@ const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../util
 const { resolveFacetAttribute } = require('../../../utils/semanticFacetResolver');
 const { levenshtein } = require('../utils/levenshtein');
 const { logDebug } = require('../../../utils/debugLogger');
+const { phrasePassesPosGate, buildStoreWhitelist } = require('./posAnalyzer');
 
 // ── Action verb patterns (not intent-specific — these are universal action signals) ──
 // Each verb maps to a SPECIFIC action category that feeds into ACTION_TO_INTENTS.
@@ -111,10 +112,15 @@ const FILLERS = new Set([
  * @param {Object|null} semanticContext - Transformer context from Stage 0.5 (null if transformer unavailable)
  * @returns {Object} { entities: Array, residualWords: Array, categoryHints: Array, shape: string }
  */
-function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = [], preDetectedEntities = [], categoryHints = [], semanticContext = null) {
+function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker = null, resolutions = [], preDetectedEntities = [], categoryHints = [], semanticContext = null, posTagMap = null) {
     const entities = [];
     const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const consumed = new Set(); // Track consumed word indices
+
+    // ── Build store whitelist for POS gate (once per call) ──
+    // Includes all CATEGORY label/slug tokens + VENDOR name tokens + clause/brand keys.
+    // Any word in this set bypasses POS gating entirely.
+    const storeWhitelist = posTagMap ? buildStoreWhitelist(storeContext) : null;
 
     // ── Stage 0: Token Mask Consumption ──
     // Immediately consume collapsed product tokens injected by contextResolver.
@@ -281,6 +287,20 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             const hintValues = [];
             for (const attrValue of attrValues) {
                 const attrValueLower = attrValue.toLowerCase();
+
+                // ── POS Gate on Transformer Attribute ──
+                if (posTagMap) {
+                    const phraseWords = attrValueLower.split(/\s+/);
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, storeWhitelist)) {
+                        logDebug('ENTITY:TRANSFORMER_ATTR_POS_BLOCKED', {
+                            _desc: 'Transformer attribute rejected by POS gate',
+                            attribute: attrType,
+                            value: attrValue
+                        });
+                        continue;
+                    }
+                }
+
                 const wordIdx = words.findIndex(w => w === attrValueLower);
 
                 entities.push({
@@ -324,6 +344,21 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 if (consumed.has(i)) continue;
                 const phrase = words.slice(i, i + size).join(' ');
 
+                // ── POS Gate (Vendor) ──
+                // Vendor names are nouns/proper nouns. Skip phrase if ALL words
+                // are demonstrably wrong POS (e.g. pure verbs/adverbs).
+                // Store whitelist covers vendor names that compromise may tag oddly.
+                if (posTagMap) {
+                    const phraseWords = words.slice(i, i + size);
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, storeWhitelist)) {
+                        logDebug('ENTITY:VENDOR_POS_BLOCKED', {
+                            _desc: 'Vendor N-gram rejected by POS gate — all words are disqualifying POS',
+                            phrase
+                        });
+                        continue;
+                    }
+                }
+
                 // Exact match
                 let match = vendorNames.find(v => v.name === phrase || v.tag?.toLowerCase() === phrase);
 
@@ -352,8 +387,26 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
 
         // --- 1b. Semantic Vendor Integration (Transformer Discovery) ---
         if (!entities.some(e => e.type === 'vendor') && semanticContext?.available && semanticContext.entities?.vendor) {
-            const semVendors = semanticContext.entities.vendor;
-            for (const semVendorKey of semVendors) {
+            // Support both old array format and new object format for backward compatibility
+            const semVendorsObj = Array.isArray(semanticContext.entities.vendor) 
+                ? Object.fromEntries(semanticContext.entities.vendor.map(k => [k, []])) 
+                : semanticContext.entities.vendor;
+
+            for (const [semVendorKey, matchedWords] of Object.entries(semVendorsObj)) {
+                // ── POS Gate on Transformer Vendor ──
+                if (posTagMap && matchedWords && matchedWords.length > 0) {
+                    const matchedWord = matchedWords[0];
+                    const phraseWords = matchedWord.split(/\s+/);
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, storeWhitelist)) {
+                        logDebug('ENTITY:TRANSFORMER_VENDOR_POS_BLOCKED', {
+                            _desc: 'Transformer vendor rejected by POS gate',
+                            vendor: semVendorKey,
+                            matchedWord
+                        });
+                        continue;
+                    }
+                }
+
                 // Find vendor by ID or slug/key matching business_name
                 const vendorObj = Object.values(storeContext.VENDORS).find(v =>
                     v.id === semVendorKey || v.business_name.toLowerCase() === semVendorKey?.toLowerCase()
@@ -461,6 +514,20 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 const phrase = phraseWords.join(' ');
                 const phraseStartIndex = wordPositions[i] >= 0 ? wordPositions[i] : -1;
                 if (isOrdinalOrReferencePhrase(phrase, textLower, phraseStartIndex)) continue;
+
+                // ── POS Gate (Category N-gram) ──
+                // Categories are identified by nouns and noun phrases.
+                // Skip phrase if ALL words are demonstrably wrong POS (verbs, adverbs).
+                // Store whitelist covers category terms that compromise may tag ambiguously.
+                if (posTagMap) {
+                    if (!phrasePassesPosGate(phraseWords, posTagMap, storeWhitelist)) {
+                        logDebug('ENTITY:CATEGORY_NGRAM_POS_BLOCKED', {
+                            _desc: 'Category N-gram rejected by POS gate — all words are disqualifying POS',
+                            phrase
+                        });
+                        continue;
+                    }
+                }
 
                 const catRes = normalizeCategory(phrase, storeContext.CATEGORIES, false, { debug: false, topK: 5, returnMeta: true, initiator: 'entityExtractor', semanticContext, categoryHints });
                 const catId = catRes && typeof catRes === 'object' ? catRes.id : catRes;

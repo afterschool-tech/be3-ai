@@ -8,6 +8,7 @@
 
 const conjunctions = require('../config/conjunctions');
 const negations = require('../config/negations');
+const posAnalyzer = require('./posAnalyzer');
 const conjunctionGuards = require('../config/conjunctionGuards');
 
 /**
@@ -155,12 +156,20 @@ function preprocess(text, manualStatements = []) {
     const statements = filteredStatements.map(stmt => {
         const stmtText = typeof stmt === 'object' ? stmt.text : stmt;
         const { negated, cleanText } = detectNegation(stmtText);
-        
+
+        // ── POS Tagging (Stage 3 — once per statement) ──
+        // Tag the cleaned statement text and attach as a word-keyed Map.
+        // Both the prepass (Stage 3a) and entity extractor (Stage 4a) share this
+        // single Map for POS-gate lookups — no index-alignment issues since
+        // lookup is by word value, not position.
+        const posTagMap = posAnalyzer.tagWords(cleanText);
+
         // Return object with processed text and any metadata from the original stmt object
         return { 
             ...(typeof stmt === 'object' ? stmt : {}),
             text: cleanText, 
-            negated 
+            negated,
+            posTagMap
         };
     });
 

@@ -1,0 +1,48 @@
+I want to move away from the entire product.search fallback heusterics into something more straight-forward, structured and maybe more effective
+
+1. i'll need to create a Be3-ai module in my backend project, this  module would handle things specific to the be3_ai that current modules cant handle yet, since we wont want to change the current modules bcs of our ai, this module would be the bridge, now it'll be a single module and it'll carry anything we would be implementing righ tnow and maybein the future so it must be well structured enough to still isolate each functions/feature we would be implementing, all within itself
+
+currently we have series of rules guiding the fallbacks, dropping queries, dropping category, restoring a lost word, etc
+it works currently, but when it doesn't its hard to track, and even though it works now it doesn't cover all cases, so I have a blueprint for somethingthat might be better but it needs the acive involvedmnt of the be3-ai module
+
+First we implement a bloom filter storewide(lives in redis) for all searchables (products,pages,collections,categories,all possible clause branded search pages (even with zero inventory), it will be token based meaning "Dell XPS 13 2-in-1" will be passed as "dell", "XPS", "13", "2-in-1"
+then we create bloom filter for every category also (just for products)
+we hook it up in necessary places such as our Event Bus, make it listen to all important events so changes can always pass through it, once we are done with this feature (we will carefully implememt it, test it to ensure it works, then we begin to implement our feature, and this is it
+
+
+entity Extraction is mostly only subscribed to by intents that are actually doing product searches, so instead of waiting all the to get to the tool before kickstarting anything, we start preparing for the search immediately after we have discovered the category, and its a standard product.search intent (i.e its non-vector). we can classify the search into 2
+
+1. QUERIED, i.e it has product names or products array or the query param is present
+2. NON-QUERIED - no residual words left, no product name, its characterized by being mostly category_kickstart or sometimes the category scanner N-Gram is the one that took its only remaining token
+
+
+Lets talk about QUERIED: most times in QUERIED search the category scanner runs and atleast one word gets consumed (we keep this word somewhere), and most times also we have multiple contenders for the winning position, we keep the winner and all the remaining candidates its tier as we would be using this list later, let the winner be distinct as it becomes a apint of reference. Also take note of category formed with "partial" word as we currently do
+
+First you take the query/product name etc and do a GLOBAL BLOOM FILTERING[GBF] (the storewide bloom filter I talked about), if even a single token makes it, we stop and move to the next step, if all fails, we pass a flag to the product search tool that precison search already failed and it'll only be doing it fallback Vector search sequence.
+
+STEP 2: If we pass GBF, we then run another Bloom check on the winning category and the remaining contenders, disqualify those that failed the Bloom check, including the winning category, if atleast one passes(we select in this order, the current winner or the highest scoring one incase the winner got disqualified), the we will sort all the remaining candidates in this order: winner/new winner followed by its siblings, its parent, then others then we move on
+
+STEP 3: we will end up with one of the following: A single Category, No category or multiple categories, if we have a single category quickly do this check, was it a partial matched category or not, it partial matched mark it, if it isn't then it is a precise category, then we move on
+
+Step 4: Now step 4 is where our be3-ai module comes in, we create our search interface service as the first feature in the be3-ai module and what it does is that it executes searches for us until we get a desired result then it sends the result and all necessary info, our search would go through 4 stages
+
+
+For all types: Single Category/No Category/Multiple Categories, the stages are all the same and it goes like this:
+
+Stage 1: search with: query/category(if present)/attributes(other attributes - if present)/vendor(if present), if any one of these is missing skip stage 1, except No Category type that doesn't have a category - These are the only valid products believed to satisfy the user's request, if this never ran the next one becomes the only valid
+
+Stage 2: query/category/attributes - anyone missing - skip, first to run - is the only valid one
+Stage 3: query/category/vendor - anyone missing - skip, first to run - is the only valid one
+Stage 4: query/category - if first to run, it is valid
+Any product that comes form an invalid run, is sent as suggested products
+Stage 1 - Exact matches, stage 2 -  if invalid, is an exact match but from other vendors - still suggestion except its the first to run, stage - 2 - if invalid, Not an exact match, just suggestions except is first to run, stage 4 - if invalid are related products, except first to run
+
+
+Now the type of search changes the behaviour a bit - for precise categories, nothing changes, for no-categories: nothing changes just that no category, for partial matched category: it runs a loop on every stage [run the search with the category/then drops the category, restore the partial word and run the search again per stage], for multiple categories, it runs the search across all the categories per stages. the first stage or step to return products is the circuit breaker, the products are returned and the exavt details like valid, invalid etc
+
+Last thing, if price filter is present, each search is run without the price filter, the first one to return products is then run again with the price filter, if products remain it returns, if it doesn't it still returns but states it clearly that the price filter failed i.e nothing below your budget or within your budget
+
+all these 4 stages runs at the backend by the search interface service (no back and forth API calls)
+If all 4 stages fail, we return and we activate the vector fall back sequence
+
+for NON-QUERIED SEARCH (it doesn't fallback to VECTOR), it goes like this (the current inventory check logic in my pipeline would be removed and deffered till this point, once we have non queried check, we do Inventory Check (IC), if it fails, it breaks and return that we cant find the products, then it classifies the category into (PRECISE or KICKSTART)/(Partial match) and they also run the exact stage 1-4 the exact same way, without the "query" param, Partial Match runs its loop, PRECISE and KICKSTART run normally
