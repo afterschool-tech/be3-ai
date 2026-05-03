@@ -235,10 +235,18 @@ const productTools = {
             const bloomTokens = (query || '').toLowerCase().split(/\s+/).filter(t => t.length > 0);
             let bloomResult = null;
 
+            // Get candidate categories from the pipeline (same-tier competitors from entityExtractor)
+            let categoryCandidates = params._category_candidates || [];
+            if (categoryCandidates.length === 0 && catId) {
+                // Legacy fallback: single category from params.category
+                categoryCandidates = [{ id: catId, slug: cat?.slug, label: cat?.label, isWinner: true, isPartial: is_partial_match || false }];
+            }
+
             if (bloomTokens.length > 0) {
                 try {
-                    const categoryIds = catId ? [catId] : [];
-                    bloomResult = await bloomClient.checkBloom(bloomTokens, categoryIds);
+                    // Collect ALL candidate category IDs for Bloom checking
+                    const allCategoryIds = categoryCandidates.map(c => c.id).filter(Boolean);
+                    bloomResult = await bloomClient.checkBloom(bloomTokens, allCategoryIds);
 
                     if (bloomResult.global && bloomResult.global.source !== 'fail-open') {
                         if (!bloomResult.global.passed) {
@@ -253,6 +261,28 @@ const productTools = {
                                 hits: bloomResult.global.hits,
                                 misses: bloomResult.global.misses
                             });
+
+                            // ── Per-category Bloom filtering ──
+                            // Disqualify categories whose Bloom filter doesn't contain query tokens.
+                            // Winner is kept regardless (we never disqualify the winner).
+                            if (categoryCandidates.length > 0 && bloomResult.categories) {
+                                const beforeCount = categoryCandidates.length;
+                                categoryCandidates = categoryCandidates.filter(c => {
+                                    if (c.isWinner) return true; // Winner always survives
+                                    const catBloom = bloomResult.categories?.[c.id];
+                                    if (!catBloom || catBloom.source === 'fail-open') return true; // No data = keep
+                                    return catBloom.passed;
+                                });
+
+                                if (categoryCandidates.length < beforeCount) {
+                                    logDebug('BLOOM:CATEGORY_FILTER', {
+                                        _desc: 'Per-category Bloom filtering — disqualified categories without matching tokens',
+                                        before: beforeCount,
+                                        after: categoryCandidates.length,
+                                        disqualified: beforeCount - categoryCandidates.length
+                                    });
+                                }
+                            }
                         }
                     }
                 } catch (bloomErr) {
@@ -260,14 +290,86 @@ const productTools = {
                 }
             }
 
+            // ── Parent-child dedup on Bloom survivors (winner immune) ──
+            if (categoryCandidates.length > 1 && CATEGORIES) {
+                const candidateIds = new Set(categoryCandidates.map(c => c.id));
+                categoryCandidates = categoryCandidates.filter(c => {
+                    if (c.isWinner) return true; // Winner always immune
+                    const catData = Object.values(CATEGORIES).find(sc => sc.id === c.id);
+                    if (catData && catData.parent_id && candidateIds.has(catData.parent_id)) {
+                        logDebug('BLOOM:DEDUP_CHILD_REMOVED', {
+                            _desc: 'Post-Bloom dedup — child removed (parent in candidate list, winner immune)',
+                            child: c.label,
+                            childId: c.id,
+                            parentId: catData.parent_id
+                        });
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            // ── Sort survivors: winner → siblings → parent → others ──
+            if (categoryCandidates.length > 1 && CATEGORIES) {
+                const winnerCat = categoryCandidates.find(c => c.isWinner);
+                const winnerData = winnerCat ? Object.values(CATEGORIES).find(sc => sc.id === winnerCat.id) : null;
+                const winnerParentId = winnerData?.parent_id || null;
+
+                categoryCandidates.sort((a, b) => {
+                    if (a.isWinner) return -1;
+                    if (b.isWinner) return 1;
+
+                    const aData = Object.values(CATEGORIES).find(sc => sc.id === a.id);
+                    const bData = Object.values(CATEGORIES).find(sc => sc.id === b.id);
+
+                    const aIsSibling = winnerParentId && aData?.parent_id === winnerParentId ? 1 : 0;
+                    const bIsSibling = winnerParentId && bData?.parent_id === winnerParentId ? 1 : 0;
+                    if (aIsSibling !== bIsSibling) return bIsSibling - aIsSibling;
+
+                    const aIsParent = a.id === winnerParentId ? 1 : 0;
+                    const bIsParent = b.id === winnerParentId ? 1 : 0;
+                    if (aIsParent !== bIsParent) return bIsParent - aIsParent;
+
+                    return 0; // Others stay in original order
+                });
+            }
+
+            // ── Determine _category_type from survivor count ──
+            let finalCategoryType = 'none';
+            let finalCatId = null;
+            if (categoryCandidates.length === 1) {
+                finalCatId = categoryCandidates[0].id;
+                if (categoryCandidates[0].isPartial) finalCategoryType = 'single'; // partial is handled via isPartial flag
+                else finalCategoryType = 'single';
+            } else if (categoryCandidates.length > 1) {
+                finalCatId = categoryCandidates[0].id; // Winner is first
+                finalCategoryType = 'multiple';
+            }
+
+            // Update categoryType label for logging
+            if (finalCategoryType === 'multiple') {
+                categoryType_label = 'multiple';
+            } else if (finalCatId) {
+                if (is_partial_match) categoryType_label = 'partial';
+                else if (is_kickstart) categoryType_label = 'kickstart';
+                else categoryType_label = 'precision';
+            }
+
+            logDebug('TOOL:CATEGORY_CANDIDATES_FINAL', {
+                _desc: 'Final category candidates after Bloom + dedup + sort',
+                categoryType: categoryType_label,
+                candidateCount: categoryCandidates.length,
+                candidates: categoryCandidates.map(c => ({ id: c.id, label: c.label, isWinner: c.isWinner }))
+            });
+
             // ── Step 4: Structured Search via SearchInterface ──
             // Build the search spec from pipeline params and delegate to the backend.
             const searchSpec = buildSearchSpec({
                 ...params,
                 query,
-                category: catId,
-                _category_candidates: catId ? [{ id: catId, slug: cat?.slug, label: cat?.label, isWinner: true, isPartial: is_partial_match || false }] : [],
-                _category_type: catId ? 'single' : 'none',
+                category: finalCatId,
+                _category_candidates: categoryCandidates,
+                _category_type: finalCategoryType,
                 attributes: safeAttributes,
                 limit,
                 page,

@@ -776,9 +776,21 @@ async function extractParameters(text, candidates, aiQueryFn, storeContext = {},
 
     if (entities && entities.length > 0) {
         entities.forEach(ent => {
-            if (ent.type === 'category' && !baseFromEntities.category) {
-                baseFromEntities.category = ent.id || ent.categoryId || ent.value;
-                baseFromEntities._category_words = ent.value;
+            if (ent.type === 'category' && !ent._dedup_removed) {
+                if (!baseFromEntities.category) {
+                    baseFromEntities.category = ent.id || ent.categoryId || ent.value;
+                    baseFromEntities._category_words = ent.value;
+                }
+                // Collect ALL surviving category entities for multi-category search
+                if (!baseFromEntities._category_candidates) baseFromEntities._category_candidates = [];
+                baseFromEntities._category_candidates.push({
+                    id: ent.id,
+                    slug: ent.matchMeta?.slug || null,
+                    label: ent.matchMeta?.label || null,
+                    isWinner: !!ent.isWinner,
+                    isPartial: !!ent.is_partial_match,
+                    source: ent.source
+                });
             }
             // Semantic category kickstart marker:
             // entityExtractor marks category with source='SEMANTIC_KICKSTART' when determinism had no free words.

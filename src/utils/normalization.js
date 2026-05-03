@@ -716,9 +716,18 @@ function normalizeCategory(cat, context = null, exactMatchOnly = false, options 
         lexScore: scored[0].lexScore,
         depth: scored[0].depth,
         match: scored[0].match,
+        label: scored[0].label,
+        slug: scored[0].slug,
         bonuses: scored[0].bonuses,
         usedWords: scored[0].wordMatches.map(m => m.word),
-        _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
+        _tierRejects: tierRejects.length > 0 ? tierRejects : undefined,
+        // Same-tier competitors: categories at the same lexTier as the winner.
+        // These are genuinely ambiguous candidates for Bloom filtering downstream.
+        _sameTierCompetitors: scored.length > 1
+            ? scored.slice(1)
+                .filter(c => c.lexTier === scored[0].lexTier)
+                .map(c => ({ id: c.id, label: c.label, slug: c.slug, score: c.score, lexTier: c.lexTier, depth: c.depth }))
+            : undefined
     });
 }
 

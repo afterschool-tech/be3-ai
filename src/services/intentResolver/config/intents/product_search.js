@@ -35,7 +35,8 @@ module.exports = {
         attributes: { type: 'dict', required: false, description: 'Dynamic attribute filters' },
         allow_deep_fallbacks: { type: 'boolean', required: false, default: false, description: 'Internal: relax searches if results are empty' },
         is_partial_match: { type: 'boolean', required: false },
-        _category_words: { type: 'string', required: false, description: 'Internal: raw text used to match category' }
+        _category_words: { type: 'string', required: false, description: 'Internal: raw text used to match category' },
+        _category_candidates: { type: 'list', required: false, description: 'Internal: all surviving same-tier category candidates' }
     },
 
     slotTags: ['[clause]', '[product]', '[category]', '[price]'],
@@ -56,7 +57,8 @@ module.exports = {
         attributes: 'attributes',
         clause_words: 'clause_words',
         allow_deep_fallbacks: 'allow_deep_fallbacks',
-        _category_words: '_category_words'
+        _category_words: '_category_words',
+        _category_candidates: '_category_candidates'
     },
 
     minProducts: 1,

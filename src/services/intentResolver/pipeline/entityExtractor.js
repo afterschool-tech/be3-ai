@@ -220,9 +220,24 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
 
             // Only skip if the VERY FIRST word is already consumed
             if (!isPhantom && consumed.has(localIdx)) {
-                // For resolved_product: even if entity is skipped, shield ALL its word indices
-                // from the category scanner. We don't want product words leaking into N-gram scan.
+                // For resolved_product: push the entity even if first word overlaps a clause.
+                // The product is valuable context for PIE even when words partially overlap.
+                // Only consume non-overlapping indices to avoid double-consumption.
                 if (preEnt.type === 'resolved_product') {
+                    entities.push({
+                        type: preEnt.type,
+                        value: preEnt.value,
+                        clauseId: preEnt.clauseId,
+                        clauseLabel: preEnt.clauseLabel,
+                        attribute: preEnt.attribute,
+                        source: preEnt.source,
+                        similarity: preEnt.similarity,
+                        wordIndices: indices
+                    });
+                    // Only consume indices not already consumed (don't double-consume clause words)
+                    indices.forEach(idx => consumed.add(idx));
+                } else {
+                    // Non-product entities: skip but shield indices from category scanner
                     indices.forEach(idx => consumed.add(idx));
                 }
                 continue;
@@ -624,6 +639,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     matchMeta: catMeta,
                     quality: 0.35,
                     is_kickstart: true,
+                    isWinner: true,
                     wordIndices: [-1],
                     consumedWordIndices: [],
                     _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
@@ -638,6 +654,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     value: phrase,
                     id: catId,
                     is_partial_match: true,
+                    isWinner: true,
                     source: 'storeContext.CATEGORIES_PARTIAL',
                     matchMeta: catMeta,
                     quality: categoryQuality,
@@ -656,6 +673,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     type: 'category',
                     value: phrase,
                     id: catId,
+                    isWinner: true,
                     source: 'storeContext.CATEGORIES',
                     matchMeta: catMeta,
                     quality: categoryQuality,
@@ -669,13 +687,40 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 }
             }
 
+            // ── Push Same-Tier Competitors ──
+            // These are categories that matched at the same lexTier as the winner.
+            // They're genuinely ambiguous and need Bloom filtering downstream.
+            if (catMeta?._sameTierCompetitors && Array.isArray(catMeta._sameTierCompetitors)) {
+                for (const comp of catMeta._sameTierCompetitors) {
+                    entities.push({
+                        type: 'category',
+                        value: comp.slug || comp.label || comp.id,
+                        id: comp.id,
+                        source: 'SAME_TIER_COMPETITOR',
+                        matchMeta: comp,
+                        quality: categoryQuality * 0.9,
+                        isWinner: false,
+                        wordIndices: matchedWordIndices,
+                        consumedWordIndices: []
+                    });
+                }
+
+                logDebug('ENTITY:SAME_TIER_COMPETITORS', {
+                    _desc: 'Same-tier category competitors pushed — will be filtered by Bloom downstream',
+                    winnerSlug: catMeta?.slug || phrase,
+                    competitorCount: catMeta._sameTierCompetitors.length,
+                    competitors: catMeta._sameTierCompetitors.map(c => ({ id: c.id, label: c.label, score: c.score }))
+                });
+            }
+
             logDebug('ENTITY:WINNER_SELECTION', {
                 _desc: 'Category scan complete — highest scoring candidate selected from full phrase',
                 winner: phrase,
                 id: catId,
                 tier,
                 score: bestCandidate.score.toFixed(2),
-                lexScore: catMeta?.lexScore || 0
+                lexScore: catMeta?.lexScore || 0,
+                sameTierCompetitors: catMeta?._sameTierCompetitors?.length || 0
             });
 
             // ── Winner Detail Trace ──
@@ -690,13 +735,19 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         // semantic takes over entirely. The transformer's top category slug is resolved
         // directly from storeContext.CATEGORIES — no normalizeCategory needed since
         // determinism can't contribute anyway.
-        if (!entities.some(e => e.type === 'category') && semanticContext?.available && semanticContext.entities?.category?.length > 0) {
+        if (!entities.some(e => e.type === 'category') && semanticContext?.available && semanticContext.entities?.category) {
+            // Support both array format ['slug1','slug2'] and object format { slug1: [...], slug2: [...] }
+            const semCategoryKeys = Array.isArray(semanticContext.entities.category)
+                ? semanticContext.entities.category
+                : Object.keys(semanticContext.entities.category);
+
+            if (semCategoryKeys.length > 0) {
             // POS gate: only count unconsumed words that are substantive (nouns, adjectives, etc.)
             // Words like "looking" (Verb), "from" (Preposition) are disqualified and don't block kickstart.
             const hasUnconsumedSubstantive = words.some((w, i) => !consumed.has(i) && w.length > 1 && !isDisqualified(w, posTagMap, storeWhitelist));
 
             if (!hasUnconsumedSubstantive) {
-                const semCategories = semanticContext.entities.category
+                const semCategories = semCategoryKeys
                     .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
                     .sort((a, b) => b.confidence - a.confidence);
 
@@ -729,6 +780,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     }
                 }
             }
+            }
         }
 
         // ── 2b. Vendor-Category Prioritization ──
@@ -759,6 +811,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         // ── Category Parent-Child Deduplication (Step 3 of New Search Strategy) ──
         // If a parent category is in the candidate list, remove its children.
         // The search endpoint already includes all children's products in a parent query.
+        // EXCEPTION: The winner is IMMUNE — even if its parent is in the list, the winner stays.
         // NOTE: Bloom pre-screening (Steps 1-2) happens later in product.js where PIE
         // product name is available as the query token source.
         const categoryEntities = entities.filter(e => e.type === 'category');
@@ -767,11 +820,14 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
             const toRemove = new Set();
 
             for (const catEntity of categoryEntities) {
+                // Winner is immune from dedup
+                if (catEntity.isWinner) continue;
+
                 const catData = Object.values(storeContext.CATEGORIES).find(c => c.id === catEntity.id);
                 if (catData && catData.parent_id && catIds.has(catData.parent_id)) {
                     toRemove.add(catEntity.id);
                     logDebug('ENTITY:DEDUP_CHILD_REMOVED', {
-                        _desc: 'Child category removed — parent already in candidate list',
+                        _desc: 'Child category removed — parent already in candidate list (winner immune)',
                         child: catEntity.value,
                         childId: catEntity.id,
                         parentId: catData.parent_id

@@ -1,0 +1,1 @@
+const { query } = require('../be3_backend/database/index.js'); query('SELECT slug FROM categories WHERE tenant_id = \'cbe1df05-45ed-455a-9ce6-156b0bd45713\'').then(r => { console.log(JSON.stringify(r.rows.map(x => x.slug))); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });

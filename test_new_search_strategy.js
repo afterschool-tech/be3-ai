@@ -212,7 +212,7 @@ async function run() {
             query: 'laptop',
             categories: [],
             categoryType: 'none',
-            vendor: 'Dell',
+            attributes: { vendor: 'Dell' },
             limit: 5
         }, { headers });
 
@@ -220,6 +220,93 @@ async function run() {
         console.log(`  ${C.dim}Total: ${searchRes.data.total}, Stage: ${searchRes.data.stage}, Classification: ${searchRes.data.classification}${C.reset}`);
     } catch (e) {
         assert(false, 'Vendor filtering', e.response?.data?.message || e.message);
+    }
+
+    // ═══════════════════════════════════════════
+    // TEST 7: Per-category Bloom + multiple candidates
+    // ═══════════════════════════════════════════
+    console.log(`\n${C.bold}Test 7: Per-category Bloom filtering with multiple candidates${C.reset}`);
+    try {
+        // Step 1: Bloom check across multiple categories
+        const smartphonesId = '7b8b5bb4-7878-4203-a550-a0941e1e3eb9';
+        const accessoriesId = 'c28c4ba9-8160-4905-84d4-dc8f30bd070f';
+        const featurePhonesId = '045389eb-03ba-4466-bed3-3343870d547a';
+
+        const bloomRes = await axios.post(`${BACKEND_URL}/bloom/ai/check`, {
+            tenantId: TENANT_ID,
+            tokens: ['phone'],
+            candidateCategories: [smartphonesId, accessoriesId, featurePhonesId]
+        }, { headers });
+
+        assert(bloomRes.status === 200, 'Bloom multi-category check responds 200');
+        assert(bloomRes.data.global.passed === true, `Global Bloom passes for "phone"`);
+
+        // Step 2: SearchInterface with all candidates
+        const searchRes = await axios.post(`${BACKEND_URL}/be3-ai/search`, {
+            tenantId: TENANT_ID,
+            query: 'phone',
+            categories: [
+                { id: smartphonesId, slug: 'smartphones', label: 'Smartphones', isWinner: true, isPartial: false },
+                { id: accessoriesId, slug: 'phone-accessories', label: 'Phone Accessories', isWinner: false, isPartial: false },
+                { id: featurePhonesId, slug: 'feature-phones', label: 'Feature Phones', isWinner: false, isPartial: false }
+            ],
+            categoryType: 'multiple',
+            limit: 5
+        }, { headers });
+
+        assert(searchRes.status === 200, 'Multi-category search responds 200');
+        assert(searchRes.data.classification !== undefined, `Classification: ${searchRes.data.classification}`);
+        console.log(`  ${C.dim}Total: ${searchRes.data.total}, Stage: ${searchRes.data.stage}, Category: ${JSON.stringify(searchRes.data.category_used)}${C.reset}`);
+    } catch (e) {
+        assert(false, 'Per-category Bloom', e.response?.data?.message || e.message);
+    }
+
+    // ═══════════════════════════════════════════
+    // TEST 8: Multi-category with parent+child — winner immune
+    // ═══════════════════════════════════════════
+    console.log(`\n${C.bold}Test 8: Multi-category — winner (child) + parent — winner immune${C.reset}`);
+    try {
+        // Winner is Smartphones (child), but Smartphones & Tablets (parent) is also in list
+        // SearchInterface should execute both — dedup is the caller's responsibility
+        const searchRes = await axios.post(`${BACKEND_URL}/be3-ai/search`, {
+            tenantId: TENANT_ID,
+            query: 'samsung',
+            categories: [
+                { id: '7b8b5bb4-7878-4203-a550-a0941e1e3eb9', slug: 'smartphones', label: 'Smartphones', isWinner: true, isPartial: false },
+                { id: 'd8aed750-6164-4065-881c-652ef888179f', slug: 'smartphones-tablets', label: 'Smartphones & Tablets', isWinner: false, isPartial: false }
+            ],
+            categoryType: 'multiple',
+            limit: 5
+        }, { headers });
+
+        assert(searchRes.status === 200, 'Responds 200');
+        assert(searchRes.data.stage > 0 || searchRes.data.total === 0, `Search executed (stage: ${searchRes.data.stage})`);
+        console.log(`  ${C.dim}Total: ${searchRes.data.total}, Stage: ${searchRes.data.stage}, Class: ${searchRes.data.classification}${C.reset}`);
+    } catch (e) {
+        assert(false, 'Winner immune dedup', e.response?.data?.message || e.message);
+    }
+
+    // ═══════════════════════════════════════════
+    // TEST 9: Single category + attributes (full stage waterfall)
+    // ═══════════════════════════════════════════
+    console.log(`\n${C.bold}Test 9: Single category + vendor — stage waterfall${C.reset}`);
+    try {
+        const searchRes = await axios.post(`${BACKEND_URL}/be3-ai/search`, {
+            tenantId: TENANT_ID,
+            query: 'gaming laptop',
+            categories: [
+                { id: '2538245c-6b41-4a66-acf4-2af88fc2783b', slug: 'gaming-laptops', label: 'Gaming Laptops', isWinner: true, isPartial: false }
+            ],
+            categoryType: 'single',
+            attributes: { vendor: 'Dell' },
+            limit: 5
+        }, { headers });
+
+        assert(searchRes.status === 200, 'Responds 200');
+        assert(searchRes.data.stage > 0 || searchRes.data.total === 0, `Hit at stage ${searchRes.data.stage}`);
+        console.log(`  ${C.dim}Total: ${searchRes.data.total}, Stage: ${searchRes.data.stage}, Class: ${searchRes.data.classification}${C.reset}`);
+    } catch (e) {
+        assert(false, 'Single category + vendor waterfall', e.response?.data?.message || e.message);
     }
 
     // ═══════════════════════════════════════════
