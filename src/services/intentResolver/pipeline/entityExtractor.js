@@ -21,7 +21,7 @@ const { normalizeCategory, isOrdinalOrReferencePhrase } = require('../../../util
 const { resolveFacetAttribute } = require('../../../utils/semanticFacetResolver');
 const { levenshtein } = require('../utils/levenshtein');
 const { logDebug } = require('../../../utils/debugLogger');
-const { phrasePassesPosGate, buildStoreWhitelist } = require('./posAnalyzer');
+const { isDisqualified, phrasePassesPosGate, buildStoreWhitelist } = require('./posAnalyzer');
 
 // ── Action verb patterns (not intent-specific — these are universal action signals) ──
 // Each verb maps to a SPECIFIC action category that feeds into ACTION_TO_INTENTS.
@@ -691,9 +691,11 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         // directly from storeContext.CATEGORIES — no normalizeCategory needed since
         // determinism can't contribute anyway.
         if (!entities.some(e => e.type === 'category') && semanticContext?.available && semanticContext.entities?.category?.length > 0) {
-            const hasUnconsumedNonFiller = words.some((w, i) => !consumed.has(i) && !FILLERS.has(w) && w.length > 1);
+            // POS gate: only count unconsumed words that are substantive (nouns, adjectives, etc.)
+            // Words like "looking" (Verb), "from" (Preposition) are disqualified and don't block kickstart.
+            const hasUnconsumedSubstantive = words.some((w, i) => !consumed.has(i) && w.length > 1 && !isDisqualified(w, posTagMap, storeWhitelist));
 
-            if (!hasUnconsumedNonFiller) {
+            if (!hasUnconsumedSubstantive) {
                 const semCategories = semanticContext.entities.category
                     .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
                     .sort((a, b) => b.confidence - a.confidence);
@@ -753,7 +755,38 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 }
             }
         }
+
+        // ── Category Parent-Child Deduplication (Step 3 of New Search Strategy) ──
+        // If a parent category is in the candidate list, remove its children.
+        // The search endpoint already includes all children's products in a parent query.
+        // NOTE: Bloom pre-screening (Steps 1-2) happens later in product.js where PIE
+        // product name is available as the query token source.
+        const categoryEntities = entities.filter(e => e.type === 'category');
+        if (categoryEntities.length > 1 && storeContext.CATEGORIES) {
+            const catIds = new Set(categoryEntities.map(e => e.id));
+            const toRemove = new Set();
+
+            for (const catEntity of categoryEntities) {
+                const catData = Object.values(storeContext.CATEGORIES).find(c => c.id === catEntity.id);
+                if (catData && catData.parent_id && catIds.has(catData.parent_id)) {
+                    toRemove.add(catEntity.id);
+                    logDebug('ENTITY:DEDUP_CHILD_REMOVED', {
+                        _desc: 'Child category removed — parent already in candidate list',
+                        child: catEntity.value,
+                        childId: catEntity.id,
+                        parentId: catData.parent_id
+                    });
+                }
+            }
+
+            for (const catEntity of categoryEntities) {
+                if (toRemove.has(catEntity.id)) {
+                    catEntity._dedup_removed = true;
+                }
+            }
+        }
     }
+
 
     // ── 4. Regex Detections (Order ID, Price, Quantity) ──
     // These remain in entityExtractor as they are simple regex patterns.

@@ -177,108 +177,147 @@ const productTools = {
                 }
             }
 
-            // --- STAGE 1: Unified Precision Search ---
-            const searchParams = new URLSearchParams({
-                type: 'product',
-                per_page: limit,
-                page: page,
-                sort: sort
-            });
-            if (query) searchParams.append('q', query);
-            if (price_min) searchParams.append('price_min', price_min);
-            if (price_max) searchParams.append('price_max', price_max);
-            if (tag) searchParams.append('tag', tag);
-            if (catId) searchParams.append('category_id', cat?.slug || catId);
+            // ═══════════════════════════════════════════════════════════════════
+            // NEW SEARCH STRATEGY (Steps 1-4)
+            // Step 1-2: Bloom pre-screening using PIE product name
+            // Step 3:   Category deduplication (done in entityExtractor)
+            // Step 4:   Structured search via SearchInterfaceService
+            // ═══════════════════════════════════════════════════════════════════
+            const { logDebug } = require('../utils/debugLogger');
+            const bloomClient = require('../utils/bloomClient');
+            const { executeSearch, buildSearchSpec } = require('../utils/searchInterfaceClient');
 
-            Object.entries(safeAttributes).forEach(([key, val]) => {
-                const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
-                searchParams.append(`attribute.${key}`, finalVal);
-            });
+            // ── Classify: QUERIED vs NON-QUERIED ──
+            const isQueried = query && query.trim().length > 0;
+            const searchMode_label = isQueried ? 'QUERIED' : 'NON-QUERIED';
 
-            const result = await callBackendAPI(`/search?${searchParams.toString()}`);
-            if (!result.success) return { error: "Failed to search products", details: result.error };
-
-            const searchData = result.data || {};
-            const products = searchData.results || searchData.products || [];
-            const total = searchData.pagination?.total ?? searchData.total ?? 0;
-
-            if (products.length > 0) {
-                return await handleSearchResults({ products, total, facets: searchData.facets, pagination: searchData.pagination }, params, context, snapshotId, cat, catId);
+            // ── Determine category type for logging and loop selection ──
+            // precision: single category found with high confidence
+            // partial: single category found via substring match within a word
+            // kickstart: semantic-only category (no keyword match)
+            // none: no category resolved
+            // multiple: several categories in the same tier survived Bloom/IC
+            let categoryType_label = 'none';
+            if (catId) {
+                if (is_partial_match) categoryType_label = 'partial';
+                else if (is_kickstart) categoryType_label = 'kickstart';
+                else categoryType_label = 'precision';
             }
 
-            // --- Discovery/Kickstart Fallback (unscoped retry if results are empty and relaxed search is allowed) ---
-            let didKickstartFallback = false;
-            if ((is_kickstart || is_partial_match || allow_deep_fallbacks) && query && total === 0) {
-                didKickstartFallback = true;
-                const { logDebug: kickLogDebug } = require('../utils/debugLogger');
-
-                kickLogDebug('TOOL:PRODUCT_KICKSTART_FALLBACK [product.search]', {
-                    _desc: 'Precision failed under semantic kickstart category; retry without category, then vector without category.',
-                    query,
-                    category_input: category,
-                    price_min,
-                    price_max,
-                    tag,
-                    attributes_keys: safeAttributes ? Object.keys(safeAttributes) : []
-                });
-
-                // 1) Re-run precision search WITHOUT category_id (keep q + filters)
-                const kickSearchParams = new URLSearchParams({
-                    type: 'product',
-                    per_page: limit,
-                    page: page,
-                    sort: sort
-                });
-                let fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
-
-                kickSearchParams.append('q', fallbackQuery);
-                if (price_min) kickSearchParams.append('price_min', price_min);
-                if (price_max) kickSearchParams.append('price_max', price_max);
-                if (tag) kickSearchParams.append('tag', tag);
-
-                Object.entries(safeAttributes).forEach(([key, val]) => {
-                    const finalVal = key === 'vendor' ? normalizeVendor(val) : val;
-                    kickSearchParams.append(`attribute.${key}`, finalVal);
-                });
-
-                const kickResult = await callBackendAPI(`/search?${kickSearchParams.toString()}`);
-                if (kickResult?.success) {
-                    const kickData = kickResult.data || {};
-                    const kickProducts = kickData.results || kickData.products || [];
-                    const kickTotal = kickData.pagination?.total ?? kickData.total ?? 0;
-
-                    if (kickProducts.length > 0) {
-                        return await handleSearchResults(
-                            { products: kickProducts, total: kickTotal, facets: kickData.facets, pagination: kickData.pagination },
-                            params,
-                            context,
-                            snapshotId,
-                            null,
-                            null
-                        );
-                    }
-                }
-
-                // 2) If still nothing, try vector WITHOUT category_id (keep filters first, then unfiltered)
-                const extraParams = { page, price_min, price_max, tag, attributes: safeAttributes };
-                fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
-
-
-                let vectorKickFallback = await performVectorSearch(fallbackQuery, limit, null, extraParams);
-                if (!vectorKickFallback || vectorKickFallback.products?.length === 0) {
-                    kickLogDebug('TOOL:PRODUCT_KICKSTART_VECTOR_UNFILTERED [product.search]', { query: fallbackQuery });
-                    vectorKickFallback = await performVectorSearch(fallbackQuery, limit, null);
-                }
-
-
-                if (vectorKickFallback && vectorKickFallback.products?.length > 0) {
-                    const final = await handleSearchResults(vectorKickFallback, params, context, snapshotId, null, null, true);
-                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
+            // ── NON-QUERIED: Inventory Check ──
+            // For non-queried searches, check storeContext directly for product count.
+            // If the category has 0 products → return early. No vector fallback for non-queried.
+            if (!isQueried && catId && cat) {
+                const catProductCount = cat.total_count ?? 0;
+                if (catProductCount === 0) {
+                    logDebug('TOOL:NON_QUERIED_IC_FAILED', {
+                        _desc: 'Non-queried inventory check — category has 0 products',
+                        searchMode: searchMode_label,
+                        categoryType: categoryType_label,
+                        category: cat.label,
+                        categoryId: catId,
+                        total_count: catProductCount
+                    });
                     return {
-                        ...final,
                         products: [],
-                        suggested_products: final.products,
-                        suggested_total: final.total,
+                        total: 0,
+                        message: `I don't have any products in ${cat.label || 'that category'} right now.`,
+                        search_classification: 'none',
+                        search_stage: 0,
+                        inventory_check_failed: true
+                    };
+                }
+            }
+
+            // ── Step 1-2: Bloom Pre-screening ──
+            // Tokenize the PIE product name (the actual search query) and check it
+            // against the global + category Bloom filters.
+            const bloomTokens = (query || '').toLowerCase().split(/\s+/).filter(t => t.length > 0);
+            let bloomResult = null;
+
+            if (bloomTokens.length > 0) {
+                try {
+                    const categoryIds = catId ? [catId] : [];
+                    bloomResult = await bloomClient.checkBloom(bloomTokens, categoryIds);
+
+                    if (bloomResult.global && bloomResult.global.source !== 'fail-open') {
+                        if (!bloomResult.global.passed) {
+                            logDebug('BLOOM:GLOBAL_MISS', {
+                                _desc: 'PIE product name tokens missed global Bloom — precision search unlikely to succeed',
+                                tokens: bloomTokens,
+                                misses: bloomResult.global.misses
+                            });
+                        } else {
+                            logDebug('BLOOM:GLOBAL_HIT', {
+                                _desc: 'PIE product name tokens found in global Bloom',
+                                hits: bloomResult.global.hits,
+                                misses: bloomResult.global.misses
+                            });
+                        }
+                    }
+                } catch (bloomErr) {
+                    logDebug('BLOOM:ERROR', { error: bloomErr.message });
+                }
+            }
+
+            // ── Step 4: Structured Search via SearchInterface ──
+            // Build the search spec from pipeline params and delegate to the backend.
+            const searchSpec = buildSearchSpec({
+                ...params,
+                query,
+                category: catId,
+                _category_candidates: catId ? [{ id: catId, slug: cat?.slug, label: cat?.label, isWinner: true, isPartial: is_partial_match || false }] : [],
+                _category_type: catId ? 'single' : 'none',
+                attributes: safeAttributes,
+                limit,
+                page,
+                sort
+            }, bloomResult);
+
+            const searchResult = await executeSearch(searchSpec);
+
+            logDebug('TOOL:SEARCH_INTERFACE_RESULT', {
+                _desc: 'SearchInterface execution complete',
+                searchMode: searchMode_label,
+                categoryType: categoryType_label,
+                total: searchResult.total,
+                stage: searchResult.stage,
+                classification: searchResult.classification,
+                category_used: searchResult.category_used,
+                price_filter_applied: searchResult.price_filter_applied,
+                price_filter_failed: searchResult.price_filter_failed,
+                vector_fallback_needed: searchResult.vector_fallback_needed,
+                partialFallback: searchResult.partialFallback
+            });
+
+            // ── Handle results ──
+            if (searchResult.total > 0 && searchResult.products.length > 0) {
+                const finalResult = await handleSearchResults(
+                    {
+                        products: searchResult.products,
+                        total: searchResult.total,
+                        facets: searchResult.facets,
+                        pagination: searchResult.pagination
+                    },
+                    params, context, snapshotId, cat, catId
+                );
+
+                // Annotate classification for personality layer
+                finalResult.search_classification = searchResult.classification;
+                finalResult.search_stage = searchResult.stage;
+
+                // Price filter failed → tell the user we have products but not in their price range
+                if (searchResult.price_filter_failed) {
+                    finalResult.price_filter_note = "I found products matching your search, but none in that price range. Showing the best matches instead.";
+                }
+
+                // Suggested classification → results are related but not exact
+                if (searchResult.classification === 'suggested' || searchResult.partialFallback) {
+                    return {
+                        ...finalResult,
+                        products: [],
+                        suggested_products: finalResult.products,
+                        suggested_total: searchResult.total,
                         suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
                         whatsapp_product_cards: undefined,
                         whatsapp: {
@@ -290,117 +329,40 @@ const productTools = {
                         is_fallback: true
                     };
                 }
+
+                return finalResult;
             }
 
-            // --- STAGE 2: Fallbacks ---
-            const { logDebug } = require('../utils/debugLogger');
+            // ── Vector Fallback ──
+            // QUERIED: fall back to vector when all stages fail
+            // NON-QUERIED: NO vector fallback — return empty
+            if (!isQueried) {
+                logDebug('TOOL:NON_QUERIED_EMPTY', {
+                    _desc: 'Non-queried search returned 0 from all stages — no vector fallback',
+                    searchMode: searchMode_label,
+                    categoryType: categoryType_label,
+                    category: cat?.label
+                });
+                return { products: [], total: 0, message: `I couldn't find any products${cat ? ` in ${cat.label}` : ''} right now.` };
+            }
 
-            // Fallback 1: Vector Search (Primary Fallback)
-            if (query && !search_mode && !similar_to && !didKickstartFallback) {
+            if (searchResult.vector_fallback_needed && query && !search_mode && !similar_to) {
+                logDebug('TOOL:VECTOR_FALLBACK [product.search]', {
+                    _desc: 'SearchInterface returned 0 results — falling back to vector search',
+                    searchMode: searchMode_label,
+                    query
+                });
+
                 const extraParams = { page, price_min, price_max, tag, attributes: safeAttributes };
                 const fallbackQuery = (params._category_words ? `${params._category_words} ${query}` : query).trim();
 
-                // Try with filters first
                 let vectorFallback = await performVectorSearch(fallbackQuery, limit, catId, extraParams);
-
-                // If filtered fails, try unfiltered
                 if (!vectorFallback || vectorFallback.products?.length === 0) {
-                    vectorFallback = await performVectorSearch(fallbackQuery, limit, catId);
+                    vectorFallback = await performVectorSearch(fallbackQuery, limit, null);
                 }
-
 
                 if (vectorFallback && vectorFallback.products?.length > 0) {
-                    logDebug('TOOL:VECTOR_FALLBACK [product.search]', { _desc: 'Precision failed. Result found via Vector Search fallback.', query });
                     const final = await handleSearchResults(vectorFallback, params, context, snapshotId, cat, catId, true);
-                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
-                    return {
-                        ...final,
-                        products: [],
-                        suggested_products: final.products,
-                        suggested_total: final.total,
-                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                        whatsapp_product_cards: undefined,
-                        whatsapp: {
-                            type: 'button',
-                            buttons: [
-                                { id: `__nav:cards:${snapshotId}__`, title: 'See suggestions', priority: 100 }
-                            ]
-                        },
-                        is_fallback: true
-                    };
-                }
-            }
-
-            // Fallback 2: Suggestion fallbacks (Relaxed searches)
-            if (allow_deep_fallbacks) {
-                const buildRelaxedCall = async (opts) => {
-                    const { dropQuery, dropOtherFilters } = opts;
-                    const sParams = new URLSearchParams({ per_page: limit, page: page, sort: sort, type: 'product' });
-                    if (!dropQuery && query) sParams.append('q', query);
-                    if (!dropOtherFilters) {
-                        if (price_min) sParams.append('price_min', price_min);
-                        if (price_max) sParams.append('price_max', price_max);
-                        if (tag) sParams.append('tag', tag);
-                        Object.entries(safeAttributes).forEach(([k, v]) => sParams.append(`attribute.${k}`, k === 'vendor' ? normalizeVendor(v) : v));
-                    }
-                    if (catId) sParams.append('category_id', cat?.slug || catId);
-
-                    const res = await callBackendAPI(`/search?${sParams.toString()}`);
-                    if (!res.success) return null;
-                    const data = res.data || {};
-                    return {
-                        products: data.results || data.products || [],
-                        total: data.pagination?.total ?? data.total ?? 0,
-                        facets: data.facets,
-                        pagination: data.pagination
-                    };
-                };
-
-                // Attempt 1: Drop query, keep filters
-                const attempt1 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: false });
-                if (attempt1 && attempt1.products.length > 0) {
-                    const final = await handleSearchResults(attempt1, params, context, snapshotId, cat, catId, true);
-
-                    logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                        _desc: 'No-result fallback — retry without query (keep filters)',
-                        original: { query, category, price_min, price_max, tag, attributes },
-                        fallback: { query: null },
-                        suggestedCount: final.products.length,
-                        total: attempt1.total
-                    });
-
-                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
-                    return {
-                        ...final,
-                        products: [],
-                        suggested_products: final.products,
-                        suggested_total: final.total,
-                        suggestion_message: "I couldn't find an exact match for your request. Here are some suggestions you might like instead.",
-                        whatsapp_product_cards: undefined,
-                        whatsapp: {
-                            type: 'button',
-                            buttons: [
-                                { id: `__nav:results:${snapshotId}__`, title: 'See suggestions', priority: 100 }
-                            ]
-                        },
-                        is_fallback: true
-                    };
-                }
-
-                // Attempt 2: Drop everything but category
-                const attempt2 = await buildRelaxedCall({ dropQuery: true, dropOtherFilters: true });
-                if (attempt2 && attempt2.products.length > 0) {
-                    const final = await handleSearchResults(attempt2, params, context, snapshotId, cat, catId, true);
-
-                    logDebug('TOOL:PRODUCT_SEARCH_FALLBACK [product.search]', {
-                        _desc: 'No-result fallback — retry without query and without other filters',
-                        original: { query, category, price_min, price_max, tag, attributes },
-                        fallback: { query: null, price_min: null, price_max: null, tag: null, attributes: {} },
-                        suggestedCount: final.products.length,
-                        total: attempt2.total
-                    });
-
-                    const seeMoreBtn = final.whatsapp?.buttons?.find(b => b.id.startsWith('__nav:more')) || { id: `__nav:more:${snapshotId}__`, title: 'See more' };
                     return {
                         ...final,
                         products: [],

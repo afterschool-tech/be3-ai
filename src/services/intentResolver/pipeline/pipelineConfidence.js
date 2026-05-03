@@ -347,15 +347,7 @@ function calculatePipelineConfidence(pd) {
         const primary = normalizedStatements[0];
         const params = primary.parameters || {};
 
-        // D1. Parental pivot (empty category)
-        if (params._pivoted_from) {
-            record('Inventory', -8, `Parental pivot — "${params._pivoted_from}" was empty, broadened to "${params._pivoted_to}"`);
-        }
-
-        // D3. Empty category detected
-        if (params._empty_category) {
-            record('Inventory', -5, `Category "${params._empty_category_label}" has 0 products`);
-        }
+        // D1/D3. Inventory Check — DEPRECATED (Bloom filters handle pre-screening now)
 
         // D4. Ambient context injected
         const entities = primary.pipelineEntities || [];

@@ -1,17 +1,17 @@
-/**
- * Hybrid Intent Resolver — Pipeline Orchestrator
+﻿/**
+ * Hybrid Intent Resolver â€” Pipeline Orchestrator
  * 
  * Wires together all pipeline stages in sequence:
- *   1. fuzzyMatcher     — typo correction
- *   2. contextResolver  — pronoun/ref resolution from state
- *   3. preprocessor     — normalize + negate + split
- *   4a. entityExtractor — typed entity extraction (vendors, categories, brands, actions)
- *   4b. schemaResolver  — schema-fit intent matching + IDF confirmation
- *   5. parameterExtractor — fill remaining params (deterministic + AI)
- *   6. parameterBleeder — cross-intent param inheritance
- *   7. intentPorter     — dynamic buy-vs-search pivoting
- *   8. parameterNormalizer — vendor/category ID normalization
- *   9. toolMapper       — intent → tool call
+ *   1. fuzzyMatcher     â€” typo correction
+ *   2. contextResolver  â€” pronoun/ref resolution from state
+ *   3. preprocessor     â€” normalize + negate + split
+ *   4a. entityExtractor â€” typed entity extraction (vendors, categories, brands, actions)
+ *   4b. schemaResolver  â€” schema-fit intent matching + IDF confirmation
+ *   5. parameterExtractor â€” fill remaining params (deterministic + AI)
+ *   6. parameterBleeder â€” cross-intent param inheritance
+ *   7. intentPorter     â€” dynamic buy-vs-search pivoting
+ *   8. parameterNormalizer â€” vendor/category ID normalization
+ *   9. toolMapper       â€” intent â†’ tool call
  * 
  * Signature: resolveAndMap(userMessage, state, aiQueryFn, storeContext)
  * 
@@ -53,8 +53,8 @@ const { isConfirmation } = require('../../middleware/suggestionHelper');
 const transformerClient = require('./pipeline/transformerClient');
 const { getGates } = require('./config/stageGates');
 
-// ── Feature Flag: Hierarchical Intent Resolution (Phase 3: micarch) ──
-// When true, uses L1→L2→L3 sequential classification instead of batch /analyze.
+// â”€â”€ Feature Flag: Hierarchical Intent Resolution (Phase 3: micarch) â”€â”€
+// When true, uses L1â†’L2â†’L3 sequential classification instead of batch /analyze.
 // Set to false to revert to legacy pipeline behavior.
 const USE_HIERARCHICAL = process.env.USE_HIERARCHICAL !== 'false'; // default ON
 // Env-gated usage of IntelliSense class_hint during hierarchical L1 routing.
@@ -193,12 +193,12 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             } catch (_) { }
         }
 
-        // ── MICROSTATE GUARD ──
+        // â”€â”€ MICROSTATE GUARD â”€â”€
         // If any microstate is active, let the microstate runner handle __nav:more__/__nav:prev__.
         // The runner already has handlers for all microstate types:
-        //   - product_compare.missing_products → advanceCompareRecommendations
-        //   - tool_pagination → re-runs tool with page offset
-        //   - all others → generic option window sliding
+        //   - product_compare.missing_products â†’ advanceCompareRecommendations
+        //   - tool_pagination â†’ re-runs tool with page offset
+        //   - all others â†’ generic option window sliding
         // Stage 0a is strictly for nav tokens when there is NO active microstate.
         const activeMicrostateEarly = state?.microstate;
         const isMicrostateActive = !!(activeMicrostateEarly?.intent && activeMicrostateEarly?.type);
@@ -362,7 +362,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // Stage 0d½: Engineered facet-select buttons (bypasses NLU entirely)
+    // Stage 0dÂ½: Engineered facet-select buttons (bypasses NLU entirely)
     // Emitted by product.facets handler. Format: __facet:select:<attrCode>:<encodedValue>[:<categoryId>]__
     // Maps directly to product.search with the selected attribute value + optional category scope.
     if (engineeredEarly && engineeredEarly.namespace === 'facet' && engineeredEarly.command === 'select' && userId) {
@@ -428,7 +428,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // Stage 0d½: Engineered product similarity buttons
+    // Stage 0dÂ½: Engineered product similarity buttons
     // Product card "Show similar" uses: __product:similar:<productId>__
     if (engineeredEarly && engineeredEarly.namespace === 'product' && engineeredEarly.command === 'similar' && userId) {
         const productId = engineeredEarly.arg ? String(engineeredEarly.arg).trim() : null;
@@ -660,17 +660,19 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // ═══════════════════════════════════════════════
+    // Stage 7: INVENTORY CHECK â€” DEPRECATED
+    // Bloom filters now handle pre-screening. Non-queried IC is in product.search tool.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // Stage 0: CHECK ACTIVE MICROSTATE
     // If a microstate is open, it processes the message FIRST.
-    // If handled → return directly (bypasses all other stages).
-    // If not handled (breakthrough) → fall through to normal pipeline.
-    // ═══════════════════════════════════════════════
+    // If handled â†’ return directly (bypasses all other stages).
+    // If not handled (breakthrough) â†’ fall through to normal pipeline.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     const activeMicrostate = await stateManager.getMicrostate(userId);
     if (activeMicrostate) {
         logDebug('PIPELINE:STAGE0_MICROSTATE', {
-            _desc: 'Get active microstate — flow in progress (ordinal choice, checkout, etc.)',
-            _example: 'User in "pick one" flow → microstate.type: ordinal_choice',
+            _desc: 'Get active microstate â€” flow in progress (ordinal choice, checkout, etc.)',
+            _example: 'User in "pick one" flow â†’ microstate.type: ordinal_choice',
             type: activeMicrostate.type,
             intent: activeMicrostate.intent,
             sandbox: activeMicrostate.sandbox,
@@ -682,8 +684,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         if (msResult.handled) {
             logDebug('PIPELINE:STAGE0_HANDLED', {
-                _desc: 'Microstate consumed message — fulfilled, escalated, or reprompt',
-                _example: 'User says "2" in ordinal choice → fulfilled, maps to tool',
+                _desc: 'Microstate consumed message â€” fulfilled, escalated, or reprompt',
+                _example: 'User says "2" in ordinal choice â†’ fulfilled, maps to tool',
                 type: activeMicrostate.type,
                 result: msResult.result?.microstate_fulfilled ? 'fulfilled' :
                     msResult.result?.microstate_escalated ? 'escalated' :
@@ -693,8 +695,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
 
         logDebug('PIPELINE:STAGE0_BREAKTHROUGH', {
-            _desc: 'Message broke through microstate sandbox — unrelated intent detected',
-            _example: 'User in ordinal flow says "show me phones" → falls through to normal pipeline',
+            _desc: 'Message broke through microstate sandbox â€” unrelated intent detected',
+            _example: 'User in ordinal flow says "show me phones" â†’ falls through to normal pipeline',
             type: activeMicrostate.type,
             reason: 'Message broke through soft sandbox'
         });
@@ -706,8 +708,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Stage 1: Fuzzy correction (with Guards)
     const afterFuzzy = fuzzyMatcher.correctText(userMessage, storeContext);
     logDebug('PIPELINE:STAGE1_FUZZY', {
-        _desc: 'Fuzzy typo correction — Levenshtein + entity guard',
-        _example: '"add to crrt" → "add to cart"',
+        _desc: 'Fuzzy typo correction â€” Levenshtein + entity guard',
+        _example: '"add to crrt" â†’ "add to cart"',
         original: userMessage,
         corrected: afterFuzzy,
         changed: userMessage !== afterFuzzy
@@ -721,20 +723,20 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const pathConfidence = senseResult?.confidence ?? 1.0;
 
     logDebug('PIPELINE:STAGE0C_PATH_ADVICE', {
-        _desc: 'IntelliSense Path Advice — categorized message intent (PASSIVE)',
-        _icon: recommendedPath === 'CONVERSATIONAL' ? '💬' : (recommendedPath === 'STATE_RESOLUTION' ? '🔗' : '⚙️'),
+        _desc: 'IntelliSense Path Advice â€” categorized message intent (PASSIVE)',
+        _icon: recommendedPath === 'CONVERSATIONAL' ? 'ðŸ’¬' : (recommendedPath === 'STATE_RESOLUTION' ? 'ðŸ”—' : 'âš™ï¸'),
         path: recommendedPath,
         reason: pathReason,
         confidence: pathConfidence
     });
 
-    // ── Stage 0d: IntelliSense Short-Circuit (ACTIVE) ──
+    // â”€â”€ Stage 0d: IntelliSense Short-Circuit (ACTIVE) â”€â”€
     // If IntelliSense is highly confident this is a pure conversational message,
     // bypass the entire heavy pipeline (Transformer, Entity Extraction, Parameter Mapping).
     if (recommendedPath === 'CONVERSATIONAL' && pathConfidence >= 0.8) {
         logDebug('PIPELINE:STAGE0D_SHORT_CIRCUIT', {
-            _desc: 'IntelliSense Short-Circuit — bypassing heavy pipeline for conversational intent',
-            _icon: '⚡',
+            _desc: 'IntelliSense Short-Circuit â€” bypassing heavy pipeline for conversational intent',
+            _icon: 'âš¡',
             path: recommendedPath,
             confidence: pathConfidence,
             reason: pathReason
@@ -767,8 +769,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     const manualStatements = senseResult?.statements || [];
     const { statements, isMultiIntent } = preprocessor.preprocess(afterFuzzy, manualStatements);
     logDebug('PIPELINE:STAGE3_PREPROCESS', {
-        _desc: 'Preprocess — normalize, detect negation, split on conjunctions',
-        _example: '"phones and laptops" → 2 statements; "dont want cheap" → negated: true',
+        _desc: 'Preprocess â€” normalize, detect negation, split on conjunctions',
+        _example: '"phones and laptops" â†’ 2 statements; "dont want cheap" â†’ negated: true',
         input: afterFuzzy,
         statementCount: statements.length,
         isMultiIntent,
@@ -776,7 +778,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         source: manualStatements.length > 0 ? 'INTELLISENSE' : 'DETERMINISTIC'
     });
 
-    // ── Stage 3.1: Selective Structural Context Resolution (Pre-Classification) ──
+    // â”€â”€ Stage 3.1: Selective Structural Context Resolution (Pre-Classification) â”€â”€
     // Resolves pronouns, ordinals, and collectives BEFORE hitting the transformer
     // so the classifier sees concrete product names instead of linguistic pointers.
     const structuralResolutions = [];
@@ -798,14 +800,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     });
 
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // Stage 0.5: Unified Transformer Context Acquisition
     // Fires ONCE per query, right after preprocessing.
     // Calls /analyze on the transformer service to get BOTH
     // intent classification AND entity extraction in a single roundtrip.
     // The result is stored in `semanticContext` and passed to every downstream stage.
     // If the transformer is unreachable, semanticContext = null (graceful degradation).
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     let batchedSemanticContext = null;
 
     if (state && state.skipTransformer) {
@@ -814,8 +816,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             reason: 'Manual bypass for comparison/testing'
         });
     } else if (USE_HIERARCHICAL) {
-        // ── HIERARCHICAL MODE: Call /extract ONLY (entity extraction) ──
-        // Classification is handled by the per-statement L1→L2→L3 pipeline.
+        // â”€â”€ HIERARCHICAL MODE: Call /extract ONLY (entity extraction) â”€â”€
+        // Classification is handled by the per-statement L1â†’L2â†’L3 pipeline.
         // We still need the transformer for clause/attribute/category extraction.
         const textsToAnalyze = statements.map(s => s.original || s.text);
         try {
@@ -835,7 +837,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             batchedSemanticContext = {
                 results: extractResults.map((r, idx) => ({
                     text: textsToAnalyze[idx],
-                    classification: [],  // ← intentionally empty; hierarchical pipeline provides classification
+                    classification: [],  // â† intentionally empty; hierarchical pipeline provides classification
                     entities: r.entities || {},
                     confidence: r.confidence || {}
                 })),
@@ -844,7 +846,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             };
 
             logDebug('PIPELINE:STAGE0.5_HIERARCHICAL_EXTRACT', {
-                _desc: 'Hierarchical mode — entity-only /extract call (no flat classification). Classification deferred to L1→L2→L3.',
+                _desc: 'Hierarchical mode â€” entity-only /extract call (no flat classification). Classification deferred to L1â†’L2â†’L3.',
                 statementCount: textsToAnalyze.length,
                 duration: `${transformerDuration}ms`,
                 status: 'OK',
@@ -856,7 +858,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
         } catch (err) {
             logDebug('PIPELINE:STAGE0.5_HIERARCHICAL_EXTRACT', {
-                _desc: 'Hierarchical entity extraction — UNREACHABLE or timed out.',
+                _desc: 'Hierarchical entity extraction â€” UNREACHABLE or timed out.',
                 status: 'UNREACHABLE',
                 error: err.message
             });
@@ -866,12 +868,12 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Runs for each statement BEFORE the main loop to find all clauses/brands.
     // This ensures that clauses are strictly scoped to their respective statements
     // while still maintaining priority over downstream category scanning.
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // NOTE: resolveClausesGlobal is ALWAYS run regardless of Transformer availability,
     // as it also performs deterministic brand/clause detection from the store context.
     // Semantic context is provided as a bonus when the Transformer has results.
 
-    // ── Helper: Reshape /extract response into the {key, score} format expected by resolveClausesGlobal ──
+    // â”€â”€ Helper: Reshape /extract response into the {key, score} format expected by resolveClausesGlobal â”€â”€
     // The /extract endpoint returns entities as arrays of slug strings (e.g., clause: ["apple_product"])
     // and stores confidence scores separately (e.g., confidence["clause:apple_product"] = 0.89).
     // resolveClausesGlobal Step 2.5 expects objects with {key, score} / {value, score}.
@@ -881,7 +883,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const confidence = rawResult.confidence || {};
         const shaped = {};
 
-        // clause: ["apple_product"] → [{ key: "apple_product", score: 0.89 }]
+        // clause: ["apple_product"] â†’ [{ key: "apple_product", score: 0.89 }]
         if (Array.isArray(entities.clause)) {
             shaped.clause = entities.clause.map(key => ({
                 key,
@@ -889,7 +891,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }));
         }
 
-        // category: ["iphones", "smartphones"] → [{ key: "iphones", score: 0.88 }]
+        // category: ["iphones", "smartphones"] â†’ [{ key: "iphones", score: 0.88 }]
         if (Array.isArray(entities.category)) {
             shaped.category = entities.category.map(key => ({
                 key,
@@ -913,7 +915,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }));
         }
 
-        // attribute: { brand: ["iphone"] } → { brand: [{ value: "iphone", score: 0.84 }] }
+        // attribute: { brand: ["iphone"] } â†’ { brand: [{ value: "iphone", score: 0.84 }] }
         if (entities.attribute && typeof entities.attribute === 'object') {
             shaped.attribute = {};
             for (const [attrKey, values] of Object.entries(entities.attribute)) {
@@ -968,13 +970,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const statement = statements[i];
         let textForExtraction = statement.text;
 
-        // ── Stage 4b: Semantic Context Acquisition ──
-        // HIERARCHICAL: Run L1→L2→L3 classification for this statement BEFORE context resolution 
+        // â”€â”€ Stage 4b: Semantic Context Acquisition â”€â”€
+        // HIERARCHICAL: Run L1â†’L2â†’L3 classification for this statement BEFORE context resolution 
         // to strictly allow the L2 gates to decide if context resolution should even run.
         const initialCleanedText = cleanText(statement.text);
 
-        // ── Stage 4b: Semantic Context Acquisition ──
-        // HIERARCHICAL: Run L1→L2→L3 classification for this statement
+        // â”€â”€ Stage 4b: Semantic Context Acquisition â”€â”€
+        // HIERARCHICAL: Run L1â†’L2â†’L3 classification for this statement
         // LEGACY: Use results from Stage 0.5 (batched query)
         let localSemanticContext = null;
         let hierarchicalResult = null;
@@ -1021,7 +1023,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 }
 
                 logDebug(`PIPELINE:STAGE4B_HIERARCHICAL [Statement ${i + 1}]`, {
-                    _desc: 'Hierarchical classification — L1→L2→L3 sequential narrowing',
+                    _desc: 'Hierarchical classification â€” L1â†’L2â†’L3 sequential narrowing',
                     text_evaluated: hierarchicalResult.classificationText,
                     class: hierarchicalResult.class,
                     classSkipped: hierarchicalResult.classSkipped,
@@ -1063,13 +1065,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 });
             } catch (err) {
                 logDebug(`PIPELINE:STAGE4B_HIERARCHICAL_FAIL [Statement ${i + 1}]`, {
-                    _desc: 'Hierarchical classification failed — falling back to legacy semantic context',
+                    _desc: 'Hierarchical classification failed â€” falling back to legacy semantic context',
                     error: err.message
                 });
             }
         }
 
-        // ── Stage 4a: Context resolution (Specific Entities: Brand/Product Refs) ──
+        // â”€â”€ Stage 4a: Context resolution (Specific Entities: Brand/Product Refs) â”€â”€
         // Resolves deferred nouns (e.g. "iphone", "infinix") after the classification
         // has had a chance to see them as brands/categories.
         let afterContext = statement.text;
@@ -1077,7 +1079,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         if (USE_HIERARCHICAL && stageGates && stageGates.contextResolution === false) {
             logDebug(`PIPELINE:STAGE4A_CONTEXT_CLEAN_SKIPPED [Statement ${i + 1}]`, {
-                _desc: 'Post-classification context resolution SKIPPED — disabled by hierarchical stage gate',
+                _desc: 'Post-classification context resolution SKIPPED â€” disabled by hierarchical stage gate',
                 reason: 'stageGates.contextResolution = false'
             });
         } else {
@@ -1105,7 +1107,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             localSemanticContext = { available: false, classification: [] };
         }
 
-        // ── Stage 2.5: Ambient Context Confidence Check ──
+        // â”€â”€ Stage 2.5: Ambient Context Confidence Check â”€â”€
         let confidenceGap = 1.0; // Assume confident if no transformer
         if (localSemanticContext?.available && Array.isArray(localSemanticContext.classification)) {
             const topScore = localSemanticContext.classification[0]?.score || 0;
@@ -1118,16 +1120,16 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         // Stage 4a: Entity Extraction (with pre-detected entities and category hints)
         const positionTracker = createPositionTracker();
 
-        // ── Stage 3d: Inject Statement-Level Pre-pass Entities ──
+        // â”€â”€ Stage 3d: Inject Statement-Level Pre-pass Entities â”€â”€
         // Entities were resolved per-statement in Stage 3a above using each statement's own
-        // text and Transformer result. No global-index reconciliation needed — entities
+        // text and Transformer result. No global-index reconciliation needed â€” entities
         // are already local. Clauses/brands are pushed FIRST so they get word-level
         // consumption priority over IntelliSense products.
         const localStatementEntities = statementLevelEntities[i] || [];
         if (localStatementEntities.length > 0) {
             statementPreEntities.push(...localStatementEntities);
             logDebug(`PIPELINE:STAGE3D_INJECT [Statement ${i + 1}]`, {
-                _desc: 'Statement-level pre-pass entities injected — clauses/brands pinned to this statement only',
+                _desc: 'Statement-level pre-pass entities injected â€” clauses/brands pinned to this statement only',
                 count: localStatementEntities.length,
                 entities: localStatementEntities.map(e => ({
                     type: e.type,
@@ -1245,7 +1247,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 shape: ''
             };
             logDebug(`PIPELINE:STAGE4A_ENTITIES_SKIPPED [Statement ${i + 1}/${statements.length}]`, {
-                _desc: 'Entity extraction SKIPPED — disabled by hierarchical stage gate',
+                _desc: 'Entity extraction SKIPPED â€” disabled by hierarchical stage gate',
                 reason: 'stageGates.entityExtraction = false'
             });
         } else {
@@ -1257,7 +1259,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
             extractionResult = extractEntities(cleanedText, storeContext, idfMap, positionTracker, resolutions, statementPreEntities, statementLevelCategoryHints[i] || [], entitySemanticContext, statement.posTagMap);
             logDebug(`PIPELINE:STAGE4A_ENTITIES [Statement ${i + 1}/${statements.length}]`, {
-                _desc: 'Entity extraction — vendors, categories, brands, actions, residual words',
+                _desc: 'Entity extraction â€” vendors, categories, brands, actions, residual words',
                 text: cleanedText,
                 entities: extractionResult.entities.map(e => ({ type: e.type, value: e.value || e.verb })),
                 residualWords: extractionResult.residualWords,
@@ -1265,18 +1267,18 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
         }
 
-        // gap kept for debug logging only — no longer used as an injection guardrail
+        // gap kept for debug logging only â€” no longer used as an injection guardrail
         const semanticResults = localSemanticContext?.classification || [];
         const gap = (semanticResults[0]?.score || 0) - (semanticResults[1]?.score || 0);
 
-        // ── Stage 4.1: Late Ambient Context Injection ──
+        // â”€â”€ Stage 4.1: Late Ambient Context Injection â”€â”€
         // Only runs for intents with entityExtraction=true (discovery intents building
         // entities from scratch). Resolution-based intents (cart, analysis, checkout)
         // get their context from the reference map, not ambient injection.
         //
         // Fires when resolveAmbientContext returns a pendingAmbient, which already
         // implies no strong entity (category/product/resolved_product) was found.
-        // The gap guardrail has been removed — intent confidence is orthogonal to
+        // The gap guardrail has been removed â€” intent confidence is orthogonal to
         // entity poverty and was silently blocking correct ambient injection.
         if (stageGates && stageGates.entityExtraction === true) {
             const ambientResult = await resolveAmbientContext(cleanedText, extractionResult.entities, state);
@@ -1286,11 +1288,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 // Conflict guard: user's explicit signals this turn always win over
                 // ambient context carried from prior turns. Three types are guarded:
                 //
-                // 1. attribute — per-code: user said color=blue → drop ambient color=red
-                //                         user said nothing about material → inject material=cotton
-                // 2. vendor    — singleton: user named a vendor → drop ambient vendor entirely
-                //                          (user is redirecting scope — don't lock them to prior vendor)
-                // 3. price     — singleton: user stated a price range → drop ambient price
+                // 1. attribute â€” per-code: user said color=blue â†’ drop ambient color=red
+                //                         user said nothing about material â†’ inject material=cotton
+                // 2. vendor    â€” singleton: user named a vendor â†’ drop ambient vendor entirely
+                //                          (user is redirecting scope â€” don't lock them to prior vendor)
+                // 3. price     â€” singleton: user stated a price range â†’ drop ambient price
                 //                          (user's budget constraint overrides prior search's range)
 
                 const explicitAttributeCodes = new Set(
@@ -1304,16 +1306,16 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 const safeInjected = injected.filter(e => {
                     // Attribute conflict: per-code check
                     if (e.type === 'attribute' && explicitAttributeCodes.has(e.attributeCode)) return false;
-                    // Vendor conflict: user named a vendor → ambient vendor is stale
+                    // Vendor conflict: user named a vendor â†’ ambient vendor is stale
                     if (e.type === 'vendor' && hasExplicitVendor) return false;
-                    // Price conflict: user stated a price range → ambient price is stale
+                    // Price conflict: user stated a price range â†’ ambient price is stale
                     if (e.type === 'price' && hasExplicitPrice) return false;
                     return true;
                 });
 
                 extractionResult.entities.push(...safeInjected);
                 logDebug(`PIPELINE:STAGE4.1_INJECT [Statement ${i + 1}]`, {
-                    _desc: 'Ambient Context Injection — phantom entities added (no strong entity found, entityExtraction intent)',
+                    _desc: 'Ambient Context Injection â€” phantom entities added (no strong entity found, entityExtraction intent)',
                     topicType: ambientResult.pendingAmbient.type,
                     injectedCount: safeInjected.length,
                     droppedConflicts: injected.length - safeInjected.length,
@@ -1322,14 +1324,14 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 });
             } else {
                 logDebug(`PIPELINE:STAGE4.1_INJECT_SKIP [Statement ${i + 1}]`, {
-                    _desc: 'Ambient Context Injection SKIPPED — strong entity already present in extraction result',
+                    _desc: 'Ambient Context Injection SKIPPED â€” strong entity already present in extraction result',
                     entityCount: extractionResult.entities.length,
                     topicType: ambientResult?.pendingAmbient?.type || 'n/a'
                 });
             }
         } else {
             logDebug(`PIPELINE:STAGE4.1_INJECT_GATE [Statement ${i + 1}]`, {
-                _desc: 'Ambient Context Injection GATED — intent does not have entityExtraction=true',
+                _desc: 'Ambient Context Injection GATED â€” intent does not have entityExtraction=true',
                 entityExtraction: stageGates?.entityExtraction
             });
         }
@@ -1342,10 +1344,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // Stage 4.5: Semantic Integration + Confidence Gap Amplifier
         // Principle: If the transformer is confident about an intent (clear gap between #1 and #2),
-        // reward that decisiveness proportionally — the bigger the gap, the bigger the bonus.
+        // reward that decisiveness proportionally â€” the bigger the gap, the bigger the bonus.
         // This ensures parameter-poor intents can compete WITHOUT a fixed magic number.
         const CONFIDENCE_GAP_THRESHOLD = 0.04;  // min similarity gap to activate amplifier
-        const GAP_AMPLIFIER = 20;               // bonus = gap × this (gap 0.05→+1.0, gap 0.10→+2.0, gap 0.25→+5.0)
+        const GAP_AMPLIFIER = 20;               // bonus = gap Ã— this (gap 0.05â†’+1.0, gap 0.10â†’+2.0, gap 0.25â†’+5.0)
 
         let finalCandidates = resolution.candidates.map(c => ({
             intentName: c.intentName,
@@ -1370,7 +1372,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             const meanSemanticScore = semanticResults.reduce((sum, s) => sum + (s.score || 0), 0) / (semanticResults.length || 1);
             transformerGap = highestSemanticScore - meanSemanticScore;
 
-            // ── Semantic Confidence Gap Amplifier ──
+            // â”€â”€ Semantic Confidence Gap Amplifier â”€â”€
             const topScore = semanticResults[0]?.score || 0;
             const secondScore = semanticResults[1]?.score || 0;
             const confidenceGap = topScore - secondScore;
@@ -1380,9 +1382,9 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
             logDebug(`PIPELINE:STAGE4.5_CONFIDENCE_AMPLIFIER [Statement ${i + 1}]`, {
                 _type: 'CONFIDENCE_AMPLIFIER',
-                _icon: '🛡️',
+                _icon: 'ðŸ›¡ï¸',
                 _color: '#8b5cf6',
-                _desc: 'Semantic Confidence Amplifier — rewards transformer decisiveness proportionally to gap',
+                _desc: 'Semantic Confidence Amplifier â€” rewards transformer decisiveness proportionally to gap',
                 topIntent: topIntentName,
                 topScore: topScore.toFixed(4),
                 secondIntent: semanticResults[1]?.intentName || 'none',
@@ -1393,8 +1395,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 gapBonus: gapBonus.toFixed(2),
                 isConfident,
                 verdict: isConfident
-                    ? `✅ AMPLIFIER ACTIVE — "${topIntentName}" gets +${gapBonus.toFixed(2)} bonus (gap ${confidenceGap.toFixed(4)} × ${GAP_AMPLIFIER})`
-                    : `⏸️ AMPLIFIER INACTIVE — gap ${confidenceGap.toFixed(4)} < threshold ${CONFIDENCE_GAP_THRESHOLD}`
+                    ? `âœ… AMPLIFIER ACTIVE â€” "${topIntentName}" gets +${gapBonus.toFixed(2)} bonus (gap ${confidenceGap.toFixed(4)} Ã— ${GAP_AMPLIFIER})`
+                    : `â¸ï¸ AMPLIFIER INACTIVE â€” gap ${confidenceGap.toFixed(4)} < threshold ${CONFIDENCE_GAP_THRESHOLD}`
             });
 
             for (const sem of semanticResults) {
@@ -1439,7 +1441,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const winner = finalCandidates.length > 0 ? finalCandidates[0] : null;
 
         logDebug(`PIPELINE:STAGE4B_SCHEMA_SEMANTIC [Statement ${i + 1}]`, {
-            _desc: 'Unified resolution — merged deterministic schema fit with transformer semantic similarity',
+            _desc: 'Unified resolution â€” merged deterministic schema fit with transformer semantic similarity',
             winner: winner ? {
                 intent: winner.intentName,
                 score: winner.score.toFixed(2),
@@ -1464,7 +1466,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         if (!winner) {
             logDebug(`PIPELINE:STAGE4_NO_MATCH [Statement ${i + 1}]`, {
-                _desc: 'No intent matched — neither schema nor transformer found valid candidates',
+                _desc: 'No intent matched â€” neither schema nor transformer found valid candidates',
                 text: cleanedText,
                 action: 'Skipping'
             });
@@ -1485,11 +1487,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         const runPie = !stageGates || stageGates.pie !== false;
         const extractedParams = await parameterExtractor.extractParameters(
             cleanedText, candidates, (runPie && state.enableAiFallback ? aiQueryFn : null), storeContext, resolutions, extractionResult.entities,
-            textForExtraction // rawText: pre-clean, comma-preserved — used by PIE for segmentation
+            textForExtraction // rawText: pre-clean, comma-preserved â€” used by PIE for segmentation
         );
         logDebug(`PIPELINE:STAGE5_PARAMS [Statement ${i + 1}]`, {
-            _desc: 'Parameter extraction — map entities to intent slots, structural match, regex',
-            _example: '"add 2 samsung phones" → product_name:samsung phones, quantity:2',
+            _desc: 'Parameter extraction â€” map entities to intent slots, structural match, regex',
+            _example: '"add 2 samsung phones" â†’ product_name:samsung phones, quantity:2',
             text: statement.text,
             aiUsed: !!(runPie && state.enableAiFallback && aiQueryFn),
             skippedByGate: !runPie,
@@ -1509,8 +1511,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 invertedFrom = resolvedIntentName;
                 resolvedIntentName = intent.invertTo;
                 logDebug(`PIPELINE:STAGE47_INTENT_INVERSION [Statement ${i + 1}]`, {
-                    _desc: 'Intent inversion — negated statement flips intent via invertTo',
-                    _example: '"dont add to cart" → add_to_cart inverted to remove_from_cart',
+                    _desc: 'Intent inversion â€” negated statement flips intent via invertTo',
+                    _example: '"dont add to cart" â†’ add_to_cart inverted to remove_from_cart',
                     from: invertedFrom,
                     to: resolvedIntentName,
                     negated: statement.negated
@@ -1551,7 +1553,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             stageGates: stageGates || null
         });
 
-        // [TEST] Residual chunk analysis — background, log-only, product_search with residuals
+        // [TEST] Residual chunk analysis â€” background, log-only, product_search with residuals
         runResidualChunkAnalysis({
             intentName: resolvedIntentName,
             productName: reconciledStmt.parameters?.product_name || mergedParams?.product_name || '',
@@ -1565,8 +1567,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // --- RULE 8: CLARIFICATION FALLBACK ---
     if (resolvedStatements.length === 0 && userMessage.length > 3) {
         logDebug('PIPELINE:RULE8_FALLBACK', {
-            _desc: 'Clarification fallback — no intents resolved, return fallback_unknown + clarify',
-            _example: '"do the vibes" → conversation.clarify asks user to rephrase',
+            _desc: 'Clarification fallback â€” no intents resolved, return fallback_unknown + clarify',
+            _example: '"do the vibes" â†’ conversation.clarify asks user to rephrase',
             reason: 'No statements resolved to a valid intent',
             userMessage,
             action: 'Returning fallback_unknown + conversation.clarify'
@@ -1583,8 +1585,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Pass userId to portIntents for user_query_map access
     const portedStatements = await intentPorter.portIntents(resolvedStatements, { ...state, user_id: userId });
     logDebug('PIPELINE:STAGE7.5_PORTING', {
-        _desc: 'Intent porting — pivot product_search → add_to_cart when product in reference_map + purchase verb',
-        _example: '"i want to buy drawer" after search → add_to_cart (drawer resolved)',
+        _desc: 'Intent porting â€” pivot product_search â†’ add_to_cart when product in reference_map + purchase verb',
+        _example: '"i want to buy drawer" after search â†’ add_to_cart (drawer resolved)',
         before: resolvedStatements.map(s => s.intentName),
         after: portedStatements.map(s => s.intentName)
     });
@@ -1592,8 +1594,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Stage 6: Cross-intent parameter bleeding
     const bledStatements = parameterBleeder.bleedParameters(portedStatements);
     logDebug('PIPELINE:STAGE6_BLEEDING', {
-        _desc: 'Parameter bleeding — pass missing required params from earlier statements in multi-intent',
-        _example: '"phones then add to cart" → add_to_cart gets product_name from product_search',
+        _desc: 'Parameter bleeding â€” pass missing required params from earlier statements in multi-intent',
+        _example: '"phones then add to cart" â†’ add_to_cart gets product_name from product_search',
         before: portedStatements.map(s => ({ intent: s.intentName, params: s.parameters })),
         after: bledStatements.map(s => ({ intent: s.intentName, params: s.parameters, bledParams: s.bledParams }))
     });
@@ -1601,76 +1603,13 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     // Stage 6.5: Parameter Normalization
     const normalizedStatements = parameterNormalizer.normalizeParameters(bledStatements, storeContext);
     logDebug('PIPELINE:STAGE6.5_NORMALIZATION', {
-        _desc: 'Parameter normalization — clause_words→attributes, vendor/category ID resolution',
-        _example: '"the white ones" → attributes: { color: white }',
+        _desc: 'Parameter normalization â€” clause_wordsâ†’attributes, vendor/category ID resolution',
+        _example: '"the white ones" â†’ attributes: { color: white }',
         normalized: normalizedStatements.map(s => ({ intent: s.intentName, params: s.parameters }))
     });
 
-    // ═══════════════════════════════════════════════
-    // Stage 7: INVENTORY CHECK + PARENTAL PIVOT
-    // If a category has 0 products, flag it, suggest siblings, and pivot to parent.
-    // ═══════════════════════════════════════════════
-    for (const stmt of normalizedStatements) {
-        if (!['product_search', 'check_availability', 'discovery_sentinel'].includes(stmt.intentName)) continue;
-
-        const catId = stmt.parameters?.category;
-        if (!catId) continue;
-
-        const cat = findById(catId);
-        if (!cat) continue;
-
-        // Skip if category has products
-        if (cat.total_count > 0) continue;
-
-        logDebug('PIPELINE:STAGE7_INVENTORY_CHECK', {
-            _desc: 'Inventory check — flag empty category, set _empty_category',
-            _example: '"bedside drawer" in empty cat → _empty_category: true, suggest siblings',
-            category: cat.label,
-            total_count: cat.total_count,
-            action: 'Category is empty, evaluating fallback options'
-        });
-
-        // Flag the empty category
-        stmt.parameters._empty_category = true;
-        stmt.parameters._empty_category_label = cat.label;
-
-        // Suggest siblings with products (contextual alternatives)
-        const siblings = getSiblings(catId)
-            .filter(s => s.total_count > 0)
-            .slice(0, 3);
-
-        if (siblings.length > 0) {
-            stmt.parameters._suggested_alternatives = siblings.map(s => ({
-                label: s.label, id: s.id, count: s.total_count
-            }));
-            logDebug('PIPELINE:STAGE7_SIBLING_SUGGESTIONS', {
-                _desc: 'Sibling suggestions — offer alternative categories with products',
-                _example: 'empty Gaming Laptops → suggest Laptops (7), Electronics (3)',
-                category: cat.label,
-                siblings: siblings.map(s => `${s.label} (${s.total_count})`)
-            });
-        }
-
-        // Parental Pivot: auto-broaden to parent if parent has products
-        if (!isRoot(catId)) {
-            const parent = getParent(catId);
-            if (parent && parent.total_count > 0) {
-                const path = getPath(catId);
-                logDebug('PIPELINE:STAGE7_PARENTAL_PIVOT', {
-                    _desc: 'Parental pivot — broaden to parent category when child is empty',
-                    _example: 'Android Tablets empty → pivot to Tablets (parent has products)',
-                    from: cat.label,
-                    to: parent.label,
-                    path,
-                    parentCount: parent.total_count
-                });
-                stmt.parameters.category = parent.id;
-                stmt.parameters._pivoted_from = cat.label;
-                stmt.parameters._pivoted_to = parent.label;
-                stmt.parameters._pivot_path = path;
-            }
-        }
-    }
+    // Stage 7: INVENTORY CHECK - DEPRECATED
+    // Bloom filters now handle pre-screening. Non-queried IC is in product.search tool.
 
     // Build final intents array
     const intents = normalizedStatements.map(stmt => {
@@ -1690,10 +1629,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         };
     });
 
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // STACK: Execute intents sequentially
     // If multiple intents, execute one at a time and preserve remaining in stack
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     const stackResult = await stack.executeIntentStack(normalizedStatements, state, storeContext, state.session_id);
 
     // When stack is active, only process the FIRST intent
@@ -1701,7 +1640,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     let intentsToProcess = intents;
     if (stackResult.stack_active) {
         logDebug('PIPELINE:STACK_ACTIVATED', {
-            _desc: 'STACK activated — only processing first intent, remaining deferred',
+            _desc: 'STACK activated â€” only processing first intent, remaining deferred',
             currentIndex: stackResult.current_intent_index,
             totalIntents: stackResult.total_intents
         });
@@ -1709,18 +1648,18 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         intentsToProcess = [intents[0]];
     }
 
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // Collect all resolutions and build final corrected text for logging
     const allResolutions = resolvedStatements.flatMap(s => s.stage2Resolutions || []);
     const finalResolvedText = resolvedStatements.map(s => s.resolvedText).join(' ');
 
-    // ── Stage 8a: SEARCH CONTEXT ──
+    // â”€â”€ Stage 8a: SEARCH CONTEXT â”€â”€
     const winnerIntent = intentsToProcess[0];
     if (userId) {
         // Always decrement TTL on every message
         await stateManager.decrementSearchContextTTL(userId);
 
-        // ── WRITE: Search/discovery intents → capture context ──
+        // â”€â”€ WRITE: Search/discovery intents â†’ capture context â”€â”€
         const WRITE_INTENTS = ['product_search', 'discovery_sentinel'];
         if (winnerIntent && WRITE_INTENTS.includes(winnerIntent.intentName)) {
             const params = winnerIntent.parameters || {};
@@ -1749,8 +1688,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
 
             logDebug('PIPELINE:STAGE8A_CONTEXT_WRITE', {
-                _desc: 'Search context write — store category, clauses, attributes for cart/compare later',
-                _example: 'product_search "drawer" → context: { category, query, clauses }',
+                _desc: 'Search context write â€” store category, clauses, attributes for cart/compare later',
+                _example: 'product_search "drawer" â†’ context: { category, query, clauses }',
                 intent: winnerIntent.intentName,
                 category: params.category_name || params.category,
                 clauses: params.clause_words, // Log original for debugging, context stores processed
@@ -1758,7 +1697,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             });
         }
 
-        // ── READ: Cart/compare/availability → resolve references ──
+        // â”€â”€ READ: Cart/compare/availability â†’ resolve references â”€â”€
         // Process ALL intents, not just winnerIntent, especially ported ones
         const READ_INTENTS = ['add_to_cart', 'product_compare', 'check_availability'];
         const searchCtx = userId ? await stateManager.getSearchContext(userId) : null;
@@ -1770,7 +1709,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 // Respect the stage gate from hierarchical classification
                 if (intent.stageGates && intent.stageGates.contextResolution === false) {
                     logDebug('PIPELINE:STAGE8A_CONTEXT_SKIPPED', {
-                        _desc: 'Context Resolution SKIPPED — disabled by hierarchical stage gate',
+                        _desc: 'Context Resolution SKIPPED â€” disabled by hierarchical stage gate',
                         intent: intent.intentName,
                         reason: 'stageGates.contextResolution = false'
                     });
@@ -1780,7 +1719,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 const params = intent.parameters || {};
                 let contextApplied = false;
 
-                // Grouped ordinal: "first two", "top two", "last three" → slice of search context product_ids
+                // Grouped ordinal: "first two", "top two", "last three" â†’ slice of search context product_ids
                 if (searchCtx.product_ids.length > 0) {
                     let phraseStr = null;
                     const productsParam = params.products;
@@ -1789,7 +1728,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         : productsParam;
                     if (typeof singlePhrase === 'string') phraseStr = singlePhrase;
                     if (!phraseStr && params.product_name && typeof params.product_name === 'string') phraseStr = params.product_name;
-                    // If params were rewritten by context (e.g. "first two" → "iphone xs max two"), extract from original message
+                    // If params were rewritten by context (e.g. "first two" â†’ "iphone xs max two"), extract from original message
                     if ((!phraseStr || !resolveGroupedOrdinal(phraseStr, searchCtx.product_ids.length)) && userMessage) {
                         const groupedMatch = userMessage.match(/\b(first|top|last)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i);
                         if (groupedMatch) phraseStr = groupedMatch[0];
@@ -1806,8 +1745,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             params._context_query = searchCtx.query || '';
                             contextApplied = true;
                             logDebug('PIPELINE:STAGE8A_GROUPED_ORDINAL', {
-                                _desc: 'Grouped ordinal — "first two", "top three" → slice of context product_ids',
-                                _example: '"add first two to cart" → products: [id1, id2] from search context',
+                                _desc: 'Grouped ordinal â€” "first two", "top three" â†’ slice of context product_ids',
+                                _example: '"add first two to cart" â†’ products: [id1, id2] from search context',
                                 phrase: phraseStr,
                                 listLength: searchCtx.product_ids.length,
                                 indices,
@@ -1821,7 +1760,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 if (!contextApplied && searchCtx.product_ids.length > 1) {
                     // Guard: if we already have a single concrete product resolved for add_to_cart
                     // (e.g. Stage2 reference resolution + porter set product_id/products), do NOT open ordinal_choice.
-                    // This prevents cases like "the cheapest" → "<product name> one" from triggering ordinal_choice.
+                    // This prevents cases like "the cheapest" â†’ "<product name> one" from triggering ordinal_choice.
                     const hasConcreteSingleProduct = !!params.product_id ||
                         (Array.isArray(params.products) && params.products.length === 1 && typeof params.products[0] === 'string' && params.products[0].trim().length > 0);
                     if (hasConcreteSingleProduct && params._require_confirmation === true) {
@@ -1842,8 +1781,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             params._ordinal_choice_product_ids = searchCtx.product_ids;
                             contextApplied = true;
                             logDebug('PIPELINE:STAGE8A_ORDINAL_CHOICE_TRIGGER', {
-                                _desc: 'Ordinal choice trigger — bare "one"/"ones" with multiple results → ask which one',
-                                _example: '"add one" with 5 products → open ordinal_choice microstate',
+                                _desc: 'Ordinal choice trigger â€” bare "one"/"ones" with multiple results â†’ ask which one',
+                                _example: '"add one" with 5 products â†’ open ordinal_choice microstate',
                                 reason: hasBareOneInMessage ? 'bare_one_in_message' : 'unresolved_or_out_of_range_ordinal',
                                 productCount: listLen,
                                 phrase: phraseForOrdinal,
@@ -1854,7 +1793,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     }
                 }
 
-                // Phase 3: Single ordinal — "first one", "second one", "the first one", "last one" → inject only that product ID
+                // Phase 3: Single ordinal â€” "first one", "second one", "the first one", "last one" â†’ inject only that product ID
                 if (!contextApplied && searchCtx.product_ids.length > 0) {
                     let oneBased = null;
                     let singleOrdinalPhrase = (params.products && params.products[0]) || params.product_name;
@@ -1881,8 +1820,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         params._context_query = searchCtx.query || '';
                         contextApplied = true;
                         logDebug('PIPELINE:STAGE8A_SINGLE_ORDINAL', {
-                            _desc: 'Single ordinal — "first one", "the second one" → inject that product ID',
-                            _example: '"add the first one" → products: [searchCtx.product_ids[0]]',
+                            _desc: 'Single ordinal â€” "first one", "the second one" â†’ inject that product ID',
+                            _example: '"add the first one" â†’ products: [searchCtx.product_ids[0]]',
                             phrase: singleOrdinalPhrase,
                             oneBased,
                             productId: resolvedIds[0]
@@ -1897,8 +1836,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         params._context_query = searchCtx.query || '';
                         contextApplied = true;
                         logDebug('PIPELINE:STAGE8A_SINGLE_ORDINAL', {
-                            _desc: 'Single ordinal — "last one" → inject last product ID',
-                            _example: '"add the last one" → products: [searchCtx.product_ids[len-1]]',
+                            _desc: 'Single ordinal â€” "last one" â†’ inject last product ID',
+                            _example: '"add the last one" â†’ products: [searchCtx.product_ids[len-1]]',
                             phrase: singleOrdinalPhrase,
                             oneBased: 'last',
                             productId: resolvedIds[0]
@@ -1936,7 +1875,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     (matchedClauses.length > 0 || (params.attributes && Object.keys(params.attributes).length > 0 && searchCtx.product_attributes_map))) {
                     let filteredProductIds = searchCtx.product_ids;
 
-                    console.log(`[Stage8a:ClauseMatch] 🔍 Starting clause match filtering:`, {
+                    console.log(`[Stage8a:ClauseMatch] ðŸ” Starting clause match filtering:`, {
                         matchedClauses: matchedClauses,
                         params_attributes: params.attributes,
                         searchCtx_attributes: searchCtx.attributes,
@@ -1993,7 +1932,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             return matches;
                         });
 
-                        console.log(`[Stage8a:ClauseMatch] 🔍 Filtering results:`, {
+                        console.log(`[Stage8a:ClauseMatch] ðŸ” Filtering results:`, {
                             before: searchCtx.product_ids.length,
                             after: filteredProductIds.length,
                             filtered_out: searchCtx.product_ids.length - filteredProductIds.length,
@@ -2002,11 +1941,11 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
                         if (filteredProductIds.length === 0) {
                             // If filtering removed all products, fallback to original (better than nothing)
-                            console.log(`[Stage8a:ClauseMatch] ⚠️ Filtering removed all products, falling back to original`);
+                            console.log(`[Stage8a:ClauseMatch] âš ï¸ Filtering removed all products, falling back to original`);
                             filteredProductIds = searchCtx.product_ids;
                         }
                     } else {
-                        console.log(`[Stage8a:ClauseMatch] ⏭️ Skipping attribute filter:`, {
+                        console.log(`[Stage8a:ClauseMatch] â­ï¸ Skipping attribute filter:`, {
                             has_params_attributes: !!(params.attributes && Object.keys(params.attributes).length > 0),
                             has_product_attributes_map: !!searchCtx.product_attributes_map
                         });
@@ -2091,7 +2030,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 else if (!contextApplied && hasExplicitPronoun && searchCtx.product_ids.length > 0) {
                     let filteredProductIds = searchCtx.product_ids;
 
-                    console.log(`[Stage8a:PronounFallback] 🔍 Starting pronoun fallback with attribute filtering:`, {
+                    console.log(`[Stage8a:PronounFallback] ðŸ” Starting pronoun fallback with attribute filtering:`, {
                         hasExplicitPronoun: hasExplicitPronoun,
                         params_attributes: params.attributes,
                         product_ids_before: searchCtx.product_ids.length,
@@ -2143,7 +2082,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             return matches;
                         });
 
-                        console.log(`[Stage8a:PronounFallback] 🔍 Filtering results:`, {
+                        console.log(`[Stage8a:PronounFallback] ðŸ” Filtering results:`, {
                             before: searchCtx.product_ids.length,
                             after: filteredProductIds.length,
                             filtered_out: searchCtx.product_ids.length - filteredProductIds.length,
@@ -2151,12 +2090,12 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         });
 
                         if (filteredProductIds.length === 0) {
-                            console.log(`[Stage8a:PronounFallback] ⚠️ Filtering removed all products, falling back to original`);
+                            console.log(`[Stage8a:PronounFallback] âš ï¸ Filtering removed all products, falling back to original`);
                             filteredProductIds = searchCtx.product_ids; // Fallback
                         }
                     }
 
-                    // Ordinal-choice microstate: multiple results + bare "one"/"ones" → ask which one
+                    // Ordinal-choice microstate: multiple results + bare "one"/"ones" â†’ ask which one
                     const rawProducts = params.products;
                     const rawName = params.product_name;
                     const isBareOne = (Array.isArray(rawProducts) && rawProducts.length === 1 &&
@@ -2166,8 +2105,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         params._open_ordinal_choice_microstate = true;
                         params._ordinal_choice_product_ids = filteredProductIds;
                         logDebug('PIPELINE:STAGE8A_ORDINAL_CHOICE', {
-                            _desc: 'Ordinal choice — "ones" with multiple filtered results → open disambiguate',
-                            _example: '"add the white ones" (3 matches) → ordinal_choice microstate',
+                            _desc: 'Ordinal choice â€” "ones" with multiple filtered results â†’ open disambiguate',
+                            _example: '"add the white ones" (3 matches) â†’ ordinal_choice microstate',
                             productCount: filteredProductIds.length,
                             intent: intent.intentName
                         });
@@ -2187,7 +2126,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     // to leverage the toolMapper's expansion logic (Phase 8b).
                     if (params._context_product_ids && params._context_product_ids.length > 0) {
                         // Guard: do NOT overwrite a confirmation-gated single-product add.
-                        // (e.g. Stage2 resolved "the cheapest" → productId, porter set product_id/products)
+                        // (e.g. Stage2 resolved "the cheapest" â†’ productId, porter set product_id/products)
                         const hasConcreteSingleProduct = !!params.product_id ||
                             (Array.isArray(params.products) && params.products.length === 1 && typeof params.products[0] === 'string' && params.products[0].trim().length > 0);
                         if (!(params._require_confirmation === true && hasConcreteSingleProduct)) {
@@ -2208,8 +2147,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         }
 
                         logDebug('PIPELINE:STAGE8A_CONTEXT_INJECT', {
-                            _desc: 'Context inject — inject _context_product_ids into params.products',
-                            _example: '"add the cheap ones" → products: [uuid1, uuid2] from clause match',
+                            _desc: 'Context inject â€” inject _context_product_ids into params.products',
+                            _example: '"add the cheap ones" â†’ products: [uuid1, uuid2] from clause match',
                             targetIntent: intent.intentName,
                             productCount: params.products.length,
                             reason: params._context_matched_clauses ? 'matched_clauses' :
@@ -2220,8 +2159,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     intent.parameters = params;
 
                     logDebug('PIPELINE:STAGE8A_CONTEXT_READ', {
-                        _desc: 'Search context read — resolve cart/compare refs from last search',
-                        _example: 'add_to_cart "it" → load product_ids from searchCtx, match clauses/attrs',
+                        _desc: 'Search context read â€” resolve cart/compare refs from last search',
+                        _example: 'add_to_cart "it" â†’ load product_ids from searchCtx, match clauses/attrs',
                         intent: intent.intentName,
                         contextCategory: searchCtx.category,
                         contextClauses: searchCtx.clauses,
@@ -2235,7 +2174,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // ── Stage 8a-cart: remove_from_cart — resolve "second item", "first item", "first two" → cart_item_id(s) ──
+    // â”€â”€ Stage 8a-cart: remove_from_cart â€” resolve "second item", "first item", "first two" â†’ cart_item_id(s) â”€â”€
     if (winnerIntent && winnerIntent.intentName === 'remove_from_cart') {
         const params = winnerIntent.parameters || {};
         const products = params.products;
@@ -2255,8 +2194,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                     params.products = groupedIndices.map(i => cartItems[i].id);
                     delete params.cart_item_id;
                     logDebug('PIPELINE:STAGE8A_CART_GROUPED_ORDINAL', {
-                        _desc: 'Cart grouped ordinal — "first two items" → remove those cart_item_ids',
-                        _example: '"remove first two" → products: [cart_items[0].id, cart_items[1].id]',
+                        _desc: 'Cart grouped ordinal â€” "first two items" â†’ remove those cart_item_ids',
+                        _example: '"remove first two" â†’ products: [cart_items[0].id, cart_items[1].id]',
                         phrase: phraseStr,
                         indices: groupedIndices,
                         count: params.products.length
@@ -2271,8 +2210,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                             params.cart_item_id = cartItems[index].id;
                             params.products = [];
                             logDebug('PIPELINE:STAGE8A_CART_ORDINAL', {
-                                _desc: 'Cart single ordinal — "second item" → resolve to cart_item_id',
-                                _example: '"remove the second item" → cart_item_id: cart_items[1].id',
+                                _desc: 'Cart single ordinal â€” "second item" â†’ resolve to cart_item_id',
+                                _example: '"remove the second item" â†’ cart_item_id: cart_items[1].id',
                                 phrase: phraseStr,
                                 ordinal: oneBased,
                                 cart_item_id: params.cart_item_id
@@ -2284,7 +2223,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // ── Open ordinal-choice microstate when "one"/"ones" with multiple results ──
+    // â”€â”€ Open ordinal-choice microstate when "one"/"ones" with multiple results â”€â”€
     if (winnerIntent && winnerIntent.parameters && winnerIntent.parameters._open_ordinal_choice_microstate && userId) {
         const ids = winnerIntent.parameters._ordinal_choice_product_ids || [];
         const count = ids.length;
@@ -2319,8 +2258,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         };
         await stateManager.setMicrostate(userId, msObj);
         logDebug('PIPELINE:ORDINAL_CHOICE_MICROSTATE_OPENED', {
-            _desc: 'Ordinal choice microstate opened — ask user to pick by number',
-            _example: '"add one" (5 options) → "Which one? Reply 1-5 or the first one"',
+            _desc: 'Ordinal choice microstate opened â€” ask user to pick by number',
+            _example: '"add one" (5 options) â†’ "Which one? Reply 1-5 or the first one"',
             intent: winnerIntent.intentName,
             productCount: count
         });
@@ -2353,19 +2292,19 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     })));
 
     logDebug('PIPELINE:STAGE8_TOOL_MAPPING', {
-        _desc: 'Tool mapping — map intents to tool calls via paramMap, expand product arrays',
-        _example: 'add_to_cart → cart.add; product_search → product.search',
+        _desc: 'Tool mapping â€” map intents to tool calls via paramMap, expand product arrays',
+        _example: 'add_to_cart â†’ cart.add; product_search â†’ product.search',
         intents: intentsToProcess.map(i => ({ intent: i.intentName, score: i.score, params: i.parameters })),
         tools: tools.map(t => ({ tool: t.tool, params: t.params, reason: t.reason }))
     });
 
 
 
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // Stage 10: CHECK MICROSTATE TRIGGERS
     // After pipeline produces winner, check if it triggers a new microstate.
-    // If triggered → open microstate, return prompt tool instead of original.
-    // ═══════════════════════════════════════════════
+    // If triggered â†’ open microstate, return prompt tool instead of original.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     const winner = intentsToProcess[0];
     if (winner && userId) {
         // Use pipeline entities (includes IntelliSense/PIE resolved_product signals)
@@ -2428,8 +2367,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             // await stateManager.setMicrostate(userId, msObj);
 
             logDebug('PIPELINE:STAGE10_MICROSTATE_OPENED', {
-                _desc: 'Microstate trigger — intent matched trigger, open microstate instead of tool',
-                _example: 'remove_from_cart with many items → ordinal_choice "Which item?"',
+                _desc: 'Microstate trigger â€” intent matched trigger, open microstate instead of tool',
+                _example: 'remove_from_cart with many items â†’ ordinal_choice "Which item?"',
                 triggerName: triggered.triggerName,
                 intent: winner.intentName,
                 sandbox: msObj.sandbox,
@@ -2465,7 +2404,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
             }
 
             if (injections.options.length > 0 || injections.promptSuffix) {
-                console.log(`[Pipeline] 🚀 Microstate "${msObj.type}" opened. Tool: ${openedPrompt.tool}. Suggestions: ${injections.options.length}`);
+                console.log(`[Pipeline] ðŸš€ Microstate "${msObj.type}" opened. Tool: ${openedPrompt.tool}. Suggestions: ${injections.options.length}`);
                 openedPrompt.params = {
                     ...(openedPrompt.params || {}),
                     message: (openedPrompt.params?.message || '') + injections.promptSuffix,
@@ -2497,10 +2436,10 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
         }
     }
 
-    // ═══════════════════════════════════════════════
-    // PIPELINE CONFIDENCE — Single end-of-pipeline calculation
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // PIPELINE CONFIDENCE â€” Single end-of-pipeline calculation
     // No per-stage instrumentation. Reads all pipeline artifacts in one shot.
-    // ═══════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     const confidenceResult = calculatePipelineConfidence({
         userMessage,
         afterFuzzy,
@@ -2515,8 +2454,8 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
     });
 
     logDebug('PIPELINE:CONFIDENCE_SCORE', {
-        _desc: 'Pipeline confidence score — multi-directional aggregate across all stages',
-        _icon: confidenceResult.verdict === 'CONFIDENT' ? '🟢' : '🔴',
+        _desc: 'Pipeline confidence score â€” multi-directional aggregate across all stages',
+        _icon: confidenceResult.verdict === 'CONFIDENT' ? 'ðŸŸ¢' : 'ðŸ”´',
         score: confidenceResult.score,
         verdict: confidenceResult.verdict,
         signalCount: confidenceResult.signalCount,
