@@ -65,6 +65,17 @@ function summarizeToolResultsForLLM(results) {
             if (rr.whatsapp) base.whatsapp = rr.whatsapp;
         }
 
+        // RAG knowledge context (rag.query / backward-compat conversation.chat with llmSummary:false)
+        // Pass rag_context and rag_entity straight through — they are what the LLM needs to answer.
+        // rag_fallback:true means RAG found nothing; pass it so DCO knows to respond from history.
+        if ((tool === 'rag.query' || tool === 'conversation.chat') && rr && typeof rr === 'object') {
+            if (rr.rag_context) base.rag_context = rr.rag_context;
+            if (rr.rag_entity) base.rag_entity = rr.rag_entity;
+            if (rr.rag_fallback) base.rag_fallback = true;
+            if (rr.whatsapp) base.whatsapp = rr.whatsapp;
+        }
+
+
         // Facet results: pass structured options to personality layer
         if (tool === 'product.facets' && rr && typeof rr === 'object') {
             base.facet_target = rr.facet_target || null;

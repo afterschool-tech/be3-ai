@@ -2,11 +2,11 @@ const { Pool } = require('pg');
 const fs = require('fs');
 require('dotenv').config();
 
-const poolConfig = process.env.DB_SOURCE === 'cloud' 
-    ? { 
+const poolConfig = process.env.DB_SOURCE === 'cloud'
+    ? {
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false } // Required for Neon
-      }
+    }
     : {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 5432,
@@ -20,8 +20,8 @@ const pool = new Pool(poolConfig);
 async function buildComprehensiveContext() {
     try {
         const connectionLabel = process.env.DB_SOURCE === 'cloud' ? '☁️  CLOUD (Neon)' : '💻 LOCAL';
-        const hostInfo = process.env.DB_SOURCE === 'cloud' 
-            ? (process.env.DATABASE_URL?.match(/@([^/]+)/)?.[1] || 'URL Provided') 
+        const hostInfo = process.env.DB_SOURCE === 'cloud'
+            ? (process.env.DATABASE_URL?.match(/@([^/]+)/)?.[1] || 'URL Provided')
             : (process.env.DB_HOST || 'localhost');
 
         console.log(`🚀 Building Comprehensive Store Context...`);
@@ -316,24 +316,48 @@ async function buildComprehensiveContext() {
 
         console.log(`✅ ${Object.keys(collectionsMap).length} collections loaded`);
 
-        // ===== 5. VENDORS (with category distribution) =====
-        console.log('🏪 Fetching vendors...');
+        // ===== 5. VENDORS (comprehensive — all new schema fields) =====
+        console.log('🏪 Fetching vendors with full profile data...');
+
+        // Introspect which optional columns actually exist in users table (safe across migration states)
+        const optionalUserCols = ['business_description', 'business_thumbnail', 'business_backdrop', 'kyc_status', 'kyb_status'];
+        const existingColsRes = await pool.query(`
+            SELECT attname FROM pg_attribute
+            WHERE attrelid = 'users'::regclass AND attnum > 0 AND NOT attisdropped
+              AND attname = ANY($1)
+        `, [optionalUserCols]);
+        const existingCols = new Set(existingColsRes.rows.map(r => r.attname));
+        console.log(`  ↳ Optional user columns available: ${[...existingCols].join(', ') || 'none'}`);
+
+        const optionalSelects = optionalUserCols
+            .map(col => existingCols.has(col) ? `u.${col}` : `NULL AS ${col}`)
+            .join(',\n                ');
+
+        const groupByOptional = optionalUserCols
+            .filter(col => existingCols.has(col))
+            .map(col => `u.${col}`)
+            .join(', ');
+
         const vendorRes = await pool.query(`
-            SELECT DISTINCT 
-                u.id, 
-                u.business_name, 
-                u.first_name, 
+            SELECT
+                u.id,
+                u.business_name,
+                u.first_name,
                 u.last_name,
                 u.checkout_style,
                 u.whatsapp_phone,
+                ${optionalSelects},
                 COUNT(DISTINCT p.id) as product_count
             FROM users u
-            JOIN products p ON p.created_by = u.id
+            JOIN products p ON p.created_by = u.id AND p.tenant_id = $1 AND p.deleted_at IS NULL
             WHERE p.tenant_id = $1
-            GROUP BY u.id, u.business_name, u.first_name, u.last_name, u.checkout_style, u.whatsapp_phone
+            GROUP BY u.id, u.business_name, u.first_name, u.last_name, u.checkout_style,
+                     u.whatsapp_phone${groupByOptional ? ', ' + groupByOptional : ''}
         `, [process.env.TENANT_ID]);
 
         const vendorsMap = {};
+        const vendorIdToKey = {};
+
         vendorRes.rows.forEach(v => {
             const name = v.business_name || `${v.first_name} ${v.last_name}`.trim() || 'Store';
             const key = name.toLowerCase().replace(/\s+/g, '_');
@@ -343,13 +367,156 @@ async function buildComprehensiveContext() {
                 tag: name,
                 checkout_style: v.checkout_style || 'inhouse',
                 whatsapp_phone: v.whatsapp_phone || null,
-                delivery_scope: "Local & National",
+                business_description: v.business_description || null,
+                business_thumbnail: v.business_thumbnail || null,
+                business_backdrop: v.business_backdrop || null,
+                kyc_status: v.kyc_status || 'none',
+                kyb_status: v.kyb_status || 'none',
                 product_count: parseInt(v.product_count) || 0,
-                categories: []
+                categories: [],
+                primary_location: null,
+                delivery_zones: [],
+                shipping_config: null,
+                avg_rating: null,
+                total_ratings: 0
             };
+            vendorIdToKey[v.id] = key;
         });
 
         console.log(`✅ ${Object.keys(vendorsMap).length} vendors loaded`);
+
+
+        // ===== 5b. CATEGORY LEDGER (categories each vendor actually sells in) =====
+        console.log('📒 Fetching vendor category ledgers...');
+        const ledgerRes = await pool.query(`
+            SELECT vcl.vendor_id, vcl.category_id, vcl.product_count, c.name as category_name, c.slug as category_slug
+            FROM vendor_category_ledger vcl
+            JOIN categories c ON vcl.category_id = c.id
+            WHERE vcl.tenant_id = $1 AND vcl.vendor_id IS NOT NULL AND vcl.product_count > 0
+            ORDER BY vcl.product_count DESC
+        `, [process.env.TENANT_ID]);
+
+        ledgerRes.rows.forEach(row => {
+            const key = vendorIdToKey[row.vendor_id];
+            if (key && vendorsMap[key]) {
+                vendorsMap[key].categories.push({
+                    id: row.category_id,
+                    label: row.category_name,
+                    slug: row.category_slug,
+                    product_count: row.product_count
+                });
+            }
+        });
+
+        // ===== 5c. PRIMARY LOCATION (vendor's main business address) =====
+        console.log('📍 Fetching vendor primary locations...');
+        const locRes = await pool.query(`
+            SELECT DISTINCT ON (vendor_id)
+                vendor_id, scope, continent, country, state, city, address, is_primary
+            FROM vendor_locations
+            WHERE tenant_id = $1
+            ORDER BY vendor_id, is_primary DESC, created_at ASC
+        `, [process.env.TENANT_ID]);
+
+        locRes.rows.forEach(row => {
+            const key = vendorIdToKey[row.vendor_id];
+            if (key && vendorsMap[key]) {
+                vendorsMap[key].primary_location = {
+                    scope: row.scope,
+                    continent: row.continent || null,
+                    country: row.country || null,
+                    state: row.state || null,
+                    city: row.city || null,
+                    address: row.address || null
+                };
+            }
+        });
+
+        // ===== 5d. SHIPPING CONFIG (base fee + processing SLA per vendor) =====
+        console.log('🚚 Fetching vendor shipping configs...');
+        const shipConfigRes = await pool.query(`
+            SELECT vendor_id, global_base_fee, global_processing_min, global_processing_max
+            FROM vendor_shipping_configs
+            WHERE tenant_id = $1
+        `, [process.env.TENANT_ID]);
+
+        shipConfigRes.rows.forEach(row => {
+            const key = vendorIdToKey[row.vendor_id];
+            if (key && vendorsMap[key]) {
+                vendorsMap[key].shipping_config = {
+                    base_fee: parseFloat(row.global_base_fee) || 0,
+                    processing_days_min: row.global_processing_min ?? 1,
+                    processing_days_max: row.global_processing_max ?? 2
+                };
+            }
+        });
+
+        // ===== 5e. DELIVERY ZONES (where each vendor ships to + transit times) =====
+        console.log('🗺️  Fetching vendor delivery zones...');
+        const shipZoneRes = await pool.query(`
+            SELECT
+                vsz.vendor_id,
+                vsz.location_type,
+                vsz.multiplier,
+                vsz.transit_min,
+                vsz.transit_max,
+                CASE
+                    WHEN vsz.location_type = 'country'  THEN co.name
+                    WHEN vsz.location_type = 'state'    THEN st.name
+                    WHEN vsz.location_type = 'landmark' THEN lm.name
+                END AS location_name,
+                CASE
+                    WHEN vsz.location_type = 'state'    THEN co2.name
+                    WHEN vsz.location_type = 'landmark' THEN co3.name
+                    ELSE NULL
+                END AS country_name
+            FROM vendor_shipping_zones vsz
+            LEFT JOIN countries  co  ON vsz.location_type = 'country'  AND vsz.location_id = co.id  AND co.tenant_id  = $1
+            LEFT JOIN states     st  ON vsz.location_type = 'state'    AND vsz.location_id = st.id
+            LEFT JOIN countries  co2 ON st.country_id = co2.id         AND co2.tenant_id    = $1
+            LEFT JOIN landmarks  lm  ON vsz.location_type = 'landmark' AND vsz.location_id = lm.id
+            LEFT JOIN states     st3 ON lm.state_id = st3.id
+            LEFT JOIN countries  co3 ON st3.country_id = co3.id        AND co3.tenant_id    = $1
+            WHERE vsz.tenant_id = $1
+            ORDER BY vsz.vendor_id, vsz.location_type, location_name
+        `, [process.env.TENANT_ID]);
+
+        shipZoneRes.rows.forEach(row => {
+            const key = vendorIdToKey[row.vendor_id];
+            if (key && vendorsMap[key]) {
+                vendorsMap[key].delivery_zones.push({
+                    type: row.location_type,
+                    name: row.location_name || null,
+                    country: row.country_name || null,
+                    multiplier: parseFloat(row.multiplier) || 1,
+                    transit_min: row.transit_min ?? 1,
+                    transit_max: row.transit_max ?? 3
+                });
+            }
+        });
+
+        // ===== 5f. AVG RATING (aggregated across all vendor's products) =====
+        console.log('⭐ Fetching vendor average ratings...');
+        const ratingsRes = await pool.query(`
+            SELECT
+                p.created_by AS vendor_id,
+                ROUND(AVG(prs.average_rating), 1) AS avg_rating,
+                SUM(prs.total_ratings)::int AS total_ratings
+            FROM product_rating_summary prs
+            JOIN products p ON prs.product_id = p.id AND prs.tenant_id = $1
+            WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
+            GROUP BY p.created_by
+        `, [process.env.TENANT_ID]);
+
+        ratingsRes.rows.forEach(row => {
+            const key = vendorIdToKey[row.vendor_id];
+            if (key && vendorsMap[key]) {
+                vendorsMap[key].avg_rating = parseFloat(row.avg_rating) || null;
+                vendorsMap[key].total_ratings = parseInt(row.total_ratings) || 0;
+            }
+        });
+
+        console.log(`✅ Vendor profiles enriched with locations, ledger, shipping & ratings`);
 
         // ===== 6. PRODUCT COUNTS (per category, recursive) =====
         console.log('📊 Calculating product counts...');

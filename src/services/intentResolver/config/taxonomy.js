@@ -69,15 +69,6 @@ const TAXONOMY = {
         Vendor_Direct_Contact: [
             'vendor_contact'
         ]
-    },
-
-    Support_Feedback: {
-        Assistance_Request: [
-            'get_help'
-        ],
-        Platform_Feedback: [
-            'give_feedback'
-        ]
     }
 };
 

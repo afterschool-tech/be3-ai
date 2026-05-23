@@ -3,8 +3,6 @@
  * Capabilities related to managing the conversation flow and user experience.
  */
 
-const { CATEGORIES, VENDORS } = require('../context/storeContext');
-
 const conversationTools = {
     'conversation.help': {
         description: 'Provide help and usage instructions to the user. Use this when the user asks for help or what you can do.',
@@ -17,7 +15,7 @@ const conversationTools = {
                 try {
                     const productTools = require('./product');
                     const details = await productTools['product.getDetails'].handler({ product_id: product_name }, context);
-                    
+
                     if (details.product) {
                         return {
                             message: `I found details for **${details.product.name}**. I can help you with specific information or adding it to your cart.`,
@@ -115,38 +113,33 @@ const conversationTools = {
             query: { type: 'string', description: 'The full advice query from the user' }
         },
         handler: async (params, context) => {
+            const { processRAGQuery } = require('../core/ragService');
             const { queryAI } = require('../core/aiService');
             const { category, need, query } = params;
 
-            // Build store context for AI
-            const categoryList = Object.values(CATEGORIES || {})
-                .filter(c => c.total_count > 0)
-                .map(c => `${c.label} (${c.total_count} items)`)
-                .slice(0, 15)
-                .join(', ');
+            const fullQuery = query || need || category || 'general shopping advice';
+            console.log(`[Conversation.getAdvice] Query: "${fullQuery}" | Category: ${category} | Need: ${need}`);
 
-            const vendorList = Object.values(VENDORS || {})
-                .map(v => v.business_name)
-                .slice(0, 10)
-                .join(', ');
+            // Try RAG first — it will pull real knowledge chunks about categories/vendors
+            let ragContext = null;
+            try {
+                const extracted = {};
+                if (category) extracted.category = category;
+                ragContext = await processRAGQuery(context.sessionId, fullQuery, extracted);
+                if (ragContext) {
+                    console.log(`[Conversation.getAdvice] RAG resolved — passing to DCO for grounding`);
+                    return ragContext;
+                }
+            } catch (e) {
+                console.warn('[Conversation.getAdvice] RAG failed, falling back to vanilla AI:', e.message);
+            }
 
-            const prompt = `You are a helpful shopping advisor for an e-commerce store.
-The user needs advice: "${query || need || category || 'general shopping advice'}"
-${category ? `Category of interest: ${category}` : ''}
-${need ? `Specific need: ${need}` : ''}
-
-STORE CONTEXT:
-- Available categories: ${categoryList || 'various products'}
-- Vendors: ${vendorList || 'multiple sellers'}
-
-Provide concise, helpful shopping advice (2-3 sentences max). 
-If relevant, suggest what they should search for or what category to browse.
-Be friendly and knowledgeable.`;
-
+            // Fallback — lean, no raw storeContext dump
+            console.log(`[Conversation.getAdvice] No RAG match. Using vanilla AI fallback.`);
             try {
                 const advice = await queryAI([
-                    { role: 'system', content: 'You are a concise, friendly shopping advisor. Keep answers short and actionable.' },
-                    { role: 'user', content: prompt }
+                    { role: 'system', content: 'You are a concise, friendly shopping advisor for Be3, a Nigerian e-commerce marketplace. Keep answers short and actionable. Never invent product names or prices.' },
+                    { role: 'user', content: fullQuery }
                 ], 300, 0.7);
 
                 return {
@@ -158,9 +151,9 @@ Be friendly and knowledgeable.`;
                         : 'Would you like me to search for something specific?'
                 };
             } catch (e) {
-                console.error('[Conversation] AI Advice failed:', e.message);
+                console.error('[Conversation.getAdvice] Vanilla AI fallback failed:', e.message);
                 return {
-                    advice: 'I\'d be happy to help! Could you tell me more about what you\'re looking for? For example, the type of product, your budget, or what you\'ll use it for.',
+                    advice: "I'd be happy to help! Could you tell me more about what you're looking for?",
                     suggested_action: 'Try telling me what category or product type you\'re interested in.'
                 };
             }
@@ -271,7 +264,55 @@ Be friendly and knowledgeable.`;
                 };
             }
         }
+    },
+
+    'conversation.chat': {
+        description: 'Primary AI conversational tool. Handles general questions, semantic knowledge about the store, vendors, categories, policies, and open-ended chatting. Uses Active Knowledge (RAG) to fetch store truths dynamically.',
+        params: {
+            query: { type: 'string', description: 'The raw question or statement from the user', required: true },
+            vendor: { type: 'string', description: 'Extracted vendor ID if present' },
+            category: { type: 'string', description: 'Extracted category ID if present' }
+        },
+        handler: async (params, context) => {
+            const { processRAGQuery } = require('../core/ragService');
+
+            const sessionId = context.sessionId;
+            // Safely resolve the query from all possible param names
+            const userQuery = params.query || params.product_name || params.message || params.text || '';
+            const extracted = { vendor: params.vendor, category: params.category };
+
+            console.log(`[RAG:chat] ── Incoming query: "${userQuery}"`);
+            console.log(`[RAG:chat] ── Extracted entities: vendor=${params.vendor || 'none'} | category=${params.category || 'none'}`);
+
+            if (!userQuery) {
+                console.warn(`[RAG:chat] ⚠ No query resolved from params:`, JSON.stringify(params));
+                return { rag_fallback: true };
+            }
+            try {
+                console.log(`[RAG:chat] ▶ Running RAG pipeline (session: ${sessionId})`);
+                const response = await processRAGQuery(sessionId, userQuery, extracted);
+
+                if (!response) {
+                    // RAG returned null — no KB context found (greeting, off-topic, etc.)
+                    // Do NOT call LLM here — that's the personality layer's job.
+                    // Return a rag_fallback signal so DCO responds naturally from conversation history.
+                    console.log(`[RAG:chat] ◀ No KB match — returning rag_fallback signal to DCO.`);
+                    return { rag_fallback: true };
+                }
+
+                console.log(`[RAG:chat] ◀ RAG context ready — entity: ${response.rag_entity?.type}:${response.rag_entity?.name} | buttons: ${response.whatsapp?.buttons?.length || 0}`);
+                return response;
+
+            } catch (e) {
+                console.error('[RAG:chat] ✖ RAG pipeline threw exception:', e.message);
+                return { rag_fallback: true, error: e.message };
+            }
+        }
     }
 };
+
+// rag.query is the canonical tool name for the RAG knowledge pipeline.
+// conversation.chat is kept as a backward-compat alias (same handler).
+conversationTools['rag.query'] = conversationTools['conversation.chat'];
 
 module.exports = conversationTools;

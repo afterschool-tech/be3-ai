@@ -1,6 +1,7 @@
 /**
  * Intent: vendor_info
- * Triggered when the user wants to learn about a specific vendor.
+ * Triggered when the user wants to learn about a specific vendor or the platform.
+ * Now routes to rag.query — vendor profiles and platform info are indexed in the KB.
  */
 
 module.exports = {
@@ -23,14 +24,16 @@ module.exports = {
     ],
 
     parameters: {
-        vendor: { type: 'string', required: true, description: 'Vendor name or identifier' }
+        query: { type: 'string', required: true, description: 'Full user question about the vendor or store' },
+        vendor: { type: 'string', required: false, description: 'Vendor name or id extracted from context' }
     },
 
     slotTags: ['[vendor]'],
 
-    toolName: 'vendor.getInfo',
+    toolName: 'rag.query',
 
     paramMap: {
+        query: 'query',
         vendor: 'vendor'
     },
 
@@ -39,49 +42,10 @@ module.exports = {
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding', 'vendor_rules', 'suggestions'],
+        segments: ['core', 'formatting', 'rag_context', 'grounding', 'suggestions'],
         storeContext: 'none',
         historyDepth: 4,
         includeSummary: false,
         maxResponseTokens: 768
-    },
-    /**
-     * Microstates:
-     *  - collect_vendor_for_info: ask which vendor to get info about when vendor is missing.
-     */
-    microstates: {
-        collect_vendor_for_info: {
-            trigger: (params, entities) => {
-                return !params.vendor;
-            },
-            sandbox: 'soft',
-            boostScore: 10.0,
-            prompt: {
-                tool: 'microstate.collect',
-                params: {
-                    paramName: 'vendor',
-                    message: 'Which vendor would you like to know about?',
-                    hint: 'e.g., "Taye\'s Home Decor"'
-                }
-            },
-            validators: {
-                vendor: (value) => {
-                    if (!value) return false;
-                    return String(value).trim().length > 1;
-                }
-            },
-            normalizers: {
-                vendor: (value) => value ? String(value).trim() : value
-            },
-            termination: {
-                maxMessages: 2,
-                onFulfilled: ['vendor'],
-                escalation: null
-            },
-            breakthrough: {
-                minScore: 2.5,
-                blockIntents: []
-            }
-        }
     }
 };

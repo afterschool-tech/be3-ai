@@ -1,6 +1,9 @@
 /**
  * Intent: get_help
- * Triggered when the user asks for help or wants to know what the bot can do.
+ * Class: Support_Feedback > Assistance_Request
+ * Triggered when the user asks for help, guidance, or wants to understand
+ * how the platform or a feature works. Routes to rag.query to serve
+ * indexed policy, capability, and platform knowledge chunks.
  */
 
 module.exports = {
@@ -9,28 +12,25 @@ module.exports = {
     intent: 'Assistance_Request',
 
     keywords: [
-        'help', 'assist', 'support', 'guide', 'explain', 'manual', 'options', 'services',
-        'compatibility', 'maintenance', 'installation', 'tips'
+        'help', 'guide', 'how', 'explain', 'understand', 'assist', 'support', 'tutorial'
     ],
 
     synonyms: [
-        'what can you do', 'how do i', 'help me', 'i need help',
-        'i need assistance', 'show me how', 'what are your features',
-        'what do you offer', 'how does this work', 'instructions',
-        'tutorial', 'usage', 'capabilities', 'menu',
-        'how to use', 'what can i ask', 'what are my options', 'help with usage',
-        'show commands', 'what is possible', 'bot guide',
-        'is it compatible', 'how to install', 'maintenance guide', 'tips and tricks'
+        'i need help', 'can you help me', 'how do i', 'i have a question',
+        'help me figure this out', 'i don\'t understand', 'can you guide me',
+        'i\'m confused about', 'can you explain', 'i need some guidance',
+        'what can you do', 'what is be3', 'how does this work',
+        'i\'m lost', 'can someone help', 'need assistance'
     ],
 
     parameters: {
-        product_name: { type: 'string', required: false, description: 'Optional product name to provide help for' }
+        query: { type: 'string', required: true, description: 'The full user question or help request' }
     },
 
-    toolName: 'conversation.help',
+    toolName: 'rag.query',
 
     paramMap: {
-        product_name: 'product_name'
+        query: 'query'
     },
 
     minProducts: 0,
@@ -38,9 +38,9 @@ module.exports = {
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'capabilities', 'suggestions'],
+        segments: ['core', 'formatting', 'capabilities', 'rag_context', 'grounding'],
         storeContext: 'none',
-        historyDepth: 6,
+        historyDepth: 5,
         includeSummary: true,
         maxResponseTokens: 512
     }

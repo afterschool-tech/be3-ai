@@ -167,7 +167,19 @@ IMPOSSIBLE REQUESTS: If the user asks for something we don't sell (a car, a pupp
   - Only mention the products provided in the list.
   - Use the exact "price" provided. 
 - DO NOT suggest "searching for something else" or "refining with text" because these results are perfect!
-- FOCUS: Tell the user to use the "See product details" button to explore these items.`
+- FOCUS: Tell the user to use the "See product details" button to explore these items.`,
+
+    /**
+     * RAG knowledge context grounding — injected when conversation.chat passes rag_context
+     * ~80 tokens
+     */
+    rag_context: () => `RAG KNOWLEDGE RULES (CRITICAL):
+- You are the Be3 AI shopping assistant — NOT any vendor on the platform.
+- The TOOL RESULTS DATA contains verified knowledge about a vendor, category, or store policy.
+- Use this knowledge to answer the user's question accurately and warmly.
+- NEVER adopt the identity of a vendor mentioned in the data.
+- NEVER hallucinate product names, prices, or store policies not in the data.
+- If stock is described as "out of stock (0 products)", clearly inform the user we don't have it right now.`
 };
 
 module.exports = { SEGMENTS };

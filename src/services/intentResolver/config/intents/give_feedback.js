@@ -1,6 +1,9 @@
 /**
  * Intent: give_feedback
- * Triggered when the user wants to give feedback, rate, or complain.
+ * Class: Support_Feedback > Platform_Feedback
+ * Triggered when the user wants to leave a review, complaint, report a bug,
+ * or give feedback about a product or the platform. Routes to rag.query to
+ * surface the correct feedback/contact/support policy chunks.
  */
 
 module.exports = {
@@ -9,27 +12,25 @@ module.exports = {
     intent: 'Platform_Feedback',
 
     keywords: [
-        'feedback', 'rate', 'review', 'complaint', 'complain'
+        'feedback', 'review', 'complaint', 'report', 'issue', 'problem', 'rate', 'rating', 'bug'
     ],
 
     synonyms: [
-        'i want to complain', 'give feedback', 'rate this',
-        'leave a review', 'how was my experience', 'rate my experience',
-        'i have a complaint', 'this was bad', 'this was great',
-        'bad experience', 'good experience', 'report issue',
-        'not satisfied', 'very satisfied', 'thumbs up', 'thumbs down'
+        'i want to give feedback', 'i have a complaint', 'i want to leave a review',
+        'something is wrong', 'i want to report an issue', 'your app has a bug',
+        'i want to share my experience', 'this platform needs improvement',
+        'i have a suggestion', 'how do i report', 'how do i review',
+        'file a complaint', 'submit feedback', 'rate my experience'
     ],
 
     parameters: {
-        rating: { type: 'number', required: false, description: 'Rating from 1-5' },
-        comment: { type: 'string', required: false, description: 'Feedback comment or complaint text' }
+        query: { type: 'string', required: true, description: 'The full user feedback message or complaint' }
     },
 
-    toolName: 'conversation.feedback',
+    toolName: 'rag.query',
 
     paramMap: {
-        rating: 'rating',
-        comment: 'comment'
+        query: 'query'
     },
 
     minProducts: 0,
@@ -37,9 +38,9 @@ module.exports = {
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding'],
+        segments: ['core', 'formatting', 'rag_context', 'grounding'],
         storeContext: 'none',
-        historyDepth: 3,
+        historyDepth: 4,
         includeSummary: false,
         maxResponseTokens: 512
     }

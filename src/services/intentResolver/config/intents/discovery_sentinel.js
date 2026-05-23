@@ -38,8 +38,8 @@ module.exports = {
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding', 'suggestions', 'availability'],
-        storeContext: 'lean',
+        segments: ['core', 'formatting', 'grounding', 'suggestions'],
+        storeContext: 'none',
         historyDepth: 4,
         includeSummary: true,
         maxResponseTokens: 768

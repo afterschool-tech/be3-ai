@@ -574,9 +574,18 @@ app.post('/chat', async (req, res) => {
             // IMPORTANT: Only consider tools executed in THIS request.
             // If we scan the consolidated history, an older microstate prompt can be
             // re-sent on a later turn, creating duplicate prompts on the frontend.
-            const directResponseResult = toolResults.find(tr =>
-                tr.result && tr.result.directResponse === true && tr.result.message
-            );
+            //
+            // MULTI-TOOL GUARD: If conversation.chat is stacked alongside other meaningful tools
+            // (e.g. search/cart/search + convo), its directResponse should NOT swallow the other results.
+            // We only honour conversation.chat directResponse when it is the sole tool that ran.
+            const nonChatTools = toolResults.filter(tr => tr.tool !== 'conversation.chat');
+            const directResponseResult = toolResults.find(tr => {
+                if (!tr.result || tr.result.directResponse !== true || !tr.result.message) return false;
+                // Always honour non-conversation.chat directResponses (microstates, etc.)
+                if (tr.tool !== 'conversation.chat') return true;
+                // Only honour conversation.chat directResponse when no other tools ran this turn
+                return nonChatTools.length === 0;
+            });
 
             let response;
             if (directResponseResult) {
@@ -613,10 +622,10 @@ app.post('/chat', async (req, res) => {
                     for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
                         const tr = consolidatedToolResults[trIdx];
                         if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && Array.isArray(tr.result.products) && tr.result.products.length > 0) {
-                            
+
                             const statementTextToEval = tr.statementText || message;
                             const sentinelVerdict = await evaluateProductRelevance(statementTextToEval, tr.result.products, state.conversation_summary);
-                            
+
                             if (!sentinelVerdict.relevant && sentinelVerdict.vector_query) {
                                 logDebug('SERVER:SENTINEL_REJECTED', {
                                     _desc: 'Sentinel rejected products as irrelevant — re-executing product.search with vector query',
@@ -711,7 +720,7 @@ app.post('/chat', async (req, res) => {
                 // SNAPSHOT AGGREGATOR — Multi-Intent UI Reconciler
                 // ═══════════════════════════════════════════════
                 const searchResultsAgg = consolidatedToolResults.filter(tr => tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && tr.result.whatsapp);
-                
+
                 if (searchResultsAgg.length > 1) {
                     const combinedProducts = [];
                     // Collect products from each search sequentially (user preference)
@@ -719,28 +728,28 @@ app.post('/chat', async (req, res) => {
                         const items = sr.result.products?.length > 0 ? sr.result.products : (sr.result.suggested_products || []);
                         combinedProducts.push(...items.slice(0, 5));
                     }
-                    
+
                     if (combinedProducts.length > 0) {
                         const megaSnapshotId = 'mega_' + Date.now().toString(36);
                         await stateManager.setSearchSnapshot(session_id, megaSnapshotId, {
                             results: combinedProducts,
                             query: 'Combined Multi-Intent Search'
                         });
-                        
+
                         logDebug('SERVER:SNAPSHOT_AGGREGATOR', {
                             _desc: 'Merged multiple search results into a single Mega-Snapshot for a unified UI button',
                             megaSnapshotId,
                             totalProducts: combinedProducts.length,
                             searchesMerged: searchResultsAgg.length
                         });
-                        
+
                         let isFirst = true;
                         for (let trIdx = 0; trIdx < consolidatedToolResults.length; trIdx++) {
                             const tr = consolidatedToolResults[trIdx];
                             if (tr && (tr.tool === 'product.search' || tr.tool === 'product_search') && tr.result && (tr.result.whatsapp || tr.result.whatsapp_product_cards)) {
                                 // Strip the product cards from ALL searches so they don't break the Mega Button flow
                                 tr.result.whatsapp_product_cards = undefined;
-                                
+
                                 if (isFirst) {
                                     // The first search acts as the anchor and holds the Mega button
                                     tr.result.whatsapp = {
@@ -1134,7 +1143,7 @@ Keep it under 100 words. Facts only. No fluff.`;
 }
 
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+    res.status(200).send('OK');
 });
 app.get('/metrics', (req, res) => res.json({ success: true, metrics: getMetrics(), summary: getMetricsSummary() }));
 

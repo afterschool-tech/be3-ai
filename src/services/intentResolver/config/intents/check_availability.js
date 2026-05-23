@@ -45,8 +45,8 @@ module.exports = {
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding', 'availability'],
-        storeContext: 'lean',
+        segments: ['core', 'formatting', 'grounding'],
+        storeContext: 'none',
         historyDepth: 3,
         includeSummary: false,
         maxResponseTokens: 512

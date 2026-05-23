@@ -128,7 +128,18 @@ async function executeTools(toolsSelected, sessionId) {
                 Object.assign(context, toolCall.pipelineContext);
             }
 
-            const result = await toolDef.handler(toolCall.params, context, results);
+            // CONVERSATION QUERY INJECTION:
+            // statementText is the raw user utterance for this specific intent.
+            // The NLU may not always extract it as 'query' (it uses 'product_name' as catch-all).
+            // For rag.query (and backward-compat conversation.chat) we ensure query is always
+            // populated from statementText.
+            const finalParams = { ...toolCall.params };
+            const isRagTool = toolName === 'rag.query' || toolName === 'conversation.chat';
+            if (isRagTool && !finalParams.query && toolCall.statementText) {
+                finalParams.query = toolCall.statementText;
+            }
+
+            const result = await toolDef.handler(finalParams, context, results);
 
             const executionResult = {
                 tool: toolName,

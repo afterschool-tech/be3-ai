@@ -1,6 +1,8 @@
 /**
  * Intent: vendor_identity
- * Triggered when the user wants to identify which vendor sells a specific product.
+ * Triggered when the user wants to know who/what a vendor or the platform is.
+ * Now routes to rag.query — knowledge is served from indexed chunks (vendor profiles,
+ * platform identity, etc.) rather than a live API lookup.
  */
 
 module.exports = {
@@ -9,7 +11,7 @@ module.exports = {
     intent: 'Vendor_Lookup',
 
     keywords: [
-        'vendor', 'seller', 'brand', 'company', 'makes', 'sells'
+        'vendor', 'seller', 'brand', 'company', 'makes', 'sells', 'owns', 'who is', 'what is'
     ],
 
     synonyms: [
@@ -17,71 +19,33 @@ module.exports = {
         'who sells this', 'which vendor', 'which seller',
         'is this from', 'who is the seller', 'vendor of this product',
         'where is this from', 'who made this', 'who provides this',
-        'product vendor', 'product seller', 'from which store'
+        'product vendor', 'product seller', 'from which store',
+        'who owns', 'which country', 'who created', 'who founded', 'what company'
     ],
 
     parameters: {
-        product_name: { type: 'string', required: true, description: 'Product name to identify vendor for' },
-        vendor: { type: 'string', required: false, description: 'Vendor name to check against (optional)' }
+        query: { type: 'string', required: true, description: 'The full user question about the vendor or platform identity' },
+        vendor: { type: 'string', required: false, description: 'Vendor name extracted from context, if any' }
     },
 
-    slotTags: ['[product]', '[vendor]'],
+    slotTags: ['[vendor]'],
 
-    toolName: 'vendor.checkIdentity',
+    toolName: 'rag.query',
 
     paramMap: {
-        product_name: 'product',
+        query: 'query',
         vendor: 'vendor'
     },
 
-    minProducts: 1,
-    maxProducts: 1,
+    minProducts: 0,
+    maxProducts: 0,
     invertTo: null,
 
     dco: {
-        segments: ['core', 'formatting', 'grounding', 'vendor_rules'],
+        segments: ['core', 'formatting', 'rag_context', 'grounding'],
         storeContext: 'none',
         historyDepth: 4,
         includeSummary: false,
         maxResponseTokens: 768
-    },
-    /**
-     * Microstates:
-     *  - collect_product_for_vendor_identity: ask which product they're asking about when product_name is missing.
-     */
-    microstates: {
-        collect_product_for_vendor_identity: {
-            trigger: (params, entities) => {
-                return !params.product_name;
-            },
-            sandbox: 'soft',
-            boostScore: 10.0,
-            prompt: {
-                tool: 'microstate.collect',
-                params: {
-                    paramName: 'product_name',
-                    message: 'Which product are you asking about?',
-                    hint: 'e.g., "iPhone 16" or "Samsung Galaxy S24"'
-                }
-            },
-            validators: {
-                product_name: (value) => {
-                    if (!value) return false;
-                    return String(value).trim().length > 1;
-                }
-            },
-            normalizers: {
-                product_name: (value) => value ? String(value).trim() : value
-            },
-            termination: {
-                maxMessages: 2,
-                onFulfilled: ['product_name'],
-                escalation: null
-            },
-            breakthrough: {
-                minScore: 2.5,
-                blockIntents: []
-            }
-        }
     }
 };
