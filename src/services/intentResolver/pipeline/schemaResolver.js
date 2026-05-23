@@ -432,8 +432,9 @@ function resolveIntent(extractionResult, text, idfMap = {}, storeContext = {}, o
         }
         // 3k. Facet Dominance Rule
         if (intentName === 'facet_list' && entityParams['facet_target']) {
-            const hasDiscoveryMeta = actionEntities.some(e => e.category === 'discovery_meta');
-            const hasDiscovery = actionEntities.some(e => e.category === 'discovery');
+            // Check original text non-destructively for interrogative/discovery context
+            const hasDiscoveryMeta = /\b(what|which|how many|available)\b/i.test(textLower);
+            const hasDiscovery = /\b(show|find|search|browse|explore|discover|look|view|tell me)\b/i.test(textLower);
 
             if (hasDiscoveryMeta) {
                 applyModifier(10.0, 'Facet dominance (Discovery Meta)');

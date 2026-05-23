@@ -51,7 +51,7 @@ const productTools = {
         },
         handler: async (params, context) => {
             let { query, category, is_kickstart, is_partial_match, price_min, price_max, limit = 5, page = 1, sort = 'relevance', tag, attributes = {}, search_mode, similar_to, image, clause_words, allow_deep_fallbacks = false } = params;
-            
+
             // Normalize query: if it's an array, join it. Ensure it's always a string.
             if (Array.isArray(query)) {
                 query = query.join(' ');
@@ -77,9 +77,9 @@ const productTools = {
             // semantic query do the heavy lifting across the whole store.
             if (is_partial_match && (search_mode === 'VECTOR' || search_mode === 'IMAGE' || similar_to)) {
                 const { logDebug } = require('../utils/debugLogger');
-                logDebug('TOOL:PARTIAL_CATEGORY_DROPPED', { 
-                    category: cat?.label, 
-                    reason: 'is_partial_match active during Vector/Similarity search' 
+                logDebug('TOOL:PARTIAL_CATEGORY_DROPPED', {
+                    category: cat?.label,
+                    reason: 'is_partial_match active during Vector/Similarity search'
                 });
                 catId = null;
                 cat = null;
@@ -267,11 +267,28 @@ const productTools = {
                             // Winner is kept regardless (we never disqualify the winner).
                             if (categoryCandidates.length > 0 && bloomResult.categories) {
                                 const beforeCount = categoryCandidates.length;
+                                const kept = [];
+                                const disqualified = [];
+
                                 categoryCandidates = categoryCandidates.filter(c => {
-                                    if (c.isWinner) return true; // Winner always survives
+                                    const name = c.label || c.slug || c.id;
                                     const catBloom = bloomResult.categories?.[c.id];
-                                    if (!catBloom || catBloom.source === 'fail-open') return true; // No data = keep
-                                    return catBloom.passed;
+                                    
+                                    if (!catBloom || catBloom.source === 'fail-open') {
+                                        kept.push({ name, reason: 'no_bloom_data' });
+                                        return true; // No data = keep
+                                    }
+                                    
+                                    if (catBloom.passed) {
+                                        kept.push({ name, reason: 'bloom_passed' });
+                                        return true;
+                                    } else {
+                                        disqualified.push({
+                                            name,
+                                            misses: catBloom.misses
+                                        });
+                                        return false;
+                                    }
                                 });
 
                                 if (categoryCandidates.length < beforeCount) {
@@ -279,7 +296,9 @@ const productTools = {
                                         _desc: 'Per-category Bloom filtering — disqualified categories without matching tokens',
                                         before: beforeCount,
                                         after: categoryCandidates.length,
-                                        disqualified: beforeCount - categoryCandidates.length
+                                        disqualifiedCount: disqualified.length,
+                                        kept,
+                                        disqualified
                                     });
                                 }
                             }

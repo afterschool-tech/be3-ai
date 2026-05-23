@@ -403,8 +403,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
         // --- 1b. Semantic Vendor Integration (Transformer Discovery) ---
         if (!entities.some(e => e.type === 'vendor') && semanticContext?.available && semanticContext.entities?.vendor) {
             // Support both old array format and new object format for backward compatibility
-            const semVendorsObj = Array.isArray(semanticContext.entities.vendor) 
-                ? Object.fromEntries(semanticContext.entities.vendor.map(k => [k, []])) 
+            const semVendorsObj = Array.isArray(semanticContext.entities.vendor)
+                ? Object.fromEntries(semanticContext.entities.vendor.map(k => [k, []]))
                 : semanticContext.entities.vendor;
 
             for (const [semVendorKey, matchedWords] of Object.entries(semVendorsObj)) {
@@ -554,8 +554,8 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     const currentScore = catMeta?.score || 0;
                     const currentTier = Number(catMeta?.lexTier || 0);
 
-                    const isBetter = !bestCandidate || 
-                        currentTier > bestCandidate.tier || 
+                    const isBetter = !bestCandidate ||
+                        currentTier > bestCandidate.tier ||
                         (currentTier === bestCandidate.tier && currentScore > bestCandidate.score) ||
                         (currentTier === bestCandidate.tier && currentScore === bestCandidate.score && size > bestCandidate.size);
 
@@ -570,14 +570,14 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                                 lostTo: { phrase, tier: currentTier, score: currentScore }
                             });
                         }
-                        bestCandidate = { 
-                            catId, 
-                            catMeta, 
-                            phrase, 
+                        bestCandidate = {
+                            catId,
+                            catMeta,
+                            phrase,
                             size,
-                            tier: currentTier, 
+                            tier: currentTier,
                             score: currentScore,
-                            matchedWordIndices: Array.from({ length: size }, (_, j) => i + j) 
+                            matchedWordIndices: Array.from({ length: size }, (_, j) => i + j)
                         };
                     } else if (bestCandidate && currentScore > bestCandidate.score && currentTier < bestCandidate.tier) {
                         // Current candidate has higher score but lost due to lower tier
@@ -662,7 +662,7 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                     consumedWordIndices: [], // No consumption for partials
                     _tierRejects: tierRejects.length > 0 ? tierRejects : undefined
                 });
-                
+
                 logDebug('ENTITY:PARTIAL_MATCH_DETECTED', {
                     _desc: 'Category match flagged as PARTIAL (Tier 2 substring) — word consumption bypassed.',
                     phrase,
@@ -742,44 +742,74 @@ function extractEntities(text, storeContext = {}, idfMap = {}, positionTracker =
                 : Object.keys(semanticContext.entities.category);
 
             if (semCategoryKeys.length > 0) {
-            // POS gate: only count unconsumed words that are substantive (nouns, adjectives, etc.)
-            // Words like "looking" (Verb), "from" (Preposition) are disqualified and don't block kickstart.
-            const hasUnconsumedSubstantive = words.some((w, i) => !consumed.has(i) && w.length > 1 && !isDisqualified(w, posTagMap, storeWhitelist));
+                // POS gate: only count unconsumed words that are substantive (nouns, adjectives, etc.)
+                // Words like "looking" (Verb), "from" (Preposition) are disqualified and don't block kickstart.
+                const hasUnconsumedSubstantive = words.some((w, i) => !consumed.has(i) && w.length > 1 && !FILLERS.has(w) && !isDisqualified(w, posTagMap, storeWhitelist));
 
-            if (!hasUnconsumedSubstantive) {
-                const semCategories = semCategoryKeys
-                    .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
-                    .sort((a, b) => b.confidence - a.confidence);
+                if (!hasUnconsumedSubstantive) {
+                    const semCategories = semCategoryKeys
+                        .map(slug => ({ slug, confidence: semanticContext.confidence?.[`category:${slug}`] || 0 }))
+                        .sort((a, b) => b.confidence - a.confidence);
 
-                const topSlug = semCategories[0]?.slug;
-                if (topSlug) {
-                    // Direct lookup — find category by key, slug, or label
-                    const catEntry = Object.entries(storeContext.CATEGORIES).find(([key, c]) =>
-                        key === topSlug || c.slug === topSlug || c.label?.toLowerCase() === topSlug
-                    );
+                    const normalizeSlug = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+                    let winnerPushed = false;
+                    let topConfidence = 0;
+                    let topSlug = null;
+                    let topCatId = null;
+                    let topCatLabel = null;
 
-                    if (catEntry) {
-                        const [, cat] = catEntry;
-                        entities.push({
-                            type: 'category',
-                            value: topSlug,
-                            id: cat.id,
-                            source: 'SEMANTIC_KICKSTART',
-                            quality: 0.35,
-                            wordIndices: [-1],
-                            consumedWordIndices: []
-                        });
+                    for (const semCat of semCategories) {
+                        const normSlug = normalizeSlug(semCat.slug);
+                        const catEntry = Object.entries(storeContext.CATEGORIES).find(([key, c]) =>
+                            key === semCat.slug ||
+                            c.slug === semCat.slug ||
+                            normalizeSlug(c.slug) === normSlug ||
+                            normalizeSlug(c.label) === normSlug
+                        );
 
+                        if (catEntry) {
+                            const [, cat] = catEntry;
+                            const isWinner = !winnerPushed;
+
+                            if (isWinner) {
+                                winnerPushed = true;
+                                topConfidence = semCat.confidence;
+                                topSlug = semCat.slug;
+                                topCatId = cat.id;
+                                topCatLabel = cat.label;
+                            }
+
+                            entities.push({
+                                type: 'category',
+                                value: semCat.slug,
+                                id: cat.id,
+                                source: isWinner ? 'SEMANTIC_KICKSTART' : 'SEMANTIC_KICKSTART_COMPETITOR',
+                                quality: isWinner ? 0.35 : 0.30,
+                                isWinner: isWinner,
+                                matchMeta: { label: cat.label, slug: cat.slug },
+                                wordIndices: [-1],
+                                consumedWordIndices: []
+                            });
+                        }
+                    }
+
+                    logDebug('DEBUG:KICKSTART_EVAL', {
+                        hasUnconsumedSubstantive,
+                        semCategoryKeys,
+                        topSlug,
+                        winnerPushed
+                    });
+
+                    if (winnerPushed) {
                         logDebug('ENTITY:SEMANTIC_CATEGORY_KICKSTART', {
-                            _desc: 'Semantic kickstart — determinism had no free words, transformer directly resolved category',
+                            _desc: 'Semantic kickstart — determinism had no free words, transformer directly resolved category + competitors',
                             slug: topSlug,
-                            confidence: semCategories[0].confidence,
-                            resolvedId: cat.id,
-                            resolvedLabel: cat.label
+                            confidence: topConfidence,
+                            resolvedId: topCatId,
+                            resolvedLabel: topCatLabel
                         });
                     }
                 }
-            }
             }
         }
 
