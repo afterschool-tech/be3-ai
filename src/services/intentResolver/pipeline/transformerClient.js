@@ -47,9 +47,10 @@ async function classify(text, level, parent = null) {
  * 
  * @param {string} text - User statement text
  * @param {string|null} classHint - IntelliSense class_hint to bypass L1 (optional)
+ * @param {Array} entities - Extracted entities for this statement (optional, for deterministic boosting)
  * @returns {Object} Full hierarchical classification result
  */
-async function classifyHierarchical(text, classHint = null) {
+async function classifyHierarchical(text, classHint = null, entities = []) {
     const result = {
         text,
         class: null,
@@ -59,10 +60,14 @@ async function classifyHierarchical(text, classHint = null) {
         l1: null,
         l2: null,
         l3: null,
-        totalDuration: 0
+        totalDuration: 0,
+        boostApplied: [] // Track which deterministic boosts fired
     };
 
     const chainStart = Date.now();
+
+    // Helper for entity checking
+    const hasEntity = (type) => entities.some(e => e.type === type);
 
     try {
         // ── L1: CLASS ──
@@ -71,6 +76,27 @@ async function classifyHierarchical(text, classHint = null) {
             result.classSkipped = true;
         } else {
             const l1 = await classify(text, 'class');
+
+            // -- Hierarchical Deterministic Boost --
+            if (entities && entities.length > 0) {
+                const isOnlyVendor = hasEntity('vendor') && !entities.some(e => ['clause', 'category', 'resolved_product'].includes(e.type));
+
+                if (hasEntity('cart_action') || hasEntity('order_number')) {
+                    l1.scores.forEach(s => { if (s.name === 'Shopping_Management') s.score += 5.0; });
+                    result.boostApplied.push('L1:Shopping_Management');
+                } else if (hasEntity('interaction') && !isOnlyVendor) {
+                    // Interaction entities (like "greeting") might boost conversation implicitly
+                } else if (isOnlyVendor) {
+                    l1.scores.forEach(s => { if (s.name === 'Vendor_Intelligence') s.score += 5.0; });
+                    result.boostApplied.push('L1:Vendor_Intelligence');
+                }
+
+                if (result.boostApplied.length > 0) {
+                    l1.scores.sort((a, b) => b.score - a.score);
+                    l1.winner = l1.scores[0]?.name || l1.winner;
+                }
+            }
+
             result.class = l1.winner;
             result.l1 = l1;
         }
@@ -82,6 +108,25 @@ async function classifyHierarchical(text, classHint = null) {
 
         // ── L2: INTENT ──
         const l2 = await classify(text, 'intent', result.class);
+
+        // -- Hierarchical Deterministic Boost --
+        if (entities && entities.length > 0) {
+            if (result.class === 'Shopping_Management') {
+                if (hasEntity('order_number')) {
+                    l2.scores.forEach(s => { if (s.name === 'Post_Purchase') s.score += 5.0; });
+                    result.boostApplied.push('L2:Post_Purchase');
+                } else if (hasEntity('cart_action')) {
+                    l2.scores.forEach(s => { if (s.name === 'Cart_Management') s.score += 5.0; });
+                    result.boostApplied.push('L2:Cart_Management');
+                }
+
+                if (result.boostApplied.length > 0) {
+                    l2.scores.sort((a, b) => b.score - a.score);
+                    l2.winner = l2.scores[0]?.name || l2.winner;
+                }
+            }
+        }
+
         result.intent = l2.winner;
         result.l2 = l2;
 

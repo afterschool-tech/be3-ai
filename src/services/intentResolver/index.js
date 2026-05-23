@@ -901,7 +901,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
 
         // vendor: { "apple": ["apple"] }
         if (entities.vendor && typeof entities.vendor === 'object' && !Array.isArray(entities.vendor)) {
-            shaped.vendor = Object.entries(entities.vendor).flatMap(([key, words]) => 
+            shaped.vendor = Object.entries(entities.vendor).flatMap(([key, words]) =>
                 words.map(matchedWord => ({
                     key,
                     matchedWord,
@@ -990,14 +990,30 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                 const classHint = USE_INTELLISENSE_CLASS_HINT ? hintedClass : null;
 
                 const classificationText = initialCleanedText;
-                
+
                 // Fallback to original text if stripping left nothing (e.g. user just typed "plastic bucket")
                 if (!classificationText) {
                     classificationText = initialCleanedText;
                 }
+                // Merge statement-level deterministic entities with RAW transformer entities
+                // We only extract specific missing properties (vendor, cart_action, order) 
+                // because injecting raw 'category' or 'clause' bypasses Stage 3A's POS noise gating.
+                let mergedEntities = [...(statementLevelEntities[i] || [])];
+                const rawResult = batchedSemanticContext?.available ? batchedSemanticContext.results?.[i] : null;
+                if (rawResult && rawResult.entities) {
+                    const ALLOWED_RAW = new Set(['vendor', 'cart_action', 'order_number']);
+                    for (const [type, payload] of Object.entries(rawResult.entities)) {
+                        if (!ALLOWED_RAW.has(type) || !payload) continue;
+                        if (Array.isArray(payload)) {
+                            payload.forEach(val => mergedEntities.push({ type, value: val }));
+                        } else if (typeof payload === 'object') {
+                            Object.keys(payload).forEach(key => mergedEntities.push({ type, value: key }));
+                        }
+                    }
+                }
 
                 hierarchicalResult = await transformerClient.classifyHierarchical(
-                    classificationText, classHint
+                    classificationText, classHint, mergedEntities
                 );
 
                 // Add original text back to the result payload so downstream doesn't break
@@ -1036,6 +1052,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         pie: stageGates.pie,
                         searchContext: stageGates.searchContext
                     } : 'none',
+                    boosts: hierarchicalResult.boostApplied || [],
                     l1: hierarchicalResult.l1 ? {
                         winner: hierarchicalResult.l1.winner,
                         scores: hierarchicalResult.l1.scores.map(s => ({
@@ -1301,7 +1318,7 @@ async function resolveAndMap(userMessage, state, aiQueryFn, storeContext) {
                         .map(e => e.attributeCode)
                 );
                 const hasExplicitVendor = extractionResult.entities.some(e => e.type === 'vendor');
-                const hasExplicitPrice  = extractionResult.entities.some(e => e.type === 'price');
+                const hasExplicitPrice = extractionResult.entities.some(e => e.type === 'price');
 
                 const safeInjected = injected.filter(e => {
                     // Attribute conflict: per-code check
