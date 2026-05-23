@@ -18,7 +18,7 @@ const TAXONOMY = {
     Discovery: {
         Product_Research: [
             'product_search',
-            'browse_categories',
+            'semantic_search',
             'browse_collection',
             'facet_list'
         ],
@@ -73,8 +73,7 @@ const TAXONOMY = {
 
     Support_Feedback: {
         Assistance_Request: [
-            'get_help',
-            'get_advice'
+            'get_help'
         ],
         Platform_Feedback: [
             'give_feedback'

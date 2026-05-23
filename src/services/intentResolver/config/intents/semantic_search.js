@@ -1,11 +1,11 @@
 /**
- * Intent: get_advice
+ * Intent: semantic_search
  * Triggered when the user needs shopping advice, recommendations, or guidance.
  * This intent is AI-powered and should only fire when the user clearly needs guidance.
  */
 
 module.exports = {
-    name: 'get_advice',
+    name: 'semantic_search',
     class: 'Discovery',
     intent: 'Product_Research',
 

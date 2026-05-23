@@ -1,0 +1,125 @@
+﻿diff --git a/src/tools/vendor.js b/src/tools/vendor.js
+index cb9da1d..7e2a15b 100644
+--- a/src/tools/vendor.js
++++ b/src/tools/vendor.js
+@@ -10,6 +10,7 @@ const {
+     computeHasNextPage,
+     createSnapshotId
+ } = require('../utils/storefrontWhatsAppUx');
++const { normalizeSearchResult, buildSearchUx } = require('./product/presentation/postSearchProcessor');
+ 
+ function truncateButtonTitle(title, maxLen = 20) {
+     const t = String(title || '');
+@@ -167,26 +168,33 @@ const vendorTools = {
+                 return { error: `Failed to fetch products for vendor "${vendor.business_name}"`, details: result?.error };
+             }
+ 
+-            let rawProducts = result.data.products || result.data.results || [];
+-            let products = await processProductList(rawProducts);
++            let rawProductsList = result.data.products || result.data.results || [];
++
++            const searchResultInfo = {
++                products: rawProductsList,
++                total: result.data.pagination?.total || result.data.total || rawProductsList.length,
++                facets: result.data.facets || {},
++                pagination: result.data.pagination || { page, totalPages: Math.ceil((result.data.total || 1) / limit) }
++            };
++
++            const normalizedData = await normalizeSearchResult(searchResultInfo);
++            const { products, rawProducts } = normalizedData;
++
+             if (context.sessionId) {
+                 const scope = context && context.microstate_active ? 'microstate' : 'global';
+                 await stateManager.updateReferenceMap(context.sessionId, products, { scope });
+-                
+-                // CRITICAL: Update last_search so the decoupled "See product details" button
+-                // (__nav:cards:) can access the cached products via product.showCards fallback.
++
+                 await stateManager.updateLastSearch(
+-                    context.sessionId, 
++                    context.sessionId,
+                     vendor.business_name || vendor.tag || 'Vendor Products',
+                     params,
+                     products,
+-                    result.data.pagination?.total || result.data.total || products.length
++                    normalizedData.totalCount
+                 );
+ 
+-                // --- AMBIENT CONTEXT: Record active vendor topic ---
+                 let finalCatId = catId;
+                 let finalCatLabel = cat?.label;
+-                
++
+                 if (!finalCatId && rawProducts.length > 0) {
+                     const firstProduct = rawProducts[0];
+                     const meta = firstProduct.metadata || {};
+@@ -207,57 +215,22 @@ const vendorTools = {
+                 });
+             }
+ 
+-            const hasNextPage = computeHasNextPage({
+-                pagination: result?.data?.pagination,
+-                fallbackCount: result?.data?.total || products.length,
+-                page,
+-                limit
+-            });
+-
+-            const { clauseButtons, valueButtons } = buildFacetRefinerButtons({
+-                facets: result?.data?.facets,
+-                attributes,
+-                snapshotId
+-            });
+-
+-            const clauseName = deriveClauseNameFromAttributes(attributes);
+-
+-            const globalButtons = [];
+-
+-            // Prepend the new decoupled product details button
+-            globalButtons.push({ id: `__nav:cards:${snapshotId}__`, title: 'Shop these items ­ƒøì´©Å', priority: 110 });
+-
+-            // If exactly one product, allow immediate add to cart
+-            if (products.length === 1) {
+-                const singleId = products[0].id || products[0].handle || products[0].product_id;
+-                if (singleId) {
+-                    globalButtons.push({ id: `__cart:add:${singleId}__`, title: 'Add to cart', priority: 115 });
+-                }
+-            }
+-
+-            if (hasNextPage) {
+-                const titleBase = pickVendorSeeMoreTitle(vendor.business_name || vendor.tag);
+-                const seeMoreTitle = truncateButtonTitle(titleBase || 'See more');
+-                globalButtons.push({
+-                    id: `__nav:more:${snapshotId}__`,
+-                    title: seeMoreTitle || 'See more products',
+-                    priority: 100
+-                });
+-            }
+-
+-            const refiners = [...clauseButtons, ...valueButtons];
+-            if (refiners.length > 0) globalButtons.push(...refiners);
++            const buttons = buildSearchUx(
++                normalizedData,
++                { ...params, tag: vendorTag, vendorName_for_ui: vendor.business_name || vendor.tag },
++                snapshotId,
++                cat,
++                false
++            );
+ 
+             return {
+                 vendor: vendor.business_name,
+                 method: 'search',
+-                products, // Intentionally NOT setting suppress_images: true so images still fire on initial response
+-                total: result.data.pagination?.total || result.data.total || products.length,
+-                facets: result.data.facets,
+-                whatsapp_product_cards: undefined, // Decoupled: Cards are now summoned via __nav:cards:
+-                whatsapp: globalButtons.length > 0 
+-                    ? { type: 'button', buttons: globalButtons.slice(0, 3) } 
+-                    : undefined
++                products,
++                total: normalizedData.totalCount,
++                facets: normalizedData.facets,
++                whatsapp_product_cards: undefined,
++                whatsapp: buttons.length > 0 ? { type: 'button', buttons } : undefined
+             };
+         }
+     },
