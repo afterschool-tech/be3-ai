@@ -928,7 +928,11 @@ app.post('/chat', async (req, res) => {
                         const title = String(b?.title ?? b?.text ?? id);
                         if (!id || !title) continue;
                         const priority = Number.isFinite(b?.priority) ? Number(b.priority) : payloadPriority;
-                        candidates.push({ id, title, priority, order: order++ });
+                        // Preserve extra native button fields (e.g. type:'cta_url', url)
+                        const extra = {};
+                        if (b?.type) extra.type = b.type;
+                        if (b?.url) extra.url = b.url;
+                        candidates.push({ id, title, priority, order: order++, ...extra });
                     }
 
                     // Carry forward optional fields when present (first writer wins).
@@ -959,7 +963,12 @@ app.post('/chat', async (req, res) => {
                         return a.order - b.order;
                     })
                     .slice(0, 3)
-                    .map(({ id, title }) => ({ id, title }));
+                    .map(({ id, title, type, url }) => {
+                        const btn = { id, title };
+                        if (type) btn.type = type;
+                        if (url) btn.url = url;
+                        return btn;
+                    });
 
                 merged.buttons = selected;
 

@@ -45,7 +45,9 @@ function resolveUiHooks(uiHooks, liveData, entityMeta) {
                 if (liveData.store_url) {
                     buttons.push({
                         id: `__web:${liveData.store_url}__`,
-                        title: 'Visit Store'
+                        title: 'Visit Store',
+                        type: 'cta_url',
+                        url: liveData.store_url
                     });
                 }
                 break;
