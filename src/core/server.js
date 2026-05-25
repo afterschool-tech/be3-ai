@@ -1081,7 +1081,22 @@ app.post('/chat', async (req, res) => {
                 tools_used: toolsSelected,
                 results: resultsForClient,
                 whatsapp_buttons: whatsappButtons || null,
-                whatsapp_product_cards: productCardPayload
+                whatsapp_product_cards: productCardPayload,
+                vendor_tools: state.profile?.role === 'VENDOR' ? {
+                    type: 'list',
+                    header: 'Vendor Dashboard 🛠️',
+                    body: 'Pick an action below to manage your store directly from WhatsApp.',
+                    footer: 'Powered by Be3',
+                    buttonText: 'Vendor Tools',
+                    sections: [
+                        {
+                            title: 'Order Management',
+                            rows: [
+                                { id: '__vendor_cmd:create_order', title: 'Create Order', description: 'Manually create an order invoice' }
+                            ]
+                        }
+                    ]
+                } : null
             };
 
             // Persist tool history while multi-turn flows are active; clear when flow ends.

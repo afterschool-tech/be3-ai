@@ -1294,12 +1294,13 @@ class StateManager {
             console.log(`[StateManager] 🔍 Profile fetch response:`, JSON.stringify(res));
 
             if (res.success && res.data && res.data.user) {
-                console.log(`[StateManager] ✅ Successfully bound profile for ${cleanUserId}: ${res.data.user.first_name}`);
+                console.log(`[StateManager] ✅ Successfully bound profile for ${cleanUserId}: ${res.data.user.first_name} (Role: ${res.data.user.role || 'USER'})`);
                 return {
                     id: res.data.user.id,
                     first_name: res.data.user.first_name,
                     last_name: res.data.user.last_name,
-                    email: res.data.user.email
+                    email: res.data.user.email,
+                    role: res.data.user.role
                 };
             } else {
                 console.log(`[StateManager] ⚠️ No user found for JID: ${cleanUserId} - or not connected.`);
