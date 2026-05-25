@@ -783,7 +783,8 @@ app.post('/chat', async (req, res) => {
                 response = await generateResponseFromTools(message, consolidatedToolResults, state.conversation_history, {
                     intentNames: allIntentNames.length === 1 ? allIntentNames[0] : allIntentNames,
                     conversationSummary: state.conversation_summary || null,
-                    visual_search: isVisualSearch
+                    visual_search: isVisualSearch,
+                    userFirstName: state.profile?.first_name || null
                 });
             }
 

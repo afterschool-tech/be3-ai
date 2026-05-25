@@ -383,7 +383,8 @@ async function generateResponseFromTools(userMessage, toolResults, conversationH
         hasSkipped: skippedActions.length > 0,
         skippedMessage: skippedActions[0]?.skippedMessage || null,
         failedToolsSummary: failedActions.map(f => ({ tool: f.tool, error: f.error || f.result?.error || null, reason: f.reason || null })),
-        visual_search: !!dcoContext.visual_search
+        visual_search: !!dcoContext.visual_search,
+        userFirstName: dcoContext.userFirstName || null
     });
 
     // ═══════════════════════════════════════════════

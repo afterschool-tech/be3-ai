@@ -171,6 +171,8 @@ function assemblePrompt(intentNames, toolResultsSummary, options = {}) {
         // Some segments need dynamic args
         if (segmentKey === 'similarity' && options.similarityRef) {
             promptParts.push(segmentFn(options.similarityRef));
+        } else if (segmentKey === 'core') {
+            promptParts.push(segmentFn(options.userFirstName));
         } else if (typeof segmentFn === 'function') {
             promptParts.push(segmentFn());
         }

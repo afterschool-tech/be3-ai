@@ -139,7 +139,7 @@ class StateManager {
                 const parsed = JSON.parse(raw);
                 return parsed && typeof parsed === 'object' ? parsed : null;
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const local = searchSnapshotCache.get(key);
         if (!local) return null;
@@ -171,16 +171,27 @@ class StateManager {
                 if (!state.user_query_map) {
                     state.user_query_map = {};
                 }
+
+                // Fetch profile once if missing in state
+                if (state.profile === undefined || state.profile === null) {
+                    state.profile = await this._fetchUserProfile(userId);
+                    // Save asynchronously to avoid blocking
+                    this.setState(userId, state).catch(e => console.error(e));
+                }
+
                 return state;
             }
 
             // Create new state
             const newState = this._createNewState(userId);
+            newState.profile = await this._fetchUserProfile(userId);
             await this.setState(userId, newState);
             return newState;
         } catch (error) {
             console.error('[StateManager] Error getting state:', error.message);
-            return this._createNewState(userId);
+            const fallbackState = this._createNewState(userId);
+            fallbackState.profile = await this._fetchUserProfile(userId);
+            return fallbackState;
         }
     }
 
@@ -715,7 +726,7 @@ class StateManager {
         };
         state.active_topic = enrichedTopic;
         console.log(`[StateManager] 📡 Active topic SET: "${topic.type}" (${userId})`);
-        
+
         logDebug('STATE:AMBIENT_TOPIC_SET', {
             _desc: 'Ambient Context topic updated',
             userId,
@@ -981,11 +992,11 @@ class StateManager {
             // Singular Overwrite (Always points to latest single product)
             // 'that' removed — too ambiguous as a discourse marker ("that aside", "that said")
             // 'that_one' added — unambiguous product reference form
-            referenceMap.it       = id;
-            referenceMap.this     = id;
+            referenceMap.it = id;
+            referenceMap.this = id;
             referenceMap.this_one = id;
             referenceMap.that_one = id;
-            referenceMap.the_one  = id;
+            referenceMap.the_one = id;
         }
 
         // --- ALWAYS: CUMULATIVE SLUGS ---
@@ -1045,15 +1056,15 @@ class StateManager {
 
         const state = await this.getState(userId);
         const userQueryMap = state.user_query_map || {};
-        
+
         // Normalize query: lowercase, trim, collapse whitespace
         const normalizedQuery = queryStr.toLowerCase().trim().replace(/\s+/g, ' ');
-        
+
         // Extract product IDs
         const productIds = products.map(p => p.handle || p.id || p.product_id).filter(Boolean);
-        
+
         if (productIds.length === 0) return;
-        
+
         // Store: single product as string, multiple as comma-separated
         if (productIds.length === 1) {
             userQueryMap[normalizedQuery] = productIds[0];
@@ -1062,7 +1073,7 @@ class StateManager {
             userQueryMap[normalizedQuery] = productIds.join(',');
             console.log(`[StateManager] 📝 User query map: "${normalizedQuery}" → ${productIds.join(',')} (${productIds.length} products)`);
         }
-        
+
         state.user_query_map = userQueryMap;
         // Note: user_query_map is volatile - only stored in memory cache, not persisted to Redis
         await this.setState(userId, state);
@@ -1081,25 +1092,25 @@ class StateManager {
 
         const queryStr = typeof query === 'string' ? query : (query?.query ?? String(query));
         if (typeof queryStr !== 'string' || queryStr.trim().length === 0) return null;
-        
+
         const state = await this.getState(userId);
         const userQueryMap = state.user_query_map || {};
-        
+
         // Normalize query
         const normalizedQuery = queryStr.toLowerCase().trim().replace(/\s+/g, ' ');
-        
+
         // Exact match
         if (userQueryMap[normalizedQuery]) {
             return userQueryMap[normalizedQuery];
         }
-        
+
         // Try substring matching (e.g., "spaghetti" matches "home made spaghetti")
         for (const [key, value] of Object.entries(userQueryMap)) {
             if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
                 return value;
             }
         }
-        
+
         return null;
     }
 
@@ -1250,12 +1261,54 @@ class StateManager {
             session_id: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             created_at: now,
             updated_at: now,
+            profile: null, // Will be populated dynamically
             session: {
                 ...DEFAULT_STATE.session,
                 started_at: now,
                 last_activity: now
             }
         };
+    }
+
+    /**
+     * Internal: Fetch user profile (authenticated name) from backend using WA sender JID
+     */
+    async _fetchUserProfile(userId) {
+        // Strip out @lid or @s.whatsapp.net for matching
+        const cleanUserId = userId.replace(/@.*$/, '');
+        console.log(`[StateManager] 🔍 Fetching user profile for JID: ${cleanUserId} (Original: ${userId})`);
+        try {
+            const { callBackendAPI } = require('../utils/apiClient');
+            const INTERNAL_SECRET = process.env.WA_AUTH_INTERNAL_SECRET || 'damilare';
+            const res = await callBackendAPI('/be3-ai/internal/profile', {
+                method: 'POST',
+                data: {
+                    sender_jid: cleanUserId,
+                    tenant_id: process.env.TENANT_ID || 'cbe1df05-45ed-455a-9ce6-156b0bd45713'
+                },
+                headers: {
+                    'x-internal-secret': INTERNAL_SECRET
+                }
+            });
+
+            console.log(`[StateManager] 🔍 Profile fetch response:`, JSON.stringify(res));
+
+            if (res.success && res.data && res.data.user) {
+                console.log(`[StateManager] ✅ Successfully bound profile for ${cleanUserId}: ${res.data.user.first_name}`);
+                return {
+                    id: res.data.user.id,
+                    first_name: res.data.user.first_name,
+                    last_name: res.data.user.last_name,
+                    email: res.data.user.email
+                };
+            } else {
+                console.log(`[StateManager] ⚠️ No user found for JID: ${cleanUserId} - or not connected.`);
+            }
+        } catch (e) {
+            console.error('[StateManager] Failed to fetch user profile:', e.message);
+        }
+        // Return false instead of null so `if (state.profile === null)` doesn't trigger an infinite loop
+        return false;
     }
 
 
